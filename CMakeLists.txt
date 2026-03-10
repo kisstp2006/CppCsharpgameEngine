@@ -161,19 +161,21 @@ add_library(Engine STATIC
 target_include_directories(Engine PUBLIC src)
 
 if(USE_THIRDPARTY)
-  # Allow engine sources to include vendor headers directly.
+  # stb_image.h — vendored directly in thirdparty/
   target_include_directories(Engine PUBLIC ${CMAKE_SOURCE_DIR}/thirdparty)
-  
+
+  # ImGui headers (submodule or FetchContent)
   if(DEFINED imgui_SOURCE_DIR)
     target_include_directories(Engine PUBLIC ${imgui_SOURCE_DIR})
   elseif(DEFINED THIRDPARTY_IMGUI_INCLUDE_DIR)
     target_include_directories(Engine PUBLIC ${THIRDPARTY_IMGUI_INCLUDE_DIR})
   endif()
 
-  if(DEFINED glad_BINARY_DIR)
-    target_include_directories(Engine PUBLIC ${glad_BINARY_DIR}/include)
-  elseif(DEFINED THIRDPARTY_GLAD_INCLUDE_DIR)
+  # Glad headers — submodule uses glad-generated/include, FetchContent used glad_BINARY_DIR
+  if(DEFINED THIRDPARTY_GLAD_INCLUDE_DIR)
     target_include_directories(Engine PUBLIC ${THIRDPARTY_GLAD_INCLUDE_DIR})
+  elseif(DEFINED glad_BINARY_DIR)
+    target_include_directories(Engine PUBLIC ${glad_BINARY_DIR}/include)
   endif()
 endif()
 

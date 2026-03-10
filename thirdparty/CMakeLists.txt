@@ -1,58 +1,63 @@
 cmake_minimum_required(VERSION 3.20)
 project(ThirdParty NONE)
 
-include(FetchContent)
+# All dependencies are managed as git submodules under thirdparty/.
+# After cloning the repo, run:
+#   git submodule update --init --recursive
+# to check out all dependencies before configuring CMake.
 
-# By default, FetchContent uses <build-dir>/_deps and checks out sources there.
-# This CMake file exists so that the root project can simply add_subdirectory(thirdparty) and
-# get common targets available (SDL2, glad, imgui).
+set(_TP_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
-# SDL2
-FetchContent_Declare(
-  SDL2
-  GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-  GIT_TAG release-2.26.5
-)
-FetchContent_MakeAvailable(SDL2)
+# ──────────────────────────────────────────────────────────
+# SDL2 (submodule: thirdparty/SDL2)
+# ──────────────────────────────────────────────────────────
+if(NOT EXISTS "${_TP_DIR}/SDL2/CMakeLists.txt")
+  message(FATAL_ERROR "SDL2 submodule is missing. Run: git submodule update --init --recursive")
+endif()
+add_subdirectory("${_TP_DIR}/SDL2" "${CMAKE_BINARY_DIR}/thirdparty/SDL2-build" EXCLUDE_FROM_ALL)
 
-# Glad
-FetchContent_Declare(
-  glad
-  GIT_REPOSITORY https://github.com/Dav1dde/glad.git
-  GIT_TAG v0.1.36
-)
-FetchContent_MakeAvailable(glad)
+# ──────────────────────────────────────────────────────────
+# Glad (vendored pre-generated: thirdparty/glad-generated)
+# ──────────────────────────────────────────────────────────
+if(NOT EXISTS "${_TP_DIR}/glad-generated/src/glad.c")
+  message(FATAL_ERROR "glad-generated sources are missing under thirdparty/glad-generated/")
+endif()
+add_subdirectory("${_TP_DIR}/glad-generated" "${CMAKE_BINARY_DIR}/thirdparty/glad-build" EXCLUDE_FROM_ALL)
+set(glad_BINARY_DIR "${CMAKE_BINARY_DIR}/thirdparty/glad-build")
 
-# ImGui
-FetchContent_Declare(
-  imgui
-  GIT_REPOSITORY https://github.com/ocornut/imgui.git
-  GIT_TAG v1.89.8-docking
-)
-FetchContent_MakeAvailable(imgui)
+# ──────────────────────────────────────────────────────────
+# ImGui (submodule: thirdparty/imgui)
+# ──────────────────────────────────────────────────────────
+if(NOT EXISTS "${_TP_DIR}/imgui/imgui.cpp")
+  message(FATAL_ERROR "imgui submodule is missing. Run: git submodule update --init --recursive")
+endif()
+set(imgui_SOURCE_DIR "${_TP_DIR}/imgui")
 
-# EnTT (header-only ECS library)
-FetchContent_Declare(
-  entt
-  GIT_REPOSITORY https://github.com/skypjack/entt.git
-  GIT_TAG v3.13.2
-)
-FetchContent_MakeAvailable(entt)
+# ──────────────────────────────────────────────────────────
+# EnTT (submodule: thirdparty/entt, header-only)
+# ──────────────────────────────────────────────────────────
+if(NOT EXISTS "${_TP_DIR}/entt/src/entt/entt.hpp")
+  message(FATAL_ERROR "entt submodule is missing. Run: git submodule update --init --recursive")
+endif()
+set(entt_SOURCE_DIR "${_TP_DIR}/entt")
 
-# Assimp (asset import library)
+# ──────────────────────────────────────────────────────────
+# Assimp (submodule: thirdparty/assimp)
+# ──────────────────────────────────────────────────────────
+if(NOT EXISTS "${_TP_DIR}/assimp/CMakeLists.txt")
+  message(FATAL_ERROR "assimp submodule is missing. Run: git submodule update --init --recursive")
+endif()
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-  assimp
-  GIT_REPOSITORY https://github.com/assimp/assimp.git
-  GIT_TAG v5.4.3
-)
-FetchContent_MakeAvailable(assimp)
+add_subdirectory("${_TP_DIR}/assimp" "${CMAKE_BINARY_DIR}/thirdparty/assimp-build" EXCLUDE_FROM_ALL)
+set(assimp_SOURCE_DIR "${_TP_DIR}/assimp")
 
-# Expose include directories to the parent project (if it wants them)
+# ──────────────────────────────────────────────────────────
+# Expose include directories to the parent project
+# ──────────────────────────────────────────────────────────
 set(THIRDPARTY_IMGUI_INCLUDE_DIR "${imgui_SOURCE_DIR}" CACHE PATH "ImGui include directory")
-set(THIRDPARTY_GLAD_INCLUDE_DIR "${glad_BINARY_DIR}/include" CACHE PATH "glad include directory")
+set(THIRDPARTY_GLAD_INCLUDE_DIR "${_TP_DIR}/glad-generated/include" CACHE PATH "glad include directory")
 set(THIRDPARTY_ENTT_INCLUDE_DIR "${entt_SOURCE_DIR}/src" CACHE PATH "EnTT include directory")
 set(THIRDPARTY_ASSIMP_INCLUDE_DIR "${assimp_SOURCE_DIR}/include" CACHE PATH "Assimp include directory")
 
@@ -60,31 +65,37 @@ set(THIRDPARTY_ASSIMP_INCLUDE_DIR "${assimp_SOURCE_DIR}/include" CACHE PATH "Ass
 # Mono is not generally built from source as part of this project; please install it
 # or place a prebuilt Mono SDK under thirdparty/mono and set MONO_ROOT to that folder.
 
-# Provide compatibility alias targets for consumers.
-if(TARGET SDL2::SDL2)
-  # ok
+# ──────────────────────────────────────────────────────────
+# Compatibility alias targets for consumers
+# ──────────────────────────────────────────────────────────
+if(NOT TARGET SDL2::SDL2 AND TARGET SDL2)
+  add_library(SDL2::SDL2 ALIAS SDL2)
 elseif(NOT TARGET SDL2::SDL2)
   add_library(SDL2::SDL2 INTERFACE IMPORTED)
   set_target_properties(SDL2::SDL2 PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${SDL2_SOURCE_DIR}/include"
+    INTERFACE_INCLUDE_DIRECTORIES "${_TP_DIR}/SDL2/include"
   )
 endif()
 
-if(NOT TARGET SDL2::SDL2main)
+if(NOT TARGET SDL2::SDL2main AND TARGET SDL2main)
+  add_library(SDL2::SDL2main ALIAS SDL2main)
+elseif(NOT TARGET SDL2::SDL2main)
   add_library(SDL2::SDL2main INTERFACE IMPORTED)
 endif()
 
-# Glad (built by its own CMake)
-if(TARGET glad)
-  add_library(glad::glad ALIAS glad)
-else()
-  add_library(glad::glad INTERFACE IMPORTED)
-  set_target_properties(glad::glad PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${glad_BINARY_DIR}/include"
-  )
+# glad::glad alias — glad target is created by glad-generated/CMakeLists.txt
+if(NOT TARGET glad::glad)
+  if(TARGET glad)
+    add_library(glad::glad ALIAS glad)
+  else()
+    add_library(glad::glad INTERFACE IMPORTED)
+    set_target_properties(glad::glad PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${THIRDPARTY_GLAD_INCLUDE_DIR}"
+    )
+  endif()
 endif()
 
-# ImGui (no built-in CMake - build here)
+# ImGui (built here using submodule headers)
 if(NOT TARGET imgui)
   file(GLOB IMGUI_SOURCES
     "${imgui_SOURCE_DIR}/imgui.cpp"
@@ -96,43 +107,46 @@ if(NOT TARGET imgui)
   )
 
   add_library(imgui STATIC ${IMGUI_SOURCES})
-  target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR})
-  target_include_directories(imgui PUBLIC ${imgui_SOURCE_DIR}/backends)
+  target_include_directories(imgui PUBLIC "${imgui_SOURCE_DIR}")
+  target_include_directories(imgui PUBLIC "${imgui_SOURCE_DIR}/backends")
 
-  # ImGui SDL2 backend requires SDL headers and config headers.
-  if(EXISTS "${CMAKE_BINARY_DIR}/_deps/sdl2-build/include/SDL.h")
-    target_include_directories(imgui PUBLIC "${CMAKE_BINARY_DIR}/_deps/sdl2-build/include")
+  # ImGui SDL2 backend needs SDL2 headers
+  if(TARGET SDL2)
+    target_link_libraries(imgui PRIVATE SDL2)
   endif()
-  foreach(conf IN ITEMS include-config-debug include-config-release include-config-mingsizerel)
-    if(EXISTS "${CMAKE_BINARY_DIR}/_deps/sdl2-build/${conf}")
-      target_include_directories(imgui PUBLIC "${CMAKE_BINARY_DIR}/_deps/sdl2-build/${conf}")
+  if(EXISTS "${_TP_DIR}/SDL2/include")
+    target_include_directories(imgui PUBLIC "${_TP_DIR}/SDL2/include")
+  endif()
+
+  # ImGui needs SDL2 generated config headers (platform-specific SDL_config.h etc.)
+  foreach(_sdl_conf_dir
+      "${CMAKE_BINARY_DIR}/thirdparty/SDL2-build/include"
+      "${CMAKE_BINARY_DIR}/thirdparty/SDL2-build/include-config-debug"
+      "${CMAKE_BINARY_DIR}/thirdparty/SDL2-build/include-config-release"
+  )
+    if(EXISTS "${_sdl_conf_dir}")
+      target_include_directories(imgui PUBLIC "${_sdl_conf_dir}")
     endif()
   endforeach()
 
   target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLAD)
+  # Give imgui access to glad headers for the OpenGL3 backend
+  target_include_directories(imgui PUBLIC "${THIRDPARTY_GLAD_INCLUDE_DIR}")
 endif()
 
 if(NOT TARGET imgui::imgui)
   add_library(imgui::imgui ALIAS imgui)
 endif()
 
+# EnTT (header-only)
 if(NOT TARGET entt::entt)
   add_library(entt::entt INTERFACE IMPORTED)
-  if(TARGET EnTT::EnTT)
-    set_target_properties(entt::entt PROPERTIES
-      INTERFACE_LINK_LIBRARIES EnTT::EnTT
-    )
-  elseif(TARGET entt)
-    set_target_properties(entt::entt PROPERTIES
-      INTERFACE_LINK_LIBRARIES entt
-    )
-  else()
-    set_target_properties(entt::entt PROPERTIES
-      INTERFACE_INCLUDE_DIRECTORIES "${THIRDPARTY_ENTT_INCLUDE_DIR}"
-    )
-  endif()
+  set_target_properties(entt::entt PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${THIRDPARTY_ENTT_INCLUDE_DIR}"
+  )
 endif()
 
+# assimp::assimp alias — assimp target is created by its CMakeLists.txt
 if(NOT TARGET assimp::assimp)
   if(TARGET assimp)
     add_library(assimp::assimp ALIAS assimp)
