@@ -1,0 +1,22 @@
+build/
+*.user
+.vs/
+*.suo
+*.sdf
+*.opensdf
+ipch/
+*.VC.db
+*.VC.opendb
+
+# C# build outputs
+editor/bin/
+editor/obj/
+scripts/bin/
+scripts/obj/
+
+# Library cache (runtime generated)
+*/Library/
+
+# Rider / VS
+.idea/
+*.DotSettings.user
