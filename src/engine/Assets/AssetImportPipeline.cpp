@@ -17,6 +17,7 @@
 #endif
 
 #if !defined(__INTELLISENSE__) && __has_include("stb_image.h")
+#define STB_IMAGE_STATIC       // keep stb symbols TU-local, avoids conflicts with Assimp's internal stb_image
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #define ENGINE_STB_IMAGE_AVAILABLE 1

@@ -54,5 +54,8 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void Separator();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool Checkbox(string label, ref bool value);
     }
 }

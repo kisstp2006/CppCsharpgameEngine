@@ -98,6 +98,10 @@ namespace EngineEditor
 
                 ImGui.Separator();
                 ImGui.Text("Status: " + ProjectOperations.StatusMessage);
+
+                // Popups must be drawn inside the same Begin/End window that called OpenPopup,
+                // otherwise ImGui hashes the popup ID against a different window and the modal never opens.
+                PopupDialogs.DrawPopups();
             }
             ImGui.End();
         }

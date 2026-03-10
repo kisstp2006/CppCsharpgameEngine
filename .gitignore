@@ -1,4 +1,6 @@
 build/
+*.dll
+*.pdb
 *.user
 .vs/
 *.suo
@@ -16,6 +18,10 @@ scripts/obj/
 
 # Library cache (runtime generated)
 */Library/
+
+# Runtime-generated files
+imgui.ini
+.editor/
 
 # Rider / VS
 .idea/

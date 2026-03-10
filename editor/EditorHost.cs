@@ -36,14 +36,12 @@ namespace EngineEditor
                 _showProjectManagerView = true;
                 SceneEditor.ResetSelection();
                 ProjectManager.DrawProjectPanel();
-                PopupDialogs.DrawPopups();
                 return;
             }
 
             if (_showProjectManagerView)
             {
                 ProjectManager.DrawProjectPanel();
-                PopupDialogs.DrawPopups();
                 return;
             }
 

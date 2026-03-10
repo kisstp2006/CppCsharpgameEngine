@@ -50,6 +50,7 @@ endif()
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
+set(ASSIMP_USE_STB_IMAGE_STATIC ON CACHE BOOL "" FORCE)  # prevent stbi symbol conflicts
 add_subdirectory("${_TP_DIR}/assimp" "${CMAKE_BINARY_DIR}/thirdparty/assimp-build" EXCLUDE_FROM_ALL)
 set(assimp_SOURCE_DIR "${_TP_DIR}/assimp")
 

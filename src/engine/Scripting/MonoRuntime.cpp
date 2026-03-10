@@ -454,6 +454,19 @@ static void EditorImGui_Separator()
     if (ImGui::GetCurrentContext())
         ImGui::Separator();
 }
+
+static bool EditorImGui_Checkbox(MonoString* label, MonoBoolean* value)
+{
+    if (!ImGui::GetCurrentContext() || !value)
+        return false;
+
+    const std::string text = MonoStringToUtf8(label);
+    const char* checkLabel = text.empty() ? "##cb" : text.c_str();
+    bool v = (*value != 0);
+    bool changed = ImGui::Checkbox(checkLabel, &v);
+    *value = v ? 1 : 0;
+    return changed;
+}
 #endif
 
 static std::filesystem::path FindScriptAssemblyPath(const std::filesystem::path& preferredPath)
@@ -592,6 +605,7 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.ImGui::InputText", (const void*)&EditorImGui_InputText);
     mono_add_internal_call("Engine.ImGui::InputFloat", (const void*)&EditorImGui_InputFloat);
     mono_add_internal_call("Engine.ImGui::Separator", (const void*)&EditorImGui_Separator);
+    mono_add_internal_call("Engine.ImGui::Checkbox", (const void*)&EditorImGui_Checkbox);
 
     const auto assemblyPath = FindScriptAssemblyPath(m_impl->preferredScriptAssemblyPath);
     if (assemblyPath.empty())

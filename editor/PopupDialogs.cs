@@ -13,6 +13,7 @@ namespace EngineEditor
         private static string _newProjectName = "NewProject";
         private static string _newProjectLocation = string.Empty;
         private static int _newProjectTemplateIndex = 0;
+        private static bool _openAfterCreate = true;
         private static string _pendingDeleteProjectPath = string.Empty;
 
         public static void OpenCreateProjectPopup(string projectsRoot)
@@ -69,6 +70,8 @@ namespace EngineEditor
                     _newProjectTemplateIndex = i;
             }
 
+            ImGui.Checkbox("Open project after creation", ref _openAfterCreate);
+
             if (ImGui.Button("Create Project"))
             {
                 string projectName = _newProjectName.Trim();
@@ -91,6 +94,8 @@ namespace EngineEditor
                         string templateName = templates_copy[_newProjectTemplateIndex];
                         ProjectOperations.CreateProject(Path.Combine(location, projectName), templateName);
                         ImGui.CloseCurrentPopup();
+                        if (_openAfterCreate)
+                            EditorHost.SetShowProjectManagerView(false);
                     }
                     catch (Exception ex)
                     {
