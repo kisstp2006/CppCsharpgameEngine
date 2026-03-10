@@ -7,8 +7,10 @@
 #include <filesystem>
 #include <cstdio>
 #include <cstdint>
+#include <chrono>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -54,6 +56,17 @@ struct MonoRuntime::Impl
     };
 
     std::unordered_map<std::uint32_t, ScriptInstance> entityScripts;
+
+    std::filesystem::path resolvedScriptAssemblyPath;
+    std::filesystem::path resolvedEditorAssemblyPath;
+    std::filesystem::path shadowCopyDirectory;
+
+    std::filesystem::file_time_type scriptAssemblyWriteTime{};
+    std::filesystem::file_time_type editorAssemblyWriteTime{};
+    bool hasScriptAssemblyWriteTime = false;
+    bool hasEditorAssemblyWriteTime = false;
+
+    float hotReloadPollAccumulator = 0.0f;
 #endif
     std::filesystem::path preferredScriptAssemblyPath;
     bool scriptLoaded = false;
@@ -469,18 +482,22 @@ static bool EditorImGui_Checkbox(MonoString* label, MonoBoolean* value)
 }
 #endif
 
-static std::filesystem::path FindScriptAssemblyPath(const std::filesystem::path& preferredPath)
+static std::filesystem::path FindScriptAssemblyPath(const std::filesystem::path& preferredPath, bool verbose = true)
 {
     if (!preferredPath.empty())
     {
         if (std::filesystem::exists(preferredPath))
         {
-            std::cout << "[Mono] Using project metadata script assembly: " << preferredPath << std::endl;
+            if (verbose)
+                std::cout << "[Mono] Using project metadata script assembly: " << preferredPath << std::endl;
             return preferredPath;
         }
 
-        std::cout << "[Mono] Preferred script assembly not found: " << preferredPath << std::endl;
-        std::cout << "[Mono] Falling back to legacy script assembly candidates..." << std::endl;
+        if (verbose)
+        {
+            std::cout << "[Mono] Preferred script assembly not found: " << preferredPath << std::endl;
+            std::cout << "[Mono] Falling back to legacy script assembly candidates..." << std::endl;
+        }
     }
 
     const auto cwd = std::filesystem::current_path();
@@ -496,12 +513,13 @@ static std::filesystem::path FindScriptAssemblyPath(const std::filesystem::path&
     {
         if (std::filesystem::exists(candidate))
         {
-            std::cout << "[Mono] Using legacy fallback script assembly: " << candidate << std::endl;
+            if (verbose)
+                std::cout << "[Mono] Using legacy fallback script assembly: " << candidate << std::endl;
             return candidate;
         }
     }
 
-    if (!preferredPath.empty())
+    if (verbose && !preferredPath.empty())
         std::cout << "[Mono] Legacy fallback candidates also failed." << std::endl;
 
     return {};
@@ -526,6 +544,169 @@ static std::filesystem::path FindEditorAssemblyPath()
 
     return {};
 }
+
+#if ENGINE_MONO_RUNTIME_AVAILABLE
+struct ScriptAssemblyBindings
+{
+    MonoAssembly* assembly = nullptr;
+    MonoImage* image = nullptr;
+    MonoClass* scriptClass = nullptr;
+    MonoMethod* onStart = nullptr;
+    MonoMethod* onUpdate = nullptr;
+    MonoMethod* onShutdown = nullptr;
+};
+
+struct EditorAssemblyBindings
+{
+    MonoAssembly* assembly = nullptr;
+    MonoImage* image = nullptr;
+    MonoClass* editorClass = nullptr;
+    MonoMethod* onStart = nullptr;
+    MonoMethod* onUpdate = nullptr;
+    MonoMethod* onShutdown = nullptr;
+};
+
+static bool TryGetFileWriteTime(const std::filesystem::path& path, std::filesystem::file_time_type& outWriteTime)
+{
+    std::error_code error;
+    outWriteTime = std::filesystem::last_write_time(path, error);
+    return !error;
+}
+
+static bool TryCreateAssemblyShadowCopy(const std::filesystem::path& sourcePath,
+                                        const std::filesystem::path& shadowDirectory,
+                                        std::filesystem::path& outShadowPath)
+{
+    if (sourcePath.empty() || shadowDirectory.empty())
+        return false;
+
+    std::error_code error;
+    std::filesystem::create_directories(shadowDirectory, error);
+    if (error)
+        return false;
+
+    static std::uint64_t shadowCopyCounter = 0;
+    ++shadowCopyCounter;
+
+    const auto timestampMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
+
+    const std::string shadowName = sourcePath.stem().string() +
+                                   "_shadow_" +
+                                   std::to_string(timestampMs) +
+                                   "_" +
+                                   std::to_string(shadowCopyCounter) +
+                                   sourcePath.extension().string();
+
+    outShadowPath = shadowDirectory / shadowName;
+
+    constexpr int maxAttempts = 6;
+    for (int attempt = 0; attempt < maxAttempts; ++attempt)
+    {
+        error.clear();
+        std::filesystem::copy_file(sourcePath, outShadowPath, std::filesystem::copy_options::overwrite_existing, error);
+        if (!error)
+            return true;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+    }
+
+    return false;
+}
+
+static bool TryLoadScriptAssemblyBindings(MonoDomain* domain,
+                                          const std::filesystem::path& shadowDirectory,
+                                          const std::filesystem::path& sourcePath,
+                                          ScriptAssemblyBindings& outBindings)
+{
+    if (!domain || sourcePath.empty())
+        return false;
+
+    std::filesystem::path pathToLoad;
+    if (!TryCreateAssemblyShadowCopy(sourcePath, shadowDirectory, pathToLoad))
+    {
+        std::cerr << "[Mono] Hot-reload copy failed for script assembly: " << sourcePath << std::endl;
+        return false;
+    }
+
+    const std::string loadPathString = pathToLoad.string();
+    outBindings.assembly = mono_domain_assembly_open(domain, loadPathString.c_str());
+    if (!outBindings.assembly)
+    {
+        std::cerr << "[Mono] Failed to load script assembly shadow copy: " << loadPathString << std::endl;
+        return false;
+    }
+
+    outBindings.image = mono_assembly_get_image(outBindings.assembly);
+    if (!outBindings.image)
+    {
+        std::cerr << "[Mono] Script assembly image is null: " << loadPathString << std::endl;
+        return false;
+    }
+
+    outBindings.scriptClass = mono_class_from_name(outBindings.image, "GameScripts", "ScriptEntry");
+    if (!outBindings.scriptClass)
+    {
+        std::cerr << "[Mono] Missing GameScripts.ScriptEntry in: " << loadPathString << std::endl;
+        return true;
+    }
+
+    outBindings.onStart = mono_class_get_method_from_name(outBindings.scriptClass, "OnEngineStart", 0);
+    outBindings.onUpdate = mono_class_get_method_from_name(outBindings.scriptClass, "OnEngineUpdate", 1);
+    outBindings.onShutdown = mono_class_get_method_from_name(outBindings.scriptClass, "OnEngineShutdown", 0);
+    return true;
+}
+
+static bool TryLoadEditorAssemblyBindings(MonoDomain* domain,
+                                          const std::filesystem::path& shadowDirectory,
+                                          const std::filesystem::path& sourcePath,
+                                          EditorAssemblyBindings& outBindings)
+{
+    if (!domain || sourcePath.empty())
+        return false;
+
+    std::filesystem::path pathToLoad;
+    if (!TryCreateAssemblyShadowCopy(sourcePath, shadowDirectory, pathToLoad))
+    {
+        std::cerr << "[Mono] Hot-reload copy failed for editor assembly: " << sourcePath << std::endl;
+        return false;
+    }
+
+    const std::string loadPathString = pathToLoad.string();
+    outBindings.assembly = mono_domain_assembly_open(domain, loadPathString.c_str());
+    if (!outBindings.assembly)
+    {
+        std::cerr << "[Mono] Failed to load editor assembly shadow copy: " << loadPathString << std::endl;
+        return false;
+    }
+
+    outBindings.image = mono_assembly_get_image(outBindings.assembly);
+    if (!outBindings.image)
+    {
+        std::cerr << "[Mono] Editor assembly image is null: " << loadPathString << std::endl;
+        return false;
+    }
+
+    outBindings.editorClass = mono_class_from_name(outBindings.image, "EngineEditor", "EditorHost");
+    if (!outBindings.editorClass)
+    {
+        std::cerr << "[Mono] Missing EngineEditor.EditorHost in: " << loadPathString << std::endl;
+        return false;
+    }
+
+    outBindings.onStart = mono_class_get_method_from_name(outBindings.editorClass, "OnEditorStart", 0);
+    outBindings.onUpdate = mono_class_get_method_from_name(outBindings.editorClass, "OnEditorUpdate", 1);
+    outBindings.onShutdown = mono_class_get_method_from_name(outBindings.editorClass, "OnEditorShutdown", 0);
+
+    if (!outBindings.onUpdate)
+    {
+        std::cerr << "[Mono] OnEditorUpdate(float) missing in EngineEditor.EditorHost: " << loadPathString << std::endl;
+        return false;
+    }
+
+    return true;
+}
+#endif
 
 MonoRuntime::MonoRuntime() = default;
 MonoRuntime::~MonoRuntime()
@@ -607,6 +788,10 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.ImGui::Separator", (const void*)&EditorImGui_Separator);
     mono_add_internal_call("Engine.ImGui::Checkbox", (const void*)&EditorImGui_Checkbox);
 
+    m_impl->shadowCopyDirectory = std::filesystem::current_path() / ".mono_cache";
+    std::error_code shadowError;
+    std::filesystem::create_directories(m_impl->shadowCopyDirectory, shadowError);
+
     const auto assemblyPath = FindScriptAssemblyPath(m_impl->preferredScriptAssemblyPath);
     if (assemblyPath.empty())
     {
@@ -614,35 +799,28 @@ bool MonoRuntime::Initialize()
     }
     else
     {
-        const std::string assemblyPathString = assemblyPath.string();
-        m_impl->assembly = mono_domain_assembly_open(m_impl->domain, assemblyPathString.c_str());
-        if (!m_impl->assembly)
+        ScriptAssemblyBindings scriptBindings;
+        if (!TryLoadScriptAssemblyBindings(m_impl->domain, m_impl->shadowCopyDirectory, assemblyPath, scriptBindings))
         {
-            std::cerr << "[Mono] Failed to load assembly: " << assemblyPathString << std::endl;
+            std::cerr << "[Mono] Failed to load assembly: " << assemblyPath << std::endl;
         }
         else
         {
-            m_impl->image = mono_assembly_get_image(m_impl->assembly);
-            if (!m_impl->image)
-            {
-                std::cerr << "[Mono] Assembly image is null." << std::endl;
-            }
-            else
-            {
-                m_impl->scriptClass = mono_class_from_name(m_impl->image, "GameScripts", "ScriptEntry");
-                if (m_impl->scriptClass)
-                {
-                    m_impl->onStart = mono_class_get_method_from_name(m_impl->scriptClass, "OnEngineStart", 0);
-                    m_impl->onUpdate = mono_class_get_method_from_name(m_impl->scriptClass, "OnEngineUpdate", 1);
-                    m_impl->onShutdown = mono_class_get_method_from_name(m_impl->scriptClass, "OnEngineShutdown", 0);
-                }
+            m_impl->assembly = scriptBindings.assembly;
+            m_impl->image = scriptBindings.image;
+            m_impl->scriptClass = scriptBindings.scriptClass;
+            m_impl->onStart = scriptBindings.onStart;
+            m_impl->onUpdate = scriptBindings.onUpdate;
+            m_impl->onShutdown = scriptBindings.onShutdown;
+            m_impl->scriptLoaded = true;
 
-                m_impl->scriptLoaded = true;
-                if (m_impl->onStart)
-                    mono_runtime_invoke(m_impl->onStart, nullptr, nullptr, nullptr);
+            m_impl->resolvedScriptAssemblyPath = assemblyPath;
+            m_impl->hasScriptAssemblyWriteTime = TryGetFileWriteTime(assemblyPath, m_impl->scriptAssemblyWriteTime);
 
-                std::cout << "[Mono] Loaded script assembly: " << assemblyPathString << std::endl;
-            }
+            if (m_impl->onStart)
+                mono_runtime_invoke(m_impl->onStart, nullptr, nullptr, nullptr);
+
+            std::cout << "[Mono] Loaded script assembly: " << assemblyPath << std::endl;
         }
     }
 
@@ -653,43 +831,28 @@ bool MonoRuntime::Initialize()
         return true;
     }
 
-    const std::string editorPathString = editorPath.string();
-    m_impl->editorAssembly = mono_domain_assembly_open(m_impl->domain, editorPathString.c_str());
-    if (!m_impl->editorAssembly)
+    EditorAssemblyBindings editorBindings;
+    if (!TryLoadEditorAssemblyBindings(m_impl->domain, m_impl->shadowCopyDirectory, editorPath, editorBindings))
     {
-        std::cerr << "[Mono] Failed to load editor assembly: " << editorPathString << std::endl;
+        std::cerr << "[Mono] Failed to load editor assembly: " << editorPath << std::endl;
         return true;
     }
 
-    m_impl->editorImage = mono_assembly_get_image(m_impl->editorAssembly);
-    if (!m_impl->editorImage)
-    {
-        std::cerr << "[Mono] Editor assembly image is null." << std::endl;
-        return true;
-    }
+    m_impl->editorAssembly = editorBindings.assembly;
+    m_impl->editorImage = editorBindings.image;
+    m_impl->editorClass = editorBindings.editorClass;
+    m_impl->editorOnStart = editorBindings.onStart;
+    m_impl->editorOnUpdate = editorBindings.onUpdate;
+    m_impl->editorOnShutdown = editorBindings.onShutdown;
+    m_impl->editorLoaded = true;
 
-    m_impl->editorClass = mono_class_from_name(m_impl->editorImage, "EngineEditor", "EditorHost");
-    if (!m_impl->editorClass)
-    {
-        std::cerr << "[Mono] Missing class EngineEditor.EditorHost in editor assembly." << std::endl;
-        return true;
-    }
-
-    m_impl->editorOnStart = mono_class_get_method_from_name(m_impl->editorClass, "OnEditorStart", 0);
-    m_impl->editorOnUpdate = mono_class_get_method_from_name(m_impl->editorClass, "OnEditorUpdate", 1);
-    m_impl->editorOnShutdown = mono_class_get_method_from_name(m_impl->editorClass, "OnEditorShutdown", 0);
-    m_impl->editorLoaded = (m_impl->editorOnUpdate != nullptr);
-
-    if (!m_impl->editorLoaded)
-    {
-        std::cerr << "[Mono] OnEditorUpdate(float) not found in EngineEditor.EditorHost." << std::endl;
-        return true;
-    }
+    m_impl->resolvedEditorAssemblyPath = editorPath;
+    m_impl->hasEditorAssemblyWriteTime = TryGetFileWriteTime(editorPath, m_impl->editorAssemblyWriteTime);
 
     if (m_impl->editorOnStart)
         mono_runtime_invoke(m_impl->editorOnStart, nullptr, nullptr, nullptr);
 
-    std::cout << "[Mono] Loaded editor assembly: " << editorPathString << std::endl;
+    std::cout << "[Mono] Loaded editor assembly: " << editorPath << std::endl;
     return true;
 #endif
 }
@@ -702,6 +865,119 @@ void MonoRuntime::Update(float deltaTime, Scene* scene)
 #else
     if (!m_impl)
         return;
+
+    m_impl->hotReloadPollAccumulator += deltaTime;
+    if (m_impl->hotReloadPollAccumulator >= 0.5f)
+    {
+        m_impl->hotReloadPollAccumulator = 0.0f;
+
+        const auto scriptPath = FindScriptAssemblyPath(m_impl->preferredScriptAssemblyPath, false);
+        if (!scriptPath.empty())
+        {
+            std::filesystem::file_time_type scriptWriteTime{};
+            const bool hasScriptWriteTime = TryGetFileWriteTime(scriptPath, scriptWriteTime);
+
+            const bool scriptPathChanged = !m_impl->resolvedScriptAssemblyPath.empty() &&
+                                           (scriptPath != m_impl->resolvedScriptAssemblyPath);
+            const bool scriptTimeChanged = hasScriptWriteTime &&
+                                           m_impl->hasScriptAssemblyWriteTime &&
+                                           (scriptWriteTime != m_impl->scriptAssemblyWriteTime);
+            const bool scriptNeedsLoad = !m_impl->scriptLoaded;
+
+            if (scriptNeedsLoad || scriptPathChanged || scriptTimeChanged)
+            {
+                ScriptAssemblyBindings newScriptBindings;
+                if (TryLoadScriptAssemblyBindings(m_impl->domain, m_impl->shadowCopyDirectory, scriptPath, newScriptBindings))
+                {
+                    if (scene)
+                    {
+                        auto& registry = scene->Registry();
+                        for (auto& [entityId, instance] : m_impl->entityScripts)
+                        {
+                            const auto entity = static_cast<entt::entity>(entityId);
+                            if (instance.created && instance.onDestroy && registry.valid(entity))
+                            {
+                                std::uint32_t destroyEntityId = entityId;
+                                void* destroyArgs[1] = { (void*)&destroyEntityId };
+                                mono_runtime_invoke(instance.onDestroy, instance.instance, destroyArgs, nullptr);
+                            }
+                        }
+                    }
+
+                    m_impl->entityScripts.clear();
+
+                    if (m_impl->scriptLoaded && m_impl->onShutdown)
+                        mono_runtime_invoke(m_impl->onShutdown, nullptr, nullptr, nullptr);
+
+                    m_impl->assembly = newScriptBindings.assembly;
+                    m_impl->image = newScriptBindings.image;
+                    m_impl->scriptClass = newScriptBindings.scriptClass;
+                    m_impl->onStart = newScriptBindings.onStart;
+                    m_impl->onUpdate = newScriptBindings.onUpdate;
+                    m_impl->onShutdown = newScriptBindings.onShutdown;
+                    m_impl->scriptLoaded = true;
+
+                    m_impl->resolvedScriptAssemblyPath = scriptPath;
+                    m_impl->hasScriptAssemblyWriteTime = hasScriptWriteTime;
+                    if (hasScriptWriteTime)
+                        m_impl->scriptAssemblyWriteTime = scriptWriteTime;
+
+                    if (m_impl->onStart)
+                        mono_runtime_invoke(m_impl->onStart, nullptr, nullptr, nullptr);
+
+                    if (scriptNeedsLoad)
+                        std::cout << "[Mono] Script assembly became available: " << scriptPath << std::endl;
+                    else
+                        std::cout << "[Mono] Hot-reloaded script assembly: " << scriptPath << std::endl;
+                }
+            }
+        }
+
+        const auto editorPath = FindEditorAssemblyPath();
+        if (!editorPath.empty())
+        {
+            std::filesystem::file_time_type editorWriteTime{};
+            const bool hasEditorWriteTime = TryGetFileWriteTime(editorPath, editorWriteTime);
+
+            const bool editorPathChanged = !m_impl->resolvedEditorAssemblyPath.empty() &&
+                                           (editorPath != m_impl->resolvedEditorAssemblyPath);
+            const bool editorTimeChanged = hasEditorWriteTime &&
+                                           m_impl->hasEditorAssemblyWriteTime &&
+                                           (editorWriteTime != m_impl->editorAssemblyWriteTime);
+            const bool editorNeedsLoad = !m_impl->editorLoaded;
+
+            if (editorNeedsLoad || editorPathChanged || editorTimeChanged)
+            {
+                EditorAssemblyBindings newEditorBindings;
+                if (TryLoadEditorAssemblyBindings(m_impl->domain, m_impl->shadowCopyDirectory, editorPath, newEditorBindings))
+                {
+                    if (m_impl->editorLoaded && m_impl->editorOnShutdown)
+                        mono_runtime_invoke(m_impl->editorOnShutdown, nullptr, nullptr, nullptr);
+
+                    m_impl->editorAssembly = newEditorBindings.assembly;
+                    m_impl->editorImage = newEditorBindings.image;
+                    m_impl->editorClass = newEditorBindings.editorClass;
+                    m_impl->editorOnStart = newEditorBindings.onStart;
+                    m_impl->editorOnUpdate = newEditorBindings.onUpdate;
+                    m_impl->editorOnShutdown = newEditorBindings.onShutdown;
+                    m_impl->editorLoaded = true;
+
+                    m_impl->resolvedEditorAssemblyPath = editorPath;
+                    m_impl->hasEditorAssemblyWriteTime = hasEditorWriteTime;
+                    if (hasEditorWriteTime)
+                        m_impl->editorAssemblyWriteTime = editorWriteTime;
+
+                    if (m_impl->editorOnStart)
+                        mono_runtime_invoke(m_impl->editorOnStart, nullptr, nullptr, nullptr);
+
+                    if (editorNeedsLoad)
+                        std::cout << "[Mono] Editor assembly became available: " << editorPath << std::endl;
+                    else
+                        std::cout << "[Mono] Hot-reloaded editor assembly: " << editorPath << std::endl;
+                }
+            }
+        }
+    }
 
     g_editorSceneContext = scene;
 

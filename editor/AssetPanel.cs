@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 
 using Engine;
@@ -55,11 +56,11 @@ namespace EngineEditor
 
             ImGui.Separator();
             ImGui.Text("Assets + Scenes (" + _assetEntries.Length + ")");
-            DrawEntries(_assetEntries, "Asset", projectPath);
+            DrawEntries(_assetEntries, "Asset", projectPath, openOnSelect: false);
 
             ImGui.Separator();
             ImGui.Text("Solutions + C# Scripts (" + _codeEntries.Length + ")");
-            DrawEntries(_codeEntries, "Code", projectPath);
+            DrawEntries(_codeEntries, "Code", projectPath, openOnSelect: true);
 
             ImGui.Separator();
             if (string.IsNullOrEmpty(_selectedPath))
@@ -88,7 +89,7 @@ namespace EngineEditor
             _codeEntries = ConcatAndSort(slnFiles, csprojFiles, scriptFiles);
         }
 
-        private static void DrawEntries(string[] entries, string idPrefix, string projectPath)
+        private static void DrawEntries(string[] entries, string idPrefix, string projectPath, bool openOnSelect)
         {
             bool anyVisible = false;
             string filter = (_searchText ?? string.Empty).Trim();
@@ -104,11 +105,40 @@ namespace EngineEditor
                 anyVisible = true;
                 bool selected = string.Equals(_selectedPath, fullPath, StringComparison.OrdinalIgnoreCase);
                 if (ImGui.Selectable(displayPath + "##" + idPrefix + i, selected))
+                {
                     _selectedPath = fullPath;
+
+                    if (openOnSelect)
+                        OpenPathInShell(fullPath);
+                }
             }
 
             if (!anyVisible)
                 ImGui.Text("No matches.");
+        }
+
+        private static void OpenPathInShell(string fullPath)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+                {
+                    ProjectOperations.SetStatusMessage("Open failed: file missing.");
+                    return;
+                }
+
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = fullPath,
+                    UseShellExecute = true,
+                };
+
+                Process.Start(startInfo);
+            }
+            catch (Exception ex)
+            {
+                ProjectOperations.SetStatusMessage("Open failed: " + ex.Message);
+            }
         }
 
         private static string[] ConcatAndSort(params string[][] groups)
