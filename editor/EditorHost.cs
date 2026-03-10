@@ -47,6 +47,7 @@ namespace EngineEditor
 
             SceneEditor.DrawSceneTreePanel();
             SceneEditor.DrawInspectorPanel();
+            AssetPanel.DrawAssetPanel();
             SceneEditor.UpdateTick(deltaTime);
         }
 
