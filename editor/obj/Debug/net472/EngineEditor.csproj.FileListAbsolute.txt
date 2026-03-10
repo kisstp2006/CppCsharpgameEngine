@@ -1,0 +1,9 @@
+C:\Users\tibig\Documents\CppCsharpgameEngine\editor\obj\Debug\net472\EngineEditor.csproj.AssemblyReference.cache
+C:\Users\tibig\Documents\CppCsharpgameEngine\editor\obj\Debug\net472\EngineEditor.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\tibig\Documents\CppCsharpgameEngine\editor\obj\Debug\net472\EngineEditor.AssemblyInfoInputs.cache
+C:\Users\tibig\Documents\CppCsharpgameEngine\editor\obj\Debug\net472\EngineEditor.AssemblyInfo.cs
+C:\Users\tibig\Documents\CppCsharpgameEngine\editor\obj\Debug\net472\EngineEditor.csproj.CoreCompileInputs.cache
+C:\Users\tibig\Documents\CppCsharpgameEngine\editor\bin\Debug\net472\EngineEditor.dll
+C:\Users\tibig\Documents\CppCsharpgameEngine\editor\bin\Debug\net472\EngineEditor.pdb
+C:\Users\tibig\Documents\CppCsharpgameEngine\editor\obj\Debug\net472\EngineEditor.dll
+C:\Users\tibig\Documents\CppCsharpgameEngine\editor\obj\Debug\net472\EngineEditor.pdb
