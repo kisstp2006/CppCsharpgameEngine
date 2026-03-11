@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 using Engine;
 
@@ -26,6 +27,17 @@ namespace EngineEditor
         private static float _gameViewHeight = 1.0f;
         private static bool _gizmoSnapEnabled = false;
         private static float _gizmoSnapStep = 32.0f;
+        private static bool _componentRegistryInitialized = false;
+        private static readonly List<ComponentInspectorEntry> _componentEntries = new List<ComponentInspectorEntry>();
+
+        private sealed class ComponentInspectorEntry
+        {
+            public string Name;
+            public string Category;
+            public int ComponentType;
+            public bool CanRemove;
+            public Action<uint> Draw;
+        }
 
         public static int SelectedEntityId => _selectedEntityId;
 
@@ -198,81 +210,28 @@ namespace EngineEditor
                         }
 
                         ImGui.Separator();
-                        ImGui.Text("Transform");
-                        bool hasTransform = EditorBridge.HasTransform(entityId);
-                        if (!hasTransform)
+                        DrawAddComponentMenu(entityId);
+
+                        for (int i = 0; i < _componentEntries.Count; ++i)
                         {
-                            ImGui.Text("Missing TransformComponent");
-                            if (ImGui.Button("Add Transform"))
-                                EditorBridge.AddTransform(entityId);
-                        }
-                        else
-                        {
-                            float x;
-                            float y;
-                            float width;
-                            float height;
-                            if (EditorBridge.GetTransform(entityId, out x, out y, out width, out height))
+                            ComponentInspectorEntry entry = _componentEntries[i];
+                            if (!EditorBridge.HasComponent(entityId, entry.ComponentType))
+                                continue;
+
+                            ImGui.Separator();
+                            ImGui.Text(entry.Name);
+
+                            if (entry.CanRemove)
                             {
-                                bool changed = false;
-                                changed |= ImGui.InputFloat("X", ref x, 1.0f);
-                                changed |= ImGui.InputFloat("Y", ref y, 1.0f);
-                                changed |= ImGui.InputFloat("Width", ref width, 1.0f);
-                                changed |= ImGui.InputFloat("Height", ref height, 1.0f);
-
-                                if (changed)
-                                    EditorBridge.SetTransform(entityId, x, y, width, height);
-                            }
-                        }
-
-                        ImGui.Separator();
-                        ImGui.Text("Script");
-                        bool hasScript = EditorBridge.HasScript(entityId);
-                        if (!hasScript)
-                        {
-                            ImGui.Text("Missing ScriptComponent");
-                            if (ImGui.Button("Add Script"))
-                                EditorBridge.AddScript(entityId);
-                        }
-                        else
-                        {
-                            bool scriptEnabled = EditorBridge.GetScriptEnabled(entityId);
-                            ImGui.Text("Enabled: " + (scriptEnabled ? "yes" : "no"));
-
-                            if (ImGui.Button(scriptEnabled ? "Disable Script" : "Enable Script"))
-                                EditorBridge.SetScriptEnabled(entityId, !scriptEnabled);
-
-                            if (ImGui.Button("Remove Script"))
-                                EditorBridge.RemoveScript(entityId);
-                        }
-
-                        ImGui.Separator();
-                        ImGui.Text("Camera");
-                        bool hasCamera = EditorBridge.HasCamera(entityId);
-                        if (!hasCamera)
-                        {
-                            ImGui.Text("Missing CameraComponent");
-                            if (ImGui.Button("Add Camera"))
-                                EditorBridge.AddCamera(entityId);
-                        }
-                        else
-                        {
-                            float camX;
-                            float camY;
-                            float camZoom;
-                            if (EditorBridge.GetCamera(entityId, out camX, out camY, out camZoom))
-                            {
-                                bool cameraChanged = false;
-                                cameraChanged |= ImGui.InputFloat("Cam X", ref camX, 1.0f);
-                                cameraChanged |= ImGui.InputFloat("Cam Y", ref camY, 1.0f);
-                                cameraChanged |= ImGui.InputFloat("Cam Zoom", ref camZoom, 0.1f);
-
-                                if (cameraChanged)
-                                    EditorBridge.SetCamera(entityId, camX, camY, Clamp(camZoom, MinZoom, MaxZoom));
+                                ImGui.SameLine();
+                                if (ImGui.Button("Remove##" + entry.Name))
+                                {
+                                    EditorBridge.RemoveComponent(entityId, entry.ComponentType);
+                                    continue;
+                                }
                             }
 
-                            if (ImGui.Button("Remove Camera"))
-                                EditorBridge.RemoveCamera(entityId);
+                            entry.Draw(entityId);
                         }
                     }
                 }
@@ -289,8 +248,190 @@ namespace EngineEditor
             _editorCamera.MinZoom = MinZoom;
             _editorCamera.MaxZoom = MaxZoom;
             _editorCamera.Reset();
+            InitializeComponentRegistry();
             if (_selectedEntityId >= 0 && !EditorBridge.IsEntityValid((uint)_selectedEntityId))
                 _selectedEntityId = -1;
+        }
+
+        private static void InitializeComponentRegistry()
+        {
+            if (_componentRegistryInitialized)
+                return;
+
+            _componentRegistryInitialized = true;
+
+            RegisterInspectorComponent("Transform",
+                                       "Core",
+                                       ComponentType.Transform,
+                                       DrawTransformInspector,
+                                       false);
+
+            RegisterInspectorComponent("Sprite",
+                                       "Rendering",
+                                       ComponentType.Sprite,
+                                       DrawSpriteInspector,
+                                       true);
+
+            RegisterInspectorComponent("Camera",
+                                       "Rendering",
+                                       ComponentType.Camera,
+                                       DrawCameraInspector,
+                                       true);
+
+            RegisterInspectorComponent("Script",
+                                       "Logic",
+                                       ComponentType.Script,
+                                       DrawScriptInspector,
+                                       true);
+        }
+
+        private static void RegisterInspectorComponent(string name,
+                                                       string category,
+                                                       int componentType,
+                                                       Action<uint> draw,
+                                                       bool canRemove)
+        {
+            string resolvedCategory = category;
+            if (string.IsNullOrEmpty(resolvedCategory))
+                resolvedCategory = "Others";
+
+            var entry = new ComponentInspectorEntry();
+            entry.Name = name;
+            entry.Category = resolvedCategory;
+            entry.ComponentType = componentType;
+            entry.CanRemove = canRemove;
+            entry.Draw = draw;
+            _componentEntries.Add(entry);
+        }
+
+        private static void DrawAddComponentMenu(uint entityId)
+        {
+            if (ImGui.Button("Add Component"))
+                ImGui.OpenPopup("Add Component Popup");
+
+            if (!ImGui.BeginPopupModal("Add Component Popup"))
+                return;
+
+            bool hasAnyAddable = false;
+            var categories = new List<string>();
+            for (int i = 0; i < _componentEntries.Count; ++i)
+            {
+                ComponentInspectorEntry entry = _componentEntries[i];
+                if (EditorBridge.HasComponent(entityId, entry.ComponentType))
+                    continue;
+
+                hasAnyAddable = true;
+                bool knownCategory = false;
+                for (int c = 0; c < categories.Count; ++c)
+                {
+                    if (categories[c] == entry.Category)
+                    {
+                        knownCategory = true;
+                        break;
+                    }
+                }
+
+                if (!knownCategory)
+                    categories.Add(entry.Category);
+            }
+
+            if (!hasAnyAddable)
+            {
+                ImGui.Text("All registered components are already attached.");
+            }
+            else
+            {
+                for (int c = 0; c < categories.Count; ++c)
+                {
+                    string category = categories[c];
+                    ImGui.Text(category);
+
+                    for (int i = 0; i < _componentEntries.Count; ++i)
+                    {
+                        ComponentInspectorEntry entry = _componentEntries[i];
+                        if (entry.Category != category || EditorBridge.HasComponent(entityId, entry.ComponentType))
+                            continue;
+
+                        if (ImGui.Selectable("  + " + entry.Name + "##AddComponent" + entry.Name, false))
+                        {
+                            EditorBridge.AddComponent(entityId, entry.ComponentType);
+                            ImGui.CloseCurrentPopup();
+                            ImGui.EndPopup();
+                            return;
+                        }
+                    }
+
+                    if (c + 1 < categories.Count)
+                        ImGui.Separator();
+                }
+            }
+
+            ImGui.Separator();
+            if (ImGui.Button("Close"))
+                ImGui.CloseCurrentPopup();
+
+            ImGui.EndPopup();
+        }
+
+        private static void DrawTransformInspector(uint entityId)
+        {
+            float x;
+            float y;
+            float width;
+            float height;
+            if (!EditorBridge.GetTransform(entityId, out x, out y, out width, out height))
+                return;
+
+            bool changed = false;
+            changed |= ImGui.InputFloat("X", ref x, 1.0f);
+            changed |= ImGui.InputFloat("Y", ref y, 1.0f);
+            changed |= ImGui.InputFloat("Width", ref width, 1.0f);
+            changed |= ImGui.InputFloat("Height", ref height, 1.0f);
+
+            if (changed)
+                EditorBridge.SetTransform(entityId, x, y, width, height);
+        }
+
+        private static void DrawSpriteInspector(uint entityId)
+        {
+            _ = entityId;
+            ImGui.Text("Sprite settings are not exposed yet.");
+        }
+
+        private static void DrawCameraInspector(uint entityId)
+        {
+            float camX;
+            float camY;
+            float camZoom;
+            if (EditorBridge.GetCamera(entityId, out camX, out camY, out camZoom))
+            {
+                bool cameraChanged = false;
+                cameraChanged |= ImGui.InputFloat("Cam X", ref camX, 1.0f);
+                cameraChanged |= ImGui.InputFloat("Cam Y", ref camY, 1.0f);
+                cameraChanged |= ImGui.InputFloat("Cam Zoom", ref camZoom, 0.1f);
+
+                if (cameraChanged)
+                    EditorBridge.SetCamera(entityId, camX, camY, Clamp(camZoom, MinZoom, MaxZoom));
+            }
+
+        }
+
+        private static void DrawScriptInspector(uint entityId)
+        {
+            string scriptTypeName = EditorBridge.GetScriptTypeName(entityId);
+            if (scriptTypeName == null)
+                scriptTypeName = string.Empty;
+
+            string updatedScriptTypeName = ImGui.InputText("Script Type", scriptTypeName);
+            if (updatedScriptTypeName != scriptTypeName)
+                EditorBridge.SetScriptTypeName(entityId, updatedScriptTypeName);
+
+            bool scriptEnabled = EditorBridge.GetScriptEnabled(entityId);
+            ImGui.Text("Enabled: " + (scriptEnabled ? "yes" : "no"));
+
+            if (ImGui.Button(scriptEnabled ? "Disable Script" : "Enable Script"))
+                EditorBridge.SetScriptEnabled(entityId, !scriptEnabled);
+
         }
 
         private static float Clamp(float value, float minValue, float maxValue)

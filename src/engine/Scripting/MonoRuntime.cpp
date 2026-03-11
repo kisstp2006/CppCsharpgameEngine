@@ -84,6 +84,14 @@ struct MonoRuntime::Impl
 static Scene* g_editorSceneContext = nullptr;
 static Renderer* g_editorRendererContext = nullptr;
 
+enum class EditorComponentType : std::uint32_t
+{
+    Transform = 0,
+    Camera = 1,
+    Sprite = 2,
+    Script = 3
+};
+
 static std::string MonoStringToUtf8(MonoString* monoString)
 {
     if (!monoString)
@@ -167,6 +175,105 @@ static int EditorBridge_GetScriptedEntityCount()
     return count;
 }
 
+static bool EditorBridge_HasComponent(std::uint32_t entityId, int componentType)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity))
+        return false;
+
+    switch (static_cast<EditorComponentType>(componentType))
+    {
+    case EditorComponentType::Transform:
+        return g_editorSceneContext->HasTransform(entity);
+    case EditorComponentType::Camera:
+        return g_editorSceneContext->HasCamera(entity);
+    case EditorComponentType::Sprite:
+        return g_editorSceneContext->HasSprite(entity);
+    case EditorComponentType::Script:
+        return g_editorSceneContext->HasScript(entity);
+    default:
+        return false;
+    }
+}
+
+static void EditorBridge_AddComponent(std::uint32_t entityId, int componentType)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity))
+        return;
+
+    switch (static_cast<EditorComponentType>(componentType))
+    {
+    case EditorComponentType::Transform:
+        if (g_editorSceneContext->HasTransform(entity))
+            return;
+        {
+            auto& transform = g_editorSceneContext->AddTransform(entity);
+            transform.x = 0.0f;
+            transform.y = 0.0f;
+            transform.width = 100.0f;
+            transform.height = 100.0f;
+        }
+        return;
+    case EditorComponentType::Camera:
+        if (g_editorSceneContext->HasCamera(entity))
+            return;
+        {
+            auto& camera = g_editorSceneContext->AddCamera(entity);
+            camera.x = 0.0f;
+            camera.y = 0.0f;
+            camera.zoom = 1.0f;
+        }
+        return;
+    case EditorComponentType::Sprite:
+        if (g_editorSceneContext->HasSprite(entity))
+            return;
+        g_editorSceneContext->AddSprite(entity);
+        return;
+    case EditorComponentType::Script:
+        if (g_editorSceneContext->HasScript(entity))
+            return;
+        g_editorSceneContext->AddScript(entity);
+        return;
+    default:
+        return;
+    }
+}
+
+static void EditorBridge_RemoveComponent(std::uint32_t entityId, int componentType)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity))
+        return;
+
+    switch (static_cast<EditorComponentType>(componentType))
+    {
+    case EditorComponentType::Transform:
+        g_editorSceneContext->RemoveTransform(entity);
+        return;
+    case EditorComponentType::Camera:
+        g_editorSceneContext->RemoveCamera(entity);
+        return;
+    case EditorComponentType::Sprite:
+        g_editorSceneContext->RemoveSprite(entity);
+        return;
+    case EditorComponentType::Script:
+        g_editorSceneContext->RemoveScript(entity);
+        return;
+    default:
+        return;
+    }
+}
+
 static void EditorBridge_SetScriptEnabled(std::uint32_t entityId, bool enabled)
 {
     if (!g_editorSceneContext)
@@ -191,6 +298,62 @@ static bool EditorBridge_GetScriptEnabled(std::uint32_t entityId)
         return false;
 
     return script->enabled;
+}
+
+static MonoString* EditorBridge_GetScriptTypeName(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return nullptr;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const ScriptComponent* script = g_editorSceneContext->TryGetScript(entity);
+    if (!script)
+        return nullptr;
+
+    std::string fullName;
+    if (script->classNamespace.empty())
+        fullName = script->className;
+    else
+        fullName = script->classNamespace + "." + script->className;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, fullName.c_str()) : nullptr;
+}
+
+static void EditorBridge_SetScriptTypeName(std::uint32_t entityId, MonoString* scriptTypeName)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    ScriptComponent* script = g_editorSceneContext->TryGetScript(entity);
+    if (!script)
+        return;
+
+    std::string fullName = MonoStringToUtf8(scriptTypeName);
+    const std::size_t start = fullName.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos)
+        return;
+
+    const std::size_t end = fullName.find_last_not_of(" \t\r\n");
+    fullName = fullName.substr(start, end - start + 1);
+
+    const std::size_t dotPos = fullName.rfind('.');
+    if (dotPos == std::string::npos)
+    {
+        script->className = fullName;
+        if (script->classNamespace.empty())
+            script->classNamespace = "GameScripts";
+        return;
+    }
+
+    const std::string ns = fullName.substr(0, dotPos);
+    const std::string className = fullName.substr(dotPos + 1);
+    if (className.empty())
+        return;
+
+    script->classNamespace = ns.empty() ? "GameScripts" : ns;
+    script->className = className;
 }
 
 static void EditorBridge_SetGameViewSize(float width, float height)
@@ -1292,6 +1455,9 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.EditorBridge::CreateEntity", (const void*)&EditorBridge_CreateEntity);
     mono_add_internal_call("Engine.EditorBridge::DestroyEntity", (const void*)&EditorBridge_DestroyEntity);
     mono_add_internal_call("Engine.EditorBridge::GetScriptedEntityCount", (const void*)&EditorBridge_GetScriptedEntityCount);
+    mono_add_internal_call("Engine.EditorBridge::HasComponent", (const void*)&EditorBridge_HasComponent);
+    mono_add_internal_call("Engine.EditorBridge::AddComponent", (const void*)&EditorBridge_AddComponent);
+    mono_add_internal_call("Engine.EditorBridge::RemoveComponent", (const void*)&EditorBridge_RemoveComponent);
     mono_add_internal_call("Engine.EditorBridge::HasTransform", (const void*)&EditorBridge_HasTransform);
     mono_add_internal_call("Engine.EditorBridge::AddTransform", (const void*)&EditorBridge_AddTransform);
     mono_add_internal_call("Engine.EditorBridge::GetTransform", (const void*)&EditorBridge_GetTransform);
@@ -1309,6 +1475,8 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.EditorBridge::RemoveScript", (const void*)&EditorBridge_RemoveScript);
     mono_add_internal_call("Engine.EditorBridge::SetScriptEnabled", (const void*)&EditorBridge_SetScriptEnabled);
     mono_add_internal_call("Engine.EditorBridge::GetScriptEnabled", (const void*)&EditorBridge_GetScriptEnabled);
+    mono_add_internal_call("Engine.EditorBridge::GetScriptTypeName", (const void*)&EditorBridge_GetScriptTypeName);
+    mono_add_internal_call("Engine.EditorBridge::SetScriptTypeName", (const void*)&EditorBridge_SetScriptTypeName);
     mono_add_internal_call("Engine.EditorBridge::SetGameViewSize", (const void*)&EditorBridge_SetGameViewSize);
     mono_add_internal_call("Engine.EditorBridge::GetGameViewTextureHandle", (const void*)&EditorBridge_GetGameViewTextureHandle);
 

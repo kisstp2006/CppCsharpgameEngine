@@ -2,8 +2,10 @@
 
 Scene::Entity Scene::CreateEntity()
 {
+    const auto entity = m_registry.create();
+    AddTransform(entity, TransformComponent{});
     ++m_entityCount;
-    return m_registry.create();
+    return entity;
 }
 
 void Scene::DestroyEntity(Entity entity)

@@ -2,6 +2,14 @@ using System.Runtime.CompilerServices;
 
 namespace Engine
 {
+    public static class ComponentType
+    {
+        public const int Transform = 0;
+        public const int Camera = 1;
+        public const int Sprite = 2;
+        public const int Script = 3;
+    }
+
     public static class EditorBridge
     {
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -21,6 +29,15 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern int GetScriptedEntityCount();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool HasComponent(uint entityId, int componentType);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void AddComponent(uint entityId, int componentType);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void RemoveComponent(uint entityId, int componentType);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool HasTransform(uint entityId);
@@ -72,6 +89,12 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool GetScriptEnabled(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern string GetScriptTypeName(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetScriptTypeName(uint entityId, string scriptTypeName);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void SetGameViewSize(float width, float height);
