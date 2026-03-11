@@ -13,13 +13,21 @@ namespace EngineEditor
         private static string _selectedPath = string.Empty;
 
         private static DateTime _nextAutoRefreshUtc = DateTime.MinValue;
+        private static float _autoRefreshSeconds = 1.0f;
+        private static bool _optionsRegistered = false;
 
         private static string[] _assetEntries = new string[0];
         private static string[] _codeEntries = new string[0];
 
         private const string CreateScenePopupId = "Create Scene";
+        private const string CreateScriptPopupId = "Create Script";
+        private const string AssetContextPopupId = "Asset Context Menu";
         private static string _newSceneName = "Scene";
         private static int _newSceneFormat = 0;
+        private static string _newScriptName = "NewScript";
+        private static string _assetContextPath = string.Empty;
+        private static bool _openCreateScenePopupRequested = false;
+        private static bool _openCreateScriptPopupRequested = false;
 
         public static void DrawAssetPanel()
         {
@@ -43,7 +51,7 @@ namespace EngineEditor
             if (projectChanged || autoRefreshDue)
             {
                 Refresh(projectPath);
-                _nextAutoRefreshUtc = DateTime.UtcNow.AddSeconds(1.0);
+                _nextAutoRefreshUtc = DateTime.UtcNow.AddSeconds(_autoRefreshSeconds);
             }
 
             ImGui.SetNextItemWidth(280.0f);
@@ -55,16 +63,12 @@ namespace EngineEditor
             if (ImGui.Button("Refresh"))
             {
                 Refresh(projectPath);
-                _nextAutoRefreshUtc = DateTime.UtcNow.AddSeconds(1.0);
+                _nextAutoRefreshUtc = DateTime.UtcNow.AddSeconds(_autoRefreshSeconds);
             }
-
-            ImGui.SameLine();
-            if (ImGui.Button("Create Scene"))
-                ImGui.OpenPopup(CreateScenePopupId);
 
             ImGui.Separator();
             ImGui.Text("Assets + Scenes (" + _assetEntries.Length + ")");
-            DrawEntries(_assetEntries, "Asset", projectPath, openOnSelect: false);
+            DrawAssetEntriesWithContextMenu(projectPath);
 
             ImGui.Separator();
             ImGui.Text("Solutions + C# Scripts (" + _codeEntries.Length + ")");
@@ -76,9 +80,142 @@ namespace EngineEditor
             else
                 ImGui.Text("Selected: " + _selectedPath);
 
+            if (_openCreateScenePopupRequested)
+            {
+                ImGui.OpenPopup(CreateScenePopupId);
+                _openCreateScenePopupRequested = false;
+            }
+
+            if (_openCreateScriptPopupRequested)
+            {
+                ImGui.OpenPopup(CreateScriptPopupId);
+                _openCreateScriptPopupRequested = false;
+            }
+
             DrawCreateScenePopup(projectPath);
+            DrawCreateScriptPopup(projectPath);
+            DrawAssetContextMenu(projectPath);
 
             ImGui.End();
+        }
+
+        private static void DrawAssetEntriesWithContextMenu(string projectPath)
+        {
+            float listHeight = ImGui.GetContentRegionAvailY() * 0.45f;
+            if (listHeight < 140.0f)
+                listHeight = 140.0f;
+
+            if (ImGui.BeginChild("##AssetEntriesChild", 0.0f, listHeight, true))
+            {
+                DrawEntries(_assetEntries, "Asset", projectPath, openOnSelect: false);
+
+                if (ImGui.IsWindowHovered() && ImGui.IsMouseClicked(MouseButton.Right))
+                {
+                    _assetContextPath = string.Empty;
+                    ImGui.OpenPopup(AssetContextPopupId);
+                }
+
+                ImGui.EndChild();
+            }
+        }
+
+        internal static void RequestOpenCreateScenePopup(int preferredFormat = -1)
+        {
+            if (preferredFormat == 0 || preferredFormat == 1)
+                _newSceneFormat = preferredFormat;
+
+            _openCreateScenePopupRequested = true;
+        }
+
+        internal static void RequestOpenCreateScriptPopup()
+        {
+            _openCreateScriptPopupRequested = true;
+        }
+
+        private static void DrawAssetContextMenu(string projectPath)
+        {
+            if (!ImGui.BeginPopupModal(AssetContextPopupId))
+                return;
+
+            ImGui.Text("Asset Menu");
+
+            if (!string.IsNullOrEmpty(_assetContextPath))
+            {
+                ImGui.SameLine();
+                if (ImGui.Button("Back"))
+                    _assetContextPath = ParentPath(_assetContextPath);
+            }
+
+            ImGui.Separator();
+
+            AssetPanelContextMenuRegistry.MenuNodeEntry[] entries = AssetPanelContextMenuRegistry.GetMenuEntries(_assetContextPath);
+            if (entries.Length == 0)
+            {
+                ImGui.Text("No actions registered.");
+            }
+            else
+            {
+                var context = new AssetPanelContextMenuRegistry.AssetPanelContext();
+                context.ProjectPath = projectPath;
+                context.SelectedPath = _selectedPath;
+
+                for (int i = 0; i < entries.Length; ++i)
+                {
+                    AssetPanelContextMenuRegistry.MenuNodeEntry entry = entries[i];
+                    string label = entry.HasChildren ? entry.Label + " >" : entry.Label;
+
+                    if (!ImGui.Selectable(label + "##AssetMenu" + entry.Path, false))
+                        continue;
+
+                    if (entry.HasChildren)
+                    {
+                        _assetContextPath = entry.Path;
+                        break;
+                    }
+
+                    if (entry.Action != null)
+                        entry.Action(context);
+
+                    ImGui.CloseCurrentPopup();
+                    ImGui.EndPopup();
+                    return;
+                }
+            }
+
+            ImGui.Separator();
+            if (ImGui.Button("Close"))
+                ImGui.CloseCurrentPopup();
+
+            ImGui.EndPopup();
+        }
+
+        public static void RegisterEditorOptions()
+        {
+            if (_optionsRegistered)
+                return;
+
+            _optionsRegistered = true;
+            EditorOptionsRegistry.Register("assetpanel.general",
+                                           "Asset Panel",
+                                           "General",
+                                           DrawAssetPanelOptions,
+                                           10);
+        }
+
+        private static void DrawAssetPanelOptions()
+        {
+            float refreshSeconds = _autoRefreshSeconds;
+            if (ImGui.InputFloat("Auto refresh interval (sec)", ref refreshSeconds, 0.1f))
+            {
+                if (refreshSeconds < 0.1f)
+                    refreshSeconds = 0.1f;
+                if (refreshSeconds > 30.0f)
+                    refreshSeconds = 30.0f;
+
+                _autoRefreshSeconds = refreshSeconds;
+            }
+
+            ImGui.Text("Controls periodic rescanning of Assets and Scenes folders.");
         }
 
         private static void Refresh(string projectPath)
@@ -221,6 +358,18 @@ namespace EngineEditor
             return fullPath.Substring(relativeStart);
         }
 
+        private static string ParentPath(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return string.Empty;
+
+            int index = path.LastIndexOf('/');
+            if (index <= 0)
+                return string.Empty;
+
+            return path.Substring(0, index);
+        }
+
         private static void DrawCreateScenePopup(string projectPath)
         {
             if (!ImGui.BeginPopupModal(CreateScenePopupId))
@@ -246,7 +395,7 @@ namespace EngineEditor
                 if (SceneEditor.CreateSceneAsset(_newSceneName, _newSceneFormat))
                 {
                     Refresh(projectPath);
-                    _nextAutoRefreshUtc = DateTime.UtcNow.AddSeconds(1.0);
+                    _nextAutoRefreshUtc = DateTime.UtcNow.AddSeconds(_autoRefreshSeconds);
                     ImGui.CloseCurrentPopup();
                 }
             }
@@ -256,6 +405,122 @@ namespace EngineEditor
                 ImGui.CloseCurrentPopup();
 
             ImGui.EndPopup();
+        }
+
+        private static void DrawCreateScriptPopup(string projectPath)
+        {
+            if (!ImGui.BeginPopupModal(CreateScriptPopupId))
+                return;
+
+            ImGui.Text("Create C# Script");
+            ImGui.Separator();
+
+            ImGui.SetNextItemWidth(280.0f);
+            string updatedName = ImGui.InputText("Script Name", _newScriptName);
+            if (updatedName != null)
+                _newScriptName = updatedName;
+
+            ImGui.Separator();
+            if (ImGui.Button("Create"))
+            {
+                if (CreateScriptAsset(projectPath, _newScriptName))
+                {
+                    Refresh(projectPath);
+                    _nextAutoRefreshUtc = DateTime.UtcNow.AddSeconds(_autoRefreshSeconds);
+                    ImGui.CloseCurrentPopup();
+                }
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel"))
+                ImGui.CloseCurrentPopup();
+
+            ImGui.EndPopup();
+        }
+
+        private static bool CreateScriptAsset(string projectPath, string requestedName)
+        {
+            try
+            {
+                string normalizedName = (requestedName ?? string.Empty).Trim();
+                if (string.IsNullOrWhiteSpace(normalizedName))
+                    normalizedName = "NewScript";
+
+                if (!StringUtilities.IsValidProjectName(normalizedName))
+                {
+                    ProjectOperations.SetStatusMessage("Create script failed: invalid script name.");
+                    return false;
+                }
+
+                string scriptsRoot = Path.Combine(projectPath, "Scripts");
+                Directory.CreateDirectory(scriptsRoot);
+
+                string className = BuildSafeScriptClassName(normalizedName);
+                string candidatePath = Path.Combine(scriptsRoot, className + ".cs");
+                if (File.Exists(candidatePath))
+                {
+                    int suffix = 1;
+                    while (true)
+                    {
+                        string nextPath = Path.Combine(scriptsRoot, className + "_" + suffix + ".cs");
+                        if (!File.Exists(nextPath))
+                        {
+                            candidatePath = nextPath;
+                            break;
+                        }
+
+                        ++suffix;
+                    }
+                }
+
+                string finalClassName = Path.GetFileNameWithoutExtension(candidatePath);
+                string fileContent = BuildScriptFileContent(finalClassName);
+                File.WriteAllText(candidatePath, fileContent);
+
+                _selectedPath = Path.GetFullPath(candidatePath);
+                ProjectOperations.SetStatusMessage("Created script: " + Path.GetFileName(candidatePath));
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ProjectOperations.SetStatusMessage("Create script failed: " + ex.Message);
+                return false;
+            }
+        }
+
+        private static string BuildSafeScriptClassName(string value)
+        {
+            string className = StringUtilities.BuildSafeAssemblyName(value);
+            if (string.IsNullOrEmpty(className))
+                className = "NewScript";
+
+            if (char.IsDigit(className[0]))
+                className = "_" + className;
+
+            return className;
+        }
+
+        private static string BuildScriptFileContent(string className)
+        {
+            string escapedClassName = StringUtilities.EscapeCSharpString(className);
+            return "using System;\n\n" +
+                   "namespace GameScripts\n" +
+                   "{\n" +
+                   "    public sealed class " + className + "\n" +
+                   "    {\n" +
+                   "        public void OnCreate(uint entityId)\n" +
+                   "        {\n" +
+                   "            Console.WriteLine(\"[GameScripts] " + escapedClassName + " created for entity \" + entityId + \".\");\n" +
+                   "        }\n\n" +
+                   "        public void OnUpdate(uint entityId, float deltaTime)\n" +
+                   "        {\n" +
+                   "        }\n\n" +
+                   "        public void OnDestroy(uint entityId)\n" +
+                   "        {\n" +
+                   "            Console.WriteLine(\"[GameScripts] " + escapedClassName + " destroyed for entity \" + entityId + \".\");\n" +
+                   "        }\n" +
+                   "    }\n" +
+                   "}\n";
         }
     }
 }

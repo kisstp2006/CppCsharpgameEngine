@@ -23,6 +23,12 @@ namespace EngineEditor
             ProjectOperations.Initialize(_editorConfigDir);
             ProjectOperations.OpenLastProjectSilently();
 
+            AssetPanel.RegisterEditorOptions();
+            SceneEditor.RegisterEditorOptions();
+            SceneEditor.RegisterAssetContextMenu();
+            ScriptFieldInspector.RegisterEditorOptions();
+            ScriptFieldInspector.RegisterAssetContextMenu();
+
             _showProjectManagerView = true;
             _statusMessage = "No project loaded.";
             Console.WriteLine("[Editor] OnEditorStart called.");
@@ -40,6 +46,7 @@ namespace EngineEditor
                 _showProjectManagerView = true;
                 SceneEditor.ResetEditorState();
                 ProjectManager.DrawProjectPanel();
+                EditorOptionsWindow.Draw();
                 return;
             }
 
@@ -47,6 +54,7 @@ namespace EngineEditor
             {
                 SceneEditor.ResetEditorState();
                 ProjectManager.DrawProjectPanel();
+                EditorOptionsWindow.Draw();
                 return;
             }
 
@@ -55,6 +63,7 @@ namespace EngineEditor
             SceneEditor.DrawInspectorPanel();
             AssetPanel.DrawAssetPanel();
             SceneEditor.UpdateTick(deltaTime);
+            EditorOptionsWindow.Draw();
         }
 
         private static void DrawTopBar()
@@ -75,6 +84,10 @@ namespace EngineEditor
             ImGui.SameLine();
             if (ImGui.Button("Scene Workspace"))
                 _showProjectManagerView = false;
+
+            ImGui.SameLine();
+            if (ImGui.Button("Editor Options"))
+                EditorOptionsWindow.Toggle();
 
             if (!_showProjectManagerView)
             {

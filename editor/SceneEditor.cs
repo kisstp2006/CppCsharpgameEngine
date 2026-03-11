@@ -33,6 +33,10 @@ namespace EngineEditor
         private static readonly Dictionary<uint, string> _scriptAssignmentErrors = new Dictionary<uint, string>();
         private static string _activeScenePath = string.Empty;
         private static int _activeSceneStorageFormat = SceneStorageJson;
+        private static bool _optionsRegistered = false;
+        private static bool _assetContextMenuRegistered = false;
+        private static bool _defaultGizmoSnapEnabled = false;
+        private static float _defaultGizmoSnapStep = 32.0f;
 
         private const int SceneStorageJson = 0;
         private const int SceneStorageBinary = 1;
@@ -66,10 +70,48 @@ namespace EngineEditor
             _gameViewPosY = 0.0f;
             _gameViewWidth = 1.0f;
             _gameViewHeight = 1.0f;
-            _gizmoSnapEnabled = false;
-            _gizmoSnapStep = 32.0f;
+            _gizmoSnapEnabled = _defaultGizmoSnapEnabled;
+            _gizmoSnapStep = _defaultGizmoSnapStep;
             _scriptAssignmentErrors.Clear();
             DebugDraw.Clear();
+        }
+
+        public static void RegisterEditorOptions()
+        {
+            if (_optionsRegistered)
+                return;
+
+            _optionsRegistered = true;
+            EditorOptionsRegistry.Register("sceneeditor.viewport",
+                                           "Scene Editor",
+                                           "Viewport",
+                                           DrawSceneEditorOptions,
+                                           10);
+        }
+
+        public static void RegisterAssetContextMenu()
+        {
+            if (_assetContextMenuRegistered)
+                return;
+
+            _assetContextMenuRegistered = true;
+            AssetPanelContextMenuRegistry.Register("sceneeditor.createScene",
+                                                   "Create/Scene",
+                                                   _ => AssetPanel.RequestOpenCreateScenePopup(),
+                                                   10);
+        }
+
+        private static void DrawSceneEditorOptions()
+        {
+            bool defaultSnapEnabled = _defaultGizmoSnapEnabled;
+            if (ImGui.Checkbox("Default snap enabled", ref defaultSnapEnabled))
+                _defaultGizmoSnapEnabled = defaultSnapEnabled;
+
+            float defaultSnapStep = _defaultGizmoSnapStep;
+            if (ImGui.InputFloat("Default snap step", ref defaultSnapStep, 1.0f))
+                _defaultGizmoSnapStep = Clamp(defaultSnapStep, 1.0f, 1024.0f);
+
+            ImGui.Text("These defaults are applied when the scene editor state resets.");
         }
 
         public static void ResetSelection()

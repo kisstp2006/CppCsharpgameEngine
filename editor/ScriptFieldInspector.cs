@@ -41,6 +41,46 @@ namespace EngineEditor
 
         private static readonly Dictionary<string, ScriptFieldDescriptor[]> FieldCache = new Dictionary<string, ScriptFieldDescriptor[]>();
         private static readonly Dictionary<string, string> FieldErrors = new Dictionary<string, string>();
+        private static bool _optionsRegistered = false;
+        private static bool _assetContextMenuRegistered = false;
+        private static bool _hideTransformDuplicateFields = true;
+
+        public static void RegisterEditorOptions()
+        {
+            if (_optionsRegistered)
+                return;
+
+            _optionsRegistered = true;
+            EditorOptionsRegistry.Register("scriptinspector.fieldfilter",
+                                           "Script Inspector",
+                                           "Field Visibility",
+                                           DrawScriptInspectorOptions,
+                                           20);
+        }
+
+        public static void RegisterAssetContextMenu()
+        {
+            if (_assetContextMenuRegistered)
+                return;
+
+            _assetContextMenuRegistered = true;
+            AssetPanelContextMenuRegistry.Register("scriptinspector.createScript",
+                                                   "Create/C# Script",
+                                                   _ => AssetPanel.RequestOpenCreateScriptPopup(),
+                                                   20);
+        }
+
+        private static void DrawScriptInspectorOptions()
+        {
+            bool hideDuplicates = _hideTransformDuplicateFields;
+            if (ImGui.Checkbox("Hide transform-like script fields", ref hideDuplicates))
+            {
+                _hideTransformDuplicateFields = hideDuplicates;
+                FieldCache.Clear();
+            }
+
+            ImGui.Text("Hides fields such as position/rotation to avoid duplicate editing with Transform.");
+        }
 
         public static void DrawScriptFields(uint entityId, string scriptTypeName, ScriptValidationSnapshot validationSnapshot)
         {
@@ -298,7 +338,7 @@ namespace EngineEditor
                 if (!HasVisibleAttribute(field))
                     continue;
 
-                if (IsTransformDuplicateFieldName(field.Name))
+                if (_hideTransformDuplicateFields && IsTransformDuplicateFieldName(field.Name))
                     continue;
 
                 ScriptFieldKind kind = DetermineFieldKind(field.FieldType, out int componentCount);
