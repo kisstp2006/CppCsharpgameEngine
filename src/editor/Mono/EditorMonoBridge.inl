@@ -2,6 +2,7 @@
 static Scene* g_editorSceneContext = nullptr;
 static Renderer* g_editorRendererContext = nullptr;
 static bool g_editorTopBarStylePushed = false;
+static std::string g_editorSceneIoStatus = "Ready.";
 
 enum class EditorComponentType : std::uint32_t
 {
@@ -76,6 +77,88 @@ static void EditorBridge_DestroyEntity(std::uint32_t entityId)
         return;
 
     g_editorSceneContext->DestroyEntity(g_editorSceneContext->FromEntityId(entityId));
+}
+
+static void EditorBridge_NewScene()
+{
+    if (!g_editorSceneContext)
+    {
+        g_editorSceneIoStatus = "New scene failed: scene context unavailable.";
+        return;
+    }
+
+    g_editorSceneContext->Clear();
+    g_editorSceneIoStatus = "Created new scene.";
+}
+
+static bool EditorBridge_SaveScene(MonoString* scenePath, int storageFormat)
+{
+    if (!g_editorSceneContext)
+    {
+        g_editorSceneIoStatus = "Save failed: scene context unavailable.";
+        return false;
+    }
+
+    const std::string pathUtf8 = MonoStringToUtf8(scenePath);
+    if (pathUtf8.empty())
+    {
+        g_editorSceneIoStatus = "Save failed: scene path is empty.";
+        return false;
+    }
+
+    const std::filesystem::path resolvedPath = std::filesystem::path(pathUtf8).lexically_normal();
+    const Scene::SceneFileFormat format = (storageFormat == 1)
+        ? Scene::SceneFileFormat::Binary
+        : Scene::SceneFileFormat::Json;
+
+    if (!g_editorSceneContext->SaveToFile(resolvedPath, format))
+    {
+        g_editorSceneIoStatus = g_editorSceneContext->GetLastIoError();
+        if (g_editorSceneIoStatus.empty())
+            g_editorSceneIoStatus = "Save failed: " + resolvedPath.string();
+        return false;
+    }
+
+    g_editorSceneIoStatus = "Saved scene: " + resolvedPath.string();
+    return true;
+}
+
+static bool EditorBridge_LoadScene(MonoString* scenePath, int storageFormat)
+{
+    if (!g_editorSceneContext)
+    {
+        g_editorSceneIoStatus = "Load failed: scene context unavailable.";
+        return false;
+    }
+
+    const std::string pathUtf8 = MonoStringToUtf8(scenePath);
+    if (pathUtf8.empty())
+    {
+        g_editorSceneIoStatus = "Load failed: scene path is empty.";
+        return false;
+    }
+
+    const std::filesystem::path resolvedPath = std::filesystem::path(pathUtf8).lexically_normal();
+    const Scene::SceneFileFormat format = (storageFormat == 1)
+        ? Scene::SceneFileFormat::Binary
+        : Scene::SceneFileFormat::Json;
+
+    if (!g_editorSceneContext->LoadFromFile(resolvedPath, format))
+    {
+        g_editorSceneIoStatus = g_editorSceneContext->GetLastIoError();
+        if (g_editorSceneIoStatus.empty())
+            g_editorSceneIoStatus = "Load failed: " + resolvedPath.string();
+        return false;
+    }
+
+    g_editorSceneIoStatus = "Loaded scene: " + resolvedPath.string();
+    return true;
+}
+
+static MonoString* EditorBridge_GetLastSceneIoStatus()
+{
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, g_editorSceneIoStatus.c_str()) : nullptr;
 }
 
 static int EditorBridge_GetScriptedEntityCount()

@@ -53,6 +53,14 @@ if(USE_THIRDPARTY AND EXISTS "${CMAKE_SOURCE_DIR}/thirdparty/CMakeLists.txt")
       target_include_directories(assimp::assimp INTERFACE ${THIRDPARTY_ASSIMP_INCLUDE_DIR})
     endif()
   endif()
+
+  if(NOT TARGET RapidJSON::RapidJSON)
+    add_library(RapidJSON::RapidJSON INTERFACE IMPORTED)
+    if(DEFINED THIRDPARTY_RAPIDJSON_INCLUDE_DIR)
+      target_include_directories(RapidJSON::RapidJSON INTERFACE ${THIRDPARTY_RAPIDJSON_INCLUDE_DIR})
+    endif()
+    target_compile_definitions(RapidJSON::RapidJSON INTERFACE RAPIDJSON_HAS_STDSTRING=1)
+  endif()
 else()
   # Find dependencies via system/vcpkg
   find_package(SDL2 REQUIRED)
@@ -60,6 +68,7 @@ else()
   find_package(imgui CONFIG REQUIRED)
   find_package(EnTT CONFIG REQUIRED)
   find_package(assimp CONFIG QUIET)
+  find_package(RapidJSON CONFIG QUIET)
 
   if(NOT TARGET entt::entt)
     add_library(entt::entt INTERFACE IMPORTED)
@@ -74,6 +83,20 @@ else()
     add_library(assimp::assimp INTERFACE IMPORTED)
     add_compile_definitions(ENGINE_ASSIMP_DISABLED=1)
   endif()
+
+  if(NOT TARGET RapidJSON::RapidJSON)
+    add_library(RapidJSON::RapidJSON INTERFACE IMPORTED)
+
+    if(DEFINED RAPIDJSON_INCLUDE_DIRS)
+      target_include_directories(RapidJSON::RapidJSON INTERFACE ${RAPIDJSON_INCLUDE_DIRS})
+    elseif(DEFINED RapidJSON_INCLUDE_DIRS)
+      target_include_directories(RapidJSON::RapidJSON INTERFACE ${RapidJSON_INCLUDE_DIRS})
+    elseif(EXISTS "${CMAKE_SOURCE_DIR}/thirdparty/assimp/contrib/rapidjson/include")
+      target_include_directories(RapidJSON::RapidJSON INTERFACE "${CMAKE_SOURCE_DIR}/thirdparty/assimp/contrib/rapidjson/include")
+    endif()
+  endif()
+
+  target_compile_definitions(RapidJSON::RapidJSON INTERFACE RAPIDJSON_HAS_STDSTRING=1)
 endif()
 
 # Mono support (optional)
@@ -189,6 +212,7 @@ target_link_libraries(Engine PUBLIC
   imgui::imgui
   entt::entt
   assimp::assimp
+  RapidJSON::RapidJSON
   Mono::Mono
 )
 

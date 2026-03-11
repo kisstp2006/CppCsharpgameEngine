@@ -20,8 +20,85 @@
 #include <filesystem>
 #include <iostream>
 
+namespace
+{
+    static std::filesystem::path ResolveScenePath(const std::filesystem::path& requestedPath,
+                                                  const ProjectContext* projectContext,
+                                                  Engine::SceneStorageFormat format)
+    {
+        std::filesystem::path resolved;
+        if (requestedPath.is_absolute())
+            resolved = requestedPath;
+        else if (projectContext && projectContext->IsOpen())
+            resolved = projectContext->ScenesRoot() / requestedPath;
+        else
+            resolved = std::filesystem::current_path() / requestedPath;
+
+        if (!resolved.has_extension())
+        {
+            resolved += (format == Engine::SceneStorageFormat::Binary)
+                ? ".scene.bin"
+                : ".scene.json";
+        }
+
+        return resolved.lexically_normal();
+    }
+}
+
 Engine::Engine() = default;
 Engine::~Engine() = default;
+
+bool Engine::SaveScene(const std::filesystem::path& scenePath, SceneStorageFormat format)
+{
+    m_lastSceneIoError.clear();
+
+    if (!m_scene)
+    {
+        m_lastSceneIoError = "Cannot save scene: scene is not initialized.";
+        return false;
+    }
+
+    const std::filesystem::path resolvedPath = ResolveScenePath(scenePath, m_projectContext.get(), format);
+    const Scene::SceneFileFormat sceneFormat = (format == SceneStorageFormat::Binary)
+        ? Scene::SceneFileFormat::Binary
+        : Scene::SceneFileFormat::Json;
+
+    if (!m_scene->SaveToFile(resolvedPath, sceneFormat))
+    {
+        m_lastSceneIoError = m_scene->GetLastIoError();
+        if (m_lastSceneIoError.empty())
+            m_lastSceneIoError = "Scene save failed: " + resolvedPath.string();
+        return false;
+    }
+
+    return true;
+}
+
+bool Engine::LoadScene(const std::filesystem::path& scenePath, SceneStorageFormat format)
+{
+    m_lastSceneIoError.clear();
+
+    if (!m_scene)
+    {
+        m_lastSceneIoError = "Cannot load scene: scene is not initialized.";
+        return false;
+    }
+
+    const std::filesystem::path resolvedPath = ResolveScenePath(scenePath, m_projectContext.get(), format);
+    const Scene::SceneFileFormat sceneFormat = (format == SceneStorageFormat::Binary)
+        ? Scene::SceneFileFormat::Binary
+        : Scene::SceneFileFormat::Json;
+
+    if (!m_scene->LoadFromFile(resolvedPath, sceneFormat))
+    {
+        m_lastSceneIoError = m_scene->GetLastIoError();
+        if (m_lastSceneIoError.empty())
+            m_lastSceneIoError = "Scene load failed: " + resolvedPath.string();
+        return false;
+    }
+
+    return true;
+}
 
 void Engine::SetEditorMode(bool enabled)
 {

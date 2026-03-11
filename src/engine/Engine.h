@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <memory>
 #include <string>
 
@@ -13,6 +14,12 @@ class AssetDatabase;
 class Engine
 {
 public:
+    enum class SceneStorageFormat
+    {
+        Json,
+        Binary,
+    };
+
     Engine();
     ~Engine();
 
@@ -25,6 +32,10 @@ public:
 
     Scene* GetScene() { return m_scene.get(); }
     const Scene* GetScene() const { return m_scene.get(); }
+
+    bool SaveScene(const std::filesystem::path& scenePath, SceneStorageFormat format);
+    bool LoadScene(const std::filesystem::path& scenePath, SceneStorageFormat format);
+    const std::string& GetLastSceneIoError() const { return m_lastSceneIoError; }
 
 private:
     bool InitializeImGui();
@@ -40,4 +51,5 @@ private:
 
     bool m_editorMode = false;
     bool m_running = false;
+    std::string m_lastSceneIoError;
 };

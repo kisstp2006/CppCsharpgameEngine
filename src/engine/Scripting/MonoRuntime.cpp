@@ -264,6 +264,10 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::IsEntityValid", (const void*)&EditorBridge_IsEntityValid);
         mono_add_internal_call("Engine.EditorBridge::CreateEntity", (const void*)&EditorBridge_CreateEntity);
         mono_add_internal_call("Engine.EditorBridge::DestroyEntity", (const void*)&EditorBridge_DestroyEntity);
+        mono_add_internal_call("Engine.EditorBridge::NewScene", (const void*)&EditorBridge_NewScene);
+        mono_add_internal_call("Engine.EditorBridge::SaveScene", (const void*)&EditorBridge_SaveScene);
+        mono_add_internal_call("Engine.EditorBridge::LoadScene", (const void*)&EditorBridge_LoadScene);
+        mono_add_internal_call("Engine.EditorBridge::GetLastSceneIoStatus", (const void*)&EditorBridge_GetLastSceneIoStatus);
         mono_add_internal_call("Engine.EditorBridge::GetScriptedEntityCount", (const void*)&EditorBridge_GetScriptedEntityCount);
         mono_add_internal_call("Engine.EditorBridge::HasComponent", (const void*)&EditorBridge_HasComponent);
         mono_add_internal_call("Engine.EditorBridge::AddComponent", (const void*)&EditorBridge_AddComponent);

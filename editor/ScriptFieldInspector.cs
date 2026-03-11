@@ -29,6 +29,16 @@ namespace EngineEditor
             public int ComponentCount;
         }
 
+        private static readonly string[] TransformDuplicateFieldNames =
+        {
+            "position",
+            "localposition",
+            "worldposition",
+            "rotation",
+            "localrotation",
+            "worldrotation",
+        };
+
         private static readonly Dictionary<string, ScriptFieldDescriptor[]> FieldCache = new Dictionary<string, ScriptFieldDescriptor[]>();
         private static readonly Dictionary<string, string> FieldErrors = new Dictionary<string, string>();
 
@@ -288,6 +298,9 @@ namespace EngineEditor
                 if (!HasVisibleAttribute(field))
                     continue;
 
+                if (IsTransformDuplicateFieldName(field.Name))
+                    continue;
+
                 ScriptFieldKind kind = DetermineFieldKind(field.FieldType, out int componentCount);
                 if (kind == ScriptFieldKind.Unsupported)
                     continue;
@@ -325,6 +338,39 @@ namespace EngineEditor
             }
 
             return false;
+        }
+
+        private static bool IsTransformDuplicateFieldName(string fieldName)
+        {
+            if (string.IsNullOrEmpty(fieldName))
+                return false;
+
+            string normalized = NormalizeFieldName(fieldName);
+            for (int i = 0; i < TransformDuplicateFieldNames.Length; ++i)
+            {
+                if (string.Equals(normalized, TransformDuplicateFieldNames[i], StringComparison.Ordinal))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static string NormalizeFieldName(string fieldName)
+        {
+            char[] source = fieldName.ToLowerInvariant().ToCharArray();
+            char[] filtered = new char[source.Length];
+            int writeIndex = 0;
+
+            for (int i = 0; i < source.Length; ++i)
+            {
+                char c = source[i];
+                if (c == '_' || c == '-' || c == ' ')
+                    continue;
+
+                filtered[writeIndex++] = c;
+            }
+
+            return new string(filtered, 0, writeIndex);
         }
 
         private static ScriptFieldKind DetermineFieldKind(Type fieldType, out int componentCount)

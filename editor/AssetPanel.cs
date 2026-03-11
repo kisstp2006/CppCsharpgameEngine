@@ -17,6 +17,10 @@ namespace EngineEditor
         private static string[] _assetEntries = new string[0];
         private static string[] _codeEntries = new string[0];
 
+        private const string CreateScenePopupId = "Create Scene";
+        private static string _newSceneName = "Scene";
+        private static int _newSceneFormat = 0;
+
         public static void DrawAssetPanel()
         {
             if (!ImGui.Begin("Asset Panel"))
@@ -54,6 +58,10 @@ namespace EngineEditor
                 _nextAutoRefreshUtc = DateTime.UtcNow.AddSeconds(1.0);
             }
 
+            ImGui.SameLine();
+            if (ImGui.Button("Create Scene"))
+                ImGui.OpenPopup(CreateScenePopupId);
+
             ImGui.Separator();
             ImGui.Text("Assets + Scenes (" + _assetEntries.Length + ")");
             DrawEntries(_assetEntries, "Asset", projectPath, openOnSelect: false);
@@ -67,6 +75,8 @@ namespace EngineEditor
                 ImGui.Text("Selected: <none>");
             else
                 ImGui.Text("Selected: " + _selectedPath);
+
+            DrawCreateScenePopup(projectPath);
 
             ImGui.End();
         }
@@ -107,6 +117,12 @@ namespace EngineEditor
                 if (ImGui.Selectable(displayPath + "##" + idPrefix + i, selected))
                 {
                     _selectedPath = fullPath;
+
+                    if (!openOnSelect && SceneEditor.IsSceneFilePath(fullPath))
+                    {
+                        SceneEditor.LoadSceneFromPath(fullPath);
+                        continue;
+                    }
 
                     if (openOnSelect)
                         OpenPathInShell(fullPath);
@@ -203,6 +219,43 @@ namespace EngineEditor
                 return fullPath;
 
             return fullPath.Substring(relativeStart);
+        }
+
+        private static void DrawCreateScenePopup(string projectPath)
+        {
+            if (!ImGui.BeginPopupModal(CreateScenePopupId))
+                return;
+
+            ImGui.Text("Create Scene");
+            ImGui.Separator();
+
+            ImGui.SetNextItemWidth(280.0f);
+            string updatedName = ImGui.InputText("Scene Name", _newSceneName);
+            if (updatedName != null)
+                _newSceneName = updatedName;
+
+            ImGui.Text("Format");
+            if (ImGui.SelectableNoClose("JSON (.scene.json)", _newSceneFormat == 0))
+                _newSceneFormat = 0;
+            if (ImGui.SelectableNoClose("Binary (.scene.bin)", _newSceneFormat == 1))
+                _newSceneFormat = 1;
+
+            ImGui.Separator();
+            if (ImGui.Button("Create"))
+            {
+                if (SceneEditor.CreateSceneAsset(_newSceneName, _newSceneFormat))
+                {
+                    Refresh(projectPath);
+                    _nextAutoRefreshUtc = DateTime.UtcNow.AddSeconds(1.0);
+                    ImGui.CloseCurrentPopup();
+                }
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel"))
+                ImGui.CloseCurrentPopup();
+
+            ImGui.EndPopup();
         }
     }
 }

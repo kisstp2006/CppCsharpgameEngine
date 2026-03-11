@@ -79,6 +79,10 @@ namespace EngineEditor
             if (!_showProjectManagerView)
             {
                 ImGui.SameLine();
+                if (ImGui.Button("Save Scene"))
+                    SceneEditor.SaveScene();
+
+                ImGui.SameLine();
                 if (ImGui.Button("Create Entity"))
                     SceneEditor.CreateEntityAndSelect();
 
@@ -88,6 +92,13 @@ namespace EngineEditor
                     ImGui.Text("Selected: Entity " + selectedEntityId);
                 else
                     ImGui.Text("Selected: <none>");
+
+                ImGui.SameLine();
+                string activeScenePath = SceneEditor.ActiveScenePath;
+                if (string.IsNullOrEmpty(activeScenePath))
+                    ImGui.Text("Scene: <unsaved>");
+                else
+                    ImGui.Text("Scene: " + Path.GetFileName(activeScenePath));
             }
 
             ImGui.SameLine();

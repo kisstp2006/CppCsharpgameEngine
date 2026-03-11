@@ -2,6 +2,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <string>
+#include <unordered_map>
 #include <utility>
 
 #include "Components.h"
@@ -14,15 +17,24 @@ public:
     using Entity = entt::entity;
     using EntityId = std::uint32_t;
 
+    enum class SceneFileFormat : std::uint8_t
+    {
+        Json = 0,
+        Binary = 1,
+    };
+
     Scene() = default;
     ~Scene() = default;
 
     Entity CreateEntity();
+    Entity CreateEntityWithSceneEntityId(std::uint64_t sceneEntityId, const std::string& name = {}, bool active = true);
     void DestroyEntity(Entity entity);
+    void Clear();
 
     bool IsValid(Entity entity) const;
     Entity FromEntityId(EntityId entityId) const;
     EntityId ToEntityId(Entity entity) const;
+    Entity FindBySceneEntityId(std::uint64_t sceneEntityId) const;
 
     std::size_t EntityCount() const;
 
@@ -72,11 +84,13 @@ public:
     CameraComponent& AddCamera(Entity entity, const CameraComponent& camera = CameraComponent{});
     SpriteComponent& AddSprite(Entity entity, Texture* texture = nullptr);
     ScriptComponent& AddScript(Entity entity, const ScriptComponent& script = ScriptComponent{});
+    EntityMetadataComponent& AddMetadata(Entity entity, const EntityMetadataComponent& metadata = EntityMetadataComponent{});
 
     bool HasTransform(Entity entity) const;
     bool HasCamera(Entity entity) const;
     bool HasSprite(Entity entity) const;
     bool HasScript(Entity entity) const;
+    bool HasMetadata(Entity entity) const;
 
     TransformComponent* TryGetTransform(Entity entity);
     const TransformComponent* TryGetTransform(Entity entity) const;
@@ -86,11 +100,18 @@ public:
     const SpriteComponent* TryGetSprite(Entity entity) const;
     ScriptComponent* TryGetScript(Entity entity);
     const ScriptComponent* TryGetScript(Entity entity) const;
+    EntityMetadataComponent* TryGetMetadata(Entity entity);
+    const EntityMetadataComponent* TryGetMetadata(Entity entity) const;
 
     bool RemoveTransform(Entity entity);
     bool RemoveCamera(Entity entity);
     bool RemoveSprite(Entity entity);
     bool RemoveScript(Entity entity);
+    bool RemoveMetadata(Entity entity);
+
+    bool SaveToFile(const std::filesystem::path& path, SceneFileFormat format) const;
+    bool LoadFromFile(const std::filesystem::path& path, SceneFileFormat format);
+    const std::string& GetLastIoError() const;
 
     Entity FindFirstCamera() const;
 
@@ -99,6 +120,9 @@ public:
 
 private:
     entt::registry m_registry;
+    std::unordered_map<std::uint64_t, Entity> m_sceneEntityLookup;
 
     std::size_t m_entityCount = 0;
+    std::uint64_t m_nextSceneEntityId = 1;
+    mutable std::string m_lastIoError;
 };

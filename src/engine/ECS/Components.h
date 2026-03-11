@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 class Texture;
@@ -22,6 +23,15 @@ struct CameraComponent
 struct SpriteComponent
 {
     Texture* texture = nullptr;
+    std::uint64_t textureAssetHandle = 0;
+    std::string textureAssetPath;
+};
+
+struct EntityMetadataComponent
+{
+    std::uint64_t sceneEntityId = 0;
+    std::string name;
+    bool active = true;
 };
 
 struct ScriptComponent

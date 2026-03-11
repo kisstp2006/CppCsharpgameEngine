@@ -64,6 +64,7 @@ set(THIRDPARTY_IMGUI_INCLUDE_DIR "${imgui_SOURCE_DIR}" CACHE PATH "ImGui include
 set(THIRDPARTY_GLAD_INCLUDE_DIR "${_TP_DIR}/glad-generated/include" CACHE PATH "glad include directory")
 set(THIRDPARTY_ENTT_INCLUDE_DIR "${entt_SOURCE_DIR}/src" CACHE PATH "EnTT include directory")
 set(THIRDPARTY_ASSIMP_INCLUDE_DIR "${assimp_SOURCE_DIR}/include" CACHE PATH "Assimp include directory")
+set(THIRDPARTY_RAPIDJSON_INCLUDE_DIR "${assimp_SOURCE_DIR}/contrib/rapidjson/include" CACHE PATH "RapidJSON include directory")
 
 # Mono
 # Mono is not generally built from source as part of this project; please install it
@@ -167,4 +168,13 @@ if(NOT TARGET assimp::assimp)
       INTERFACE_INCLUDE_DIRECTORIES "${THIRDPARTY_ASSIMP_INCLUDE_DIR}"
     )
   endif()
+endif()
+
+# RapidJSON (header-only; vendored via assimp/contrib)
+if(NOT TARGET RapidJSON::RapidJSON)
+  add_library(RapidJSON::RapidJSON INTERFACE IMPORTED)
+  set_target_properties(RapidJSON::RapidJSON PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${THIRDPARTY_RAPIDJSON_INCLUDE_DIR}"
+    INTERFACE_COMPILE_DEFINITIONS "RAPIDJSON_HAS_STDSTRING=1"
+  )
 endif()

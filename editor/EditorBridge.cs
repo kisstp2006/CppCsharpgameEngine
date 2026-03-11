@@ -28,6 +28,18 @@ namespace Engine
         public static extern void DestroyEntity(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void NewScene();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool SaveScene(string scenePath, int storageFormat);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool LoadScene(string scenePath, int storageFormat);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern string GetLastSceneIoStatus();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern int GetScriptedEntityCount();
 
         [MethodImpl(MethodImplOptions.InternalCall)]
