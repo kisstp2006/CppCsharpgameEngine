@@ -62,8 +62,13 @@ struct MonoRuntime::Impl
         MonoObject* instance = nullptr;
         MonoMethod* onCreate = nullptr;
         MonoMethod* onUpdate = nullptr;
+        MonoMethod* onEnable = nullptr;
+        MonoMethod* onDisable = nullptr;
         MonoMethod* onDestroy = nullptr;
+        std::string classNamespace;
+        std::string className;
         bool created = false;
+        bool active = false;
     };
 
     std::unordered_map<std::uint32_t, ScriptInstance> entityScripts;
@@ -497,11 +502,22 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
                         for (auto& [entityId, instance] : m_impl->entityScripts)
                         {
                             const auto entity = static_cast<entt::entity>(entityId);
-                            if (instance.created && instance.onDestroy && registry.valid(entity))
+                            if (instance.created && registry.valid(entity))
                             {
-                                std::uint32_t destroyEntityId = entityId;
-                                void* destroyArgs[1] = { (void*)&destroyEntityId };
-                                mono_runtime_invoke(instance.onDestroy, instance.instance, destroyArgs, nullptr);
+                                std::uint32_t lifecycleEntityId = entityId;
+
+                                if (instance.active && instance.onDisable)
+                                {
+                                    void* disableArgs[1] = { (void*)&lifecycleEntityId };
+                                    mono_runtime_invoke(instance.onDisable, instance.instance, disableArgs, nullptr);
+                                    instance.active = false;
+                                }
+
+                                if (instance.onDestroy)
+                                {
+                                    void* destroyArgs[1] = { (void*)&lifecycleEntityId };
+                                    mono_runtime_invoke(instance.onDestroy, instance.instance, destroyArgs, nullptr);
+                                }
                             }
                         }
                     }
@@ -617,18 +633,73 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
     auto& registry = scene->Registry();
     auto view = registry.view<ScriptComponent>();
 
+    auto invokeScriptMethod = [](MonoMethod* method, MonoObject* instanceObject, std::uint32_t entityId)
+    {
+        if (!method)
+            return;
+
+        void* args[1] = { (void*)&entityId };
+        mono_runtime_invoke(method, instanceObject, args, nullptr);
+    };
+
+    auto teardownScriptInstance = [&](std::uint32_t entityId, MonoRuntime::Impl::ScriptInstance& instance)
+    {
+        if (!instance.created)
+            return;
+
+        if (instance.active)
+        {
+            invokeScriptMethod(instance.onDisable, instance.instance, entityId);
+            instance.active = false;
+        }
+
+        invokeScriptMethod(instance.onDestroy, instance.instance, entityId);
+        instance.created = false;
+    };
+
     for (const auto entity : view)
     {
         auto& script = view.get<ScriptComponent>(entity);
-        if (!script.enabled)
-            continue;
-
         const std::uint32_t entityId = static_cast<std::uint32_t>(entt::to_integral(entity));
-        auto [instanceIt, inserted] = m_impl->entityScripts.try_emplace(entityId);
-        auto& instance = instanceIt->second;
 
-        if (inserted)
+        auto instanceIt = m_impl->entityScripts.find(entityId);
+        if (instanceIt != m_impl->entityScripts.end())
         {
+            auto& existing = instanceIt->second;
+            const bool classChanged = existing.classNamespace != script.classNamespace
+                                   || existing.className != script.className;
+            if (classChanged)
+            {
+                teardownScriptInstance(entityId, existing);
+                m_impl->entityScripts.erase(instanceIt);
+                instanceIt = m_impl->entityScripts.end();
+            }
+        }
+
+        if (!script.enabled)
+        {
+            if (instanceIt != m_impl->entityScripts.end())
+            {
+                auto& instance = instanceIt->second;
+                if (instance.active)
+                {
+                    invokeScriptMethod(instance.onDisable, instance.instance, entityId);
+                    instance.active = false;
+                }
+            }
+
+            continue;
+        }
+
+        if (instanceIt == m_impl->entityScripts.end())
+        {
+            auto [insertedIt, inserted] = m_impl->entityScripts.try_emplace(entityId);
+            if (!inserted)
+                continue;
+
+            instanceIt = insertedIt;
+            auto& instance = instanceIt->second;
+
             MonoClass* klass = mono_class_from_name(m_impl->image, script.classNamespace.c_str(), script.className.c_str());
             if (!klass)
             {
@@ -642,14 +713,18 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
             if (!instance.instance)
             {
                 std::cerr << "[Mono] Failed to create script instance for entity." << std::endl;
-                m_impl->entityScripts.erase(instanceIt);
+                m_impl->entityScripts.erase(insertedIt);
                 continue;
             }
 
             mono_runtime_object_init(instance.instance);
             instance.onCreate = mono_class_get_method_from_name(klass, "OnCreate", 1);
             instance.onUpdate = mono_class_get_method_from_name(klass, "OnUpdate", 2);
+            instance.onEnable = mono_class_get_method_from_name(klass, "OnEnable", 1);
+            instance.onDisable = mono_class_get_method_from_name(klass, "OnDisable", 1);
             instance.onDestroy = mono_class_get_method_from_name(klass, "OnDestroy", 1);
+            instance.classNamespace = script.classNamespace;
+            instance.className = script.className;
 
             EditorBridge_ApplyPersistedScriptFields(entityId,
                                                     script,
@@ -658,14 +733,18 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
                                                     m_impl->domain);
         }
 
+        auto& instance = instanceIt->second;
+
         if (!instance.created)
         {
-            if (instance.onCreate)
-            {
-                void* createArgs[1] = { (void*)&entityId };
-                mono_runtime_invoke(instance.onCreate, instance.instance, createArgs, nullptr);
-            }
+            invokeScriptMethod(instance.onCreate, instance.instance, entityId);
             instance.created = true;
+        }
+
+        if (!instance.active)
+        {
+            invokeScriptMethod(instance.onEnable, instance.instance, entityId);
+            instance.active = true;
         }
 
         if (instance.onUpdate)
@@ -679,17 +758,10 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
     {
         const auto entity = static_cast<entt::entity>(it->first);
         const bool hasComponent = registry.valid(entity) && registry.all_of<ScriptComponent>(entity);
-        const bool isEnabled = hasComponent ? registry.get<ScriptComponent>(entity).enabled : false;
 
-        if (!hasComponent || !isEnabled)
+        if (!hasComponent)
         {
-            if (it->second.created && it->second.onDestroy)
-            {
-                const std::uint32_t entityId = it->first;
-                void* destroyArgs[1] = { (void*)&entityId };
-                mono_runtime_invoke(it->second.onDestroy, it->second.instance, destroyArgs, nullptr);
-            }
-
+            teardownScriptInstance(it->first, it->second);
             it = m_impl->entityScripts.erase(it);
         }
         else
@@ -734,11 +806,22 @@ void MonoRuntime::Shutdown(Scene* scene)
         for (auto& [entityId, instance] : m_impl->entityScripts)
         {
             const auto entity = static_cast<entt::entity>(entityId);
-            if (instance.created && instance.onDestroy && registry.valid(entity))
+            if (instance.created && registry.valid(entity))
             {
-                std::uint32_t destroyEntityId = entityId;
-                void* destroyArgs[1] = { (void*)&destroyEntityId };
-                mono_runtime_invoke(instance.onDestroy, instance.instance, destroyArgs, nullptr);
+                std::uint32_t lifecycleEntityId = entityId;
+
+                if (instance.active && instance.onDisable)
+                {
+                    void* disableArgs[1] = { (void*)&lifecycleEntityId };
+                    mono_runtime_invoke(instance.onDisable, instance.instance, disableArgs, nullptr);
+                    instance.active = false;
+                }
+
+                if (instance.onDestroy)
+                {
+                    void* destroyArgs[1] = { (void*)&lifecycleEntityId };
+                    mono_runtime_invoke(instance.onDestroy, instance.instance, destroyArgs, nullptr);
+                }
             }
         }
     }

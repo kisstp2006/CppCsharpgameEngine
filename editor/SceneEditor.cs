@@ -798,6 +798,8 @@ namespace EngineEditor
             if (InspectorInputs.Bool("Script Enabled", ref enabledValue) && enabledValue != scriptEnabled)
                 EditorBridge.SetScriptEnabled(entityId, enabledValue);
 
+            ImGui.Text("Lifecycle: toggling Script Enabled invokes OnEnable/OnDisable when implemented.");
+
             if (currentTypeValidation.IsValid)
                 ScriptFieldInspector.DrawScriptFields(entityId, currentTypeValidation.NormalizedTypeName, validationSnapshot);
 

@@ -24,6 +24,7 @@ namespace EngineEditor
             ProjectOperations.OpenLastProjectSilently();
 
             AssetPanel.RegisterEditorOptions();
+            AssetPanel.RegisterAssetContextMenu();
             SceneEditor.RegisterEditorOptions();
             SceneEditor.RegisterAssetContextMenu();
             ScriptFieldInspector.RegisterEditorOptions();

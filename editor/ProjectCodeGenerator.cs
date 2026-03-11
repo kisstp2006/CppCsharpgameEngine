@@ -153,6 +153,14 @@ namespace EngineEditor
                              "        {\n" +
                              "            Console.WriteLine(\"[GameScripts] SpinnerScript created for entity \" + entityId + \".\");\n" +
                              "        }\n\n" +
+                             "        public void OnEnable(uint entityId)\n" +
+                             "        {\n" +
+                             "            Console.WriteLine(\"[GameScripts] SpinnerScript enabled for entity \" + entityId + \".\");\n" +
+                             "        }\n\n" +
+                             "        public void OnDisable(uint entityId)\n" +
+                             "        {\n" +
+                             "            Console.WriteLine(\"[GameScripts] SpinnerScript disabled for entity \" + entityId + \".\");\n" +
+                             "        }\n\n" +
                              "        public void OnUpdate(uint entityId, float deltaTime)\n" +
                              "        {\n" +
                              "            _accumulator += deltaTime;\n" +
