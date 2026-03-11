@@ -1,0 +1,1924 @@
+#if ENGINE_MONO_RUNTIME_AVAILABLE
+static Scene* g_editorSceneContext = nullptr;
+static Renderer* g_editorRendererContext = nullptr;
+static bool g_editorTopBarStylePushed = false;
+
+enum class EditorComponentType : std::uint32_t
+{
+    Transform = 0,
+    Camera = 1,
+    Sprite = 2,
+    Script = 3
+};
+
+static std::string MonoStringToUtf8(MonoString* monoString)
+{
+    if (!monoString)
+        return {};
+
+    char* utf8 = mono_string_to_utf8(monoString);
+    if (!utf8)
+        return {};
+
+    std::string result(utf8);
+    mono_free(utf8);
+    return result;
+}
+
+static int EditorBridge_GetEntityCount()
+{
+    if (!g_editorSceneContext)
+        return 0;
+
+    return static_cast<int>(g_editorSceneContext->EntityCount());
+}
+
+static std::uint32_t EditorBridge_GetEntityIdAtIndex(int index)
+{
+    if (!g_editorSceneContext || index < 0)
+        return static_cast<std::uint32_t>(entt::null);
+
+    auto& registry = g_editorSceneContext->Registry();
+    auto entities = registry.view<entt::entity>();
+
+    int current = 0;
+    for (const auto entity : entities)
+    {
+        if (current == index)
+            return static_cast<std::uint32_t>(entt::to_integral(entity));
+        ++current;
+    }
+
+    return static_cast<std::uint32_t>(entt::null);
+}
+
+static bool EditorBridge_IsEntityValid(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    return g_editorSceneContext->IsValid(entity);
+}
+
+static std::uint32_t EditorBridge_CreateEntity()
+{
+    if (!g_editorSceneContext)
+        return static_cast<std::uint32_t>(entt::null);
+
+    const auto entity = g_editorSceneContext->CreateEntity();
+    return static_cast<std::uint32_t>(entt::to_integral(entity));
+}
+
+static void EditorBridge_DestroyEntity(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    g_editorSceneContext->DestroyEntity(g_editorSceneContext->FromEntityId(entityId));
+}
+
+static int EditorBridge_GetScriptedEntityCount()
+{
+    if (!g_editorSceneContext)
+        return 0;
+
+    auto& registry = g_editorSceneContext->Registry();
+    int count = 0;
+    auto view = registry.view<ScriptComponent>();
+    for (const auto entity : view)
+    {
+        (void)entity;
+        ++count;
+    }
+    return count;
+}
+
+static bool EditorBridge_HasComponent(std::uint32_t entityId, int componentType)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity))
+        return false;
+
+    switch (static_cast<EditorComponentType>(componentType))
+    {
+    case EditorComponentType::Transform:
+        return g_editorSceneContext->HasTransform(entity);
+    case EditorComponentType::Camera:
+        return g_editorSceneContext->HasCamera(entity);
+    case EditorComponentType::Sprite:
+        return g_editorSceneContext->HasSprite(entity);
+    case EditorComponentType::Script:
+        return g_editorSceneContext->HasScript(entity);
+    default:
+        return false;
+    }
+}
+
+static void EditorBridge_AddComponent(std::uint32_t entityId, int componentType)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity))
+        return;
+
+    switch (static_cast<EditorComponentType>(componentType))
+    {
+    case EditorComponentType::Transform:
+        if (g_editorSceneContext->HasTransform(entity))
+            return;
+        {
+            auto& transform = g_editorSceneContext->AddTransform(entity);
+            transform.x = 0.0f;
+            transform.y = 0.0f;
+            transform.width = 100.0f;
+            transform.height = 100.0f;
+        }
+        return;
+    case EditorComponentType::Camera:
+        if (g_editorSceneContext->HasCamera(entity))
+            return;
+        {
+            auto& camera = g_editorSceneContext->AddCamera(entity);
+            camera.x = 0.0f;
+            camera.y = 0.0f;
+            camera.zoom = 1.0f;
+        }
+        return;
+    case EditorComponentType::Sprite:
+        if (g_editorSceneContext->HasSprite(entity))
+            return;
+        g_editorSceneContext->AddSprite(entity);
+        return;
+    case EditorComponentType::Script:
+        if (g_editorSceneContext->HasScript(entity))
+            return;
+        g_editorSceneContext->AddScript(entity);
+        return;
+    default:
+        return;
+    }
+}
+
+static void EditorBridge_RemoveComponent(std::uint32_t entityId, int componentType)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity))
+        return;
+
+    switch (static_cast<EditorComponentType>(componentType))
+    {
+    case EditorComponentType::Transform:
+        g_editorSceneContext->RemoveTransform(entity);
+        return;
+    case EditorComponentType::Camera:
+        g_editorSceneContext->RemoveCamera(entity);
+        return;
+    case EditorComponentType::Sprite:
+        g_editorSceneContext->RemoveSprite(entity);
+        return;
+    case EditorComponentType::Script:
+        g_editorSceneContext->RemoveScript(entity);
+        return;
+    default:
+        return;
+    }
+}
+
+static void EditorBridge_SetScriptEnabled(std::uint32_t entityId, bool enabled)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    ScriptComponent* script = g_editorSceneContext->TryGetScript(entity);
+    if (!script)
+        return;
+
+    script->enabled = enabled;
+}
+
+static bool EditorBridge_GetScriptEnabled(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const ScriptComponent* script = g_editorSceneContext->TryGetScript(entity);
+    if (!script)
+        return false;
+
+    return script->enabled;
+}
+
+static MonoString* EditorBridge_GetScriptTypeName(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return nullptr;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const ScriptComponent* script = g_editorSceneContext->TryGetScript(entity);
+    if (!script)
+        return nullptr;
+
+    std::string fullName;
+    if (script->classNamespace.empty())
+        fullName = script->className;
+    else
+        fullName = script->classNamespace + "." + script->className;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, fullName.c_str()) : nullptr;
+}
+
+static void EditorBridge_SetScriptTypeName(std::uint32_t entityId, MonoString* scriptTypeName)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    ScriptComponent* script = g_editorSceneContext->TryGetScript(entity);
+    if (!script)
+        return;
+
+    std::string fullName = MonoStringToUtf8(scriptTypeName);
+    const std::size_t start = fullName.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos)
+        return;
+
+    const std::size_t end = fullName.find_last_not_of(" \t\r\n");
+    fullName = fullName.substr(start, end - start + 1);
+
+    const std::size_t dotPos = fullName.rfind('.');
+    if (dotPos == std::string::npos)
+    {
+        script->className = fullName;
+        if (script->classNamespace.empty())
+            script->classNamespace = "GameScripts";
+        return;
+    }
+
+    const std::string ns = fullName.substr(0, dotPos);
+    const std::string className = fullName.substr(dotPos + 1);
+    if (className.empty())
+        return;
+
+    script->classNamespace = ns.empty() ? "GameScripts" : ns;
+    script->className = className;
+}
+
+static std::string ScriptFieldStateEscape(const std::string& value)
+{
+    std::string escaped;
+    escaped.reserve(value.size());
+
+    for (char c : value)
+    {
+        if (c == '\\')
+            escaped += "\\\\";
+        else if (c == '\n')
+            escaped += "\\n";
+        else if (c == '\t')
+            escaped += "\\t";
+        else
+            escaped += c;
+    }
+
+    return escaped;
+}
+
+static std::string ScriptFieldStateUnescape(const std::string& value)
+{
+    std::string unescaped;
+    unescaped.reserve(value.size());
+
+    bool escaped = false;
+    for (char c : value)
+    {
+        if (!escaped)
+        {
+            if (c == '\\')
+            {
+                escaped = true;
+                continue;
+            }
+
+            unescaped += c;
+            continue;
+        }
+
+        if (c == 'n')
+            unescaped += '\n';
+        else if (c == 't')
+            unescaped += '\t';
+        else
+            unescaped += c;
+
+        escaped = false;
+    }
+
+    if (escaped)
+        unescaped += '\\';
+
+    return unescaped;
+}
+
+static std::map<std::string, std::string> ParseSerializedScriptFieldState(const std::string& serialized)
+{
+    std::map<std::string, std::string> fields;
+    if (serialized.empty())
+        return fields;
+
+    std::size_t lineStart = 0;
+    while (lineStart < serialized.size())
+    {
+        const std::size_t lineEnd = serialized.find('\n', lineStart);
+        const std::size_t lineLength = (lineEnd == std::string::npos)
+            ? (serialized.size() - lineStart)
+            : (lineEnd - lineStart);
+
+        const std::string line = serialized.substr(lineStart, lineLength);
+        const std::size_t tabPos = line.find('\t');
+        if (tabPos != std::string::npos)
+        {
+            const std::string key = ScriptFieldStateUnescape(line.substr(0, tabPos));
+            const std::string value = ScriptFieldStateUnescape(line.substr(tabPos + 1));
+            if (!key.empty())
+                fields[key] = value;
+        }
+
+        if (lineEnd == std::string::npos)
+            break;
+
+        lineStart = lineEnd + 1;
+    }
+
+    return fields;
+}
+
+static std::string SerializeScriptFieldState(const std::map<std::string, std::string>& fields)
+{
+    std::string serialized;
+    for (const auto& [key, value] : fields)
+    {
+        serialized += ScriptFieldStateEscape(key);
+        serialized += '\t';
+        serialized += ScriptFieldStateEscape(value);
+        serialized += '\n';
+    }
+
+    return serialized;
+}
+
+static void UpsertSerializedScriptFieldState(ScriptComponent& script, const std::string& fieldName, const std::string& value)
+{
+    auto fields = ParseSerializedScriptFieldState(script.serializedFieldState);
+    fields[fieldName] = value;
+    script.serializedFieldState = SerializeScriptFieldState(fields);
+}
+
+static std::optional<std::string> FindSerializedScriptFieldState(const ScriptComponent& script, const std::string& fieldName)
+{
+    if (fieldName.empty() || script.serializedFieldState.empty())
+        return std::nullopt;
+
+    const auto fields = ParseSerializedScriptFieldState(script.serializedFieldState);
+    const auto it = fields.find(fieldName);
+    if (it == fields.end())
+        return std::nullopt;
+
+    return it->second;
+}
+
+static std::string ToLowerAscii(std::string value)
+{
+    for (char& c : value)
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return value;
+}
+
+static MonoClassField* FindFieldByName(MonoClass* klass, const std::string& fieldName)
+{
+    if (!klass || fieldName.empty())
+        return nullptr;
+
+    void* iter = nullptr;
+    while (MonoClassField* field = mono_class_get_fields(klass, &iter))
+    {
+        const char* rawName = mono_field_get_name(field);
+        if (!rawName)
+            continue;
+
+        if (fieldName == rawName)
+            return field;
+    }
+
+    return nullptr;
+}
+
+static MonoObject* FindRuntimeScriptInstance(std::uint32_t entityId)
+{
+    if (!g_monoRuntimeImplForEditorBridge)
+        return nullptr;
+
+    auto it = g_monoRuntimeImplForEditorBridge->entityScripts.find(entityId);
+    if (it == g_monoRuntimeImplForEditorBridge->entityScripts.end())
+        return nullptr;
+
+    return it->second.instance;
+}
+
+static bool ParseInt64(const std::string& text, std::int64_t& value)
+{
+    if (text.empty())
+        return false;
+
+    std::istringstream stream(text);
+    stream >> value;
+    return !stream.fail() && stream.eof();
+}
+
+static bool ParseDoubleValue(const std::string& text, double& value)
+{
+    if (text.empty())
+        return false;
+
+    std::istringstream stream(text);
+    stream.imbue(std::locale::classic());
+    stream >> value;
+    return !stream.fail() && stream.eof();
+}
+
+static bool ParseBoolValue(const std::string& text, bool& value)
+{
+    const std::string lowered = ToLowerAscii(text);
+    if (lowered == "true" || lowered == "1")
+    {
+        value = true;
+        return true;
+    }
+
+    if (lowered == "false" || lowered == "0")
+    {
+        value = false;
+        return true;
+    }
+
+    return false;
+}
+
+static std::vector<float> ParseFloatList(const std::string& text)
+{
+    std::vector<float> result;
+    std::size_t cursor = 0;
+
+    while (cursor <= text.size())
+    {
+        const std::size_t commaPos = text.find(',', cursor);
+        const std::size_t tokenLength = (commaPos == std::string::npos)
+            ? (text.size() - cursor)
+            : (commaPos - cursor);
+
+        std::string token = text.substr(cursor, tokenLength);
+
+        const std::size_t start = token.find_first_not_of(" \t\r\n");
+        if (start == std::string::npos)
+        {
+            if (commaPos == std::string::npos)
+                break;
+            cursor = commaPos + 1;
+            continue;
+        }
+
+        const std::size_t end = token.find_last_not_of(" \t\r\n");
+        token = token.substr(start, end - start + 1);
+
+        double parsed = 0.0;
+        if (!ParseDoubleValue(token, parsed))
+            return {};
+
+        result.push_back(static_cast<float>(parsed));
+
+        if (commaPos == std::string::npos)
+            break;
+
+        cursor = commaPos + 1;
+    }
+
+    return result;
+}
+
+static bool SetValueTypeFieldFromText(MonoDomain* domain, MonoObject* instance, MonoClassField* field, MonoClass* fieldClass, const std::string& valueText)
+{
+    if (!domain || !instance || !field || !fieldClass)
+        return false;
+
+    std::map<std::string, MonoClassField*> componentFields;
+    void* componentIter = nullptr;
+    while (MonoClassField* component = mono_class_get_fields(fieldClass, &componentIter))
+    {
+        const char* componentName = mono_field_get_name(component);
+        if (!componentName)
+            continue;
+
+        MonoType* componentType = mono_field_get_type(component);
+        if (!componentType || mono_type_get_type(componentType) != MONO_TYPE_R4)
+            continue;
+
+        componentFields[ToLowerAscii(componentName)] = component;
+    }
+
+    if (componentFields.empty())
+        return false;
+
+    MonoObject* boxed = mono_field_get_value_object(domain, field, instance);
+    if (!boxed)
+    {
+        std::uint32_t align = 0;
+        const int valueTypeSize = mono_class_value_size(fieldClass, &align);
+        if (valueTypeSize <= 0)
+            return false;
+
+        std::vector<char> zeroData(static_cast<std::size_t>(valueTypeSize), 0);
+        boxed = mono_value_box(domain, fieldClass, zeroData.data());
+        if (!boxed)
+            return false;
+    }
+
+    const std::vector<float> values = ParseFloatList(valueText);
+    if (values.empty())
+        return false;
+
+    std::vector<std::string> preferredOrder;
+    if (componentFields.count("r") > 0 && componentFields.count("g") > 0 && componentFields.count("b") > 0)
+    {
+        preferredOrder = { "r", "g", "b", "a" };
+    }
+    else if (componentFields.count("x") > 0 && componentFields.count("y") > 0)
+    {
+        preferredOrder = { "x", "y", "z", "w" };
+    }
+    else
+    {
+        for (const auto& [name, component] : componentFields)
+        {
+            (void)component;
+            preferredOrder.push_back(name);
+        }
+    }
+
+    std::size_t valueIndex = 0;
+    for (const std::string& componentName : preferredOrder)
+    {
+        const auto componentIt = componentFields.find(componentName);
+        if (componentIt == componentFields.end())
+            continue;
+
+        if (valueIndex >= values.size())
+            break;
+
+        float componentValue = values[valueIndex++];
+        mono_field_set_value(boxed, componentIt->second, &componentValue);
+    }
+
+    if (valueIndex == 0)
+        return false;
+
+    void* unboxed = mono_object_unbox(boxed);
+    if (!unboxed)
+        return false;
+
+    mono_field_set_value(instance, field, unboxed);
+    return true;
+}
+
+static bool TrySetRuntimeScriptFieldValue(MonoDomain* domain,
+                                          MonoObject* instance,
+                                          MonoClass* klass,
+                                          const std::string& fieldName,
+                                          const std::string& fieldValue)
+{
+    if (!domain || !instance || !klass || fieldName.empty())
+        return false;
+
+    MonoClassField* field = FindFieldByName(klass, fieldName);
+    if (!field)
+        return false;
+
+    MonoType* fieldType = mono_field_get_type(field);
+    if (!fieldType)
+        return false;
+
+    MonoClass* fieldClass = mono_type_get_class(fieldType);
+    const MonoTypeEnum typeEnum = static_cast<MonoTypeEnum>(mono_type_get_type(fieldType));
+
+    switch (typeEnum)
+    {
+    case MONO_TYPE_BOOLEAN:
+    {
+        bool parsed = false;
+        if (!ParseBoolValue(fieldValue, parsed))
+            return false;
+        const mono_bool value = parsed ? 1 : 0;
+        mono_field_set_value(instance, field, (void*)&value);
+        return true;
+    }
+    case MONO_TYPE_R4:
+    {
+        double parsed = 0.0;
+        if (!ParseDoubleValue(fieldValue, parsed))
+            return false;
+        const float value = static_cast<float>(parsed);
+        mono_field_set_value(instance, field, (void*)&value);
+        return true;
+    }
+    case MONO_TYPE_R8:
+    {
+        double value = 0.0;
+        if (!ParseDoubleValue(fieldValue, value))
+            return false;
+        mono_field_set_value(instance, field, (void*)&value);
+        return true;
+    }
+    case MONO_TYPE_STRING:
+    {
+        MonoString* value = mono_string_new(domain, fieldValue.c_str());
+        mono_field_set_value(instance, field, (void*)&value);
+        return true;
+    }
+    case MONO_TYPE_I1:
+    case MONO_TYPE_U1:
+    case MONO_TYPE_I2:
+    case MONO_TYPE_U2:
+    case MONO_TYPE_I4:
+    case MONO_TYPE_U4:
+    case MONO_TYPE_I8:
+    case MONO_TYPE_U8:
+    {
+        std::int64_t parsed = 0;
+        if (!ParseInt64(fieldValue, parsed))
+            return false;
+
+        switch (typeEnum)
+        {
+        case MONO_TYPE_I1:
+        {
+            const std::int8_t value = static_cast<std::int8_t>(parsed);
+            mono_field_set_value(instance, field, (void*)&value);
+            return true;
+        }
+        case MONO_TYPE_U1:
+        {
+            const std::uint8_t value = static_cast<std::uint8_t>(parsed);
+            mono_field_set_value(instance, field, (void*)&value);
+            return true;
+        }
+        case MONO_TYPE_I2:
+        {
+            const std::int16_t value = static_cast<std::int16_t>(parsed);
+            mono_field_set_value(instance, field, (void*)&value);
+            return true;
+        }
+        case MONO_TYPE_U2:
+        {
+            const std::uint16_t value = static_cast<std::uint16_t>(parsed);
+            mono_field_set_value(instance, field, (void*)&value);
+            return true;
+        }
+        case MONO_TYPE_I4:
+        {
+            const std::int32_t value = static_cast<std::int32_t>(parsed);
+            mono_field_set_value(instance, field, (void*)&value);
+            return true;
+        }
+        case MONO_TYPE_U4:
+        {
+            const std::uint32_t value = static_cast<std::uint32_t>(parsed);
+            mono_field_set_value(instance, field, (void*)&value);
+            return true;
+        }
+        case MONO_TYPE_I8:
+        {
+            const std::int64_t value = static_cast<std::int64_t>(parsed);
+            mono_field_set_value(instance, field, (void*)&value);
+            return true;
+        }
+        case MONO_TYPE_U8:
+        {
+            const std::uint64_t value = static_cast<std::uint64_t>(parsed);
+            mono_field_set_value(instance, field, (void*)&value);
+            return true;
+        }
+        default:
+            break;
+        }
+        return false;
+    }
+    case MONO_TYPE_VALUETYPE:
+    {
+        if (!fieldClass)
+            return false;
+
+        if (mono_class_is_enum(fieldClass) != 0)
+        {
+            std::int64_t parsed = 0;
+            if (!ParseInt64(fieldValue, parsed))
+                return false;
+
+            MonoType* enumBaseType = mono_class_enum_basetype(fieldClass);
+            const MonoTypeEnum enumBaseTypeEnum = enumBaseType
+                ? static_cast<MonoTypeEnum>(mono_type_get_type(enumBaseType))
+                : MONO_TYPE_I4;
+
+            switch (enumBaseTypeEnum)
+            {
+            case MONO_TYPE_I1:
+            {
+                const std::int8_t value = static_cast<std::int8_t>(parsed);
+                mono_field_set_value(instance, field, (void*)&value);
+                return true;
+            }
+            case MONO_TYPE_U1:
+            {
+                const std::uint8_t value = static_cast<std::uint8_t>(parsed);
+                mono_field_set_value(instance, field, (void*)&value);
+                return true;
+            }
+            case MONO_TYPE_I2:
+            {
+                const std::int16_t value = static_cast<std::int16_t>(parsed);
+                mono_field_set_value(instance, field, (void*)&value);
+                return true;
+            }
+            case MONO_TYPE_U2:
+            {
+                const std::uint16_t value = static_cast<std::uint16_t>(parsed);
+                mono_field_set_value(instance, field, (void*)&value);
+                return true;
+            }
+            case MONO_TYPE_U4:
+            {
+                const std::uint32_t value = static_cast<std::uint32_t>(parsed);
+                mono_field_set_value(instance, field, (void*)&value);
+                return true;
+            }
+            case MONO_TYPE_I8:
+            {
+                const std::int64_t value = static_cast<std::int64_t>(parsed);
+                mono_field_set_value(instance, field, (void*)&value);
+                return true;
+            }
+            case MONO_TYPE_U8:
+            {
+                const std::uint64_t value = static_cast<std::uint64_t>(parsed);
+                mono_field_set_value(instance, field, (void*)&value);
+                return true;
+            }
+            case MONO_TYPE_I4:
+            default:
+            {
+                const std::int32_t value = static_cast<std::int32_t>(parsed);
+                mono_field_set_value(instance, field, (void*)&value);
+                return true;
+            }
+            }
+        }
+
+        return SetValueTypeFieldFromText(domain, instance, field, fieldClass, fieldValue);
+    }
+    default:
+        return false;
+    }
+}
+
+static bool TryGetRuntimeScriptFieldValue(MonoDomain* domain,
+                                          MonoObject* instance,
+                                          MonoClass* klass,
+                                          const std::string& fieldName,
+                                          std::string& outValue)
+{
+    if (!domain || !instance || !klass || fieldName.empty())
+        return false;
+
+    MonoClassField* field = FindFieldByName(klass, fieldName);
+    if (!field)
+        return false;
+
+    MonoType* fieldType = mono_field_get_type(field);
+    if (!fieldType)
+        return false;
+
+    MonoClass* fieldClass = mono_type_get_class(fieldType);
+    const MonoTypeEnum typeEnum = static_cast<MonoTypeEnum>(mono_type_get_type(fieldType));
+
+    switch (typeEnum)
+    {
+    case MONO_TYPE_BOOLEAN:
+    {
+        mono_bool value = 0;
+        mono_field_get_value(instance, field, &value);
+        outValue = value ? "true" : "false";
+        return true;
+    }
+    case MONO_TYPE_R4:
+    {
+        float value = 0.0f;
+        mono_field_get_value(instance, field, &value);
+        std::ostringstream stream;
+        stream.imbue(std::locale::classic());
+        stream << value;
+        outValue = stream.str();
+        return true;
+    }
+    case MONO_TYPE_R8:
+    {
+        double value = 0.0;
+        mono_field_get_value(instance, field, &value);
+        std::ostringstream stream;
+        stream.imbue(std::locale::classic());
+        stream << value;
+        outValue = stream.str();
+        return true;
+    }
+    case MONO_TYPE_STRING:
+    {
+        MonoString* value = nullptr;
+        mono_field_get_value(instance, field, &value);
+        outValue = MonoStringToUtf8(value);
+        return true;
+    }
+    case MONO_TYPE_I1:
+    {
+        std::int8_t value = 0;
+        mono_field_get_value(instance, field, &value);
+        outValue = std::to_string(static_cast<int>(value));
+        return true;
+    }
+    case MONO_TYPE_U1:
+    {
+        std::uint8_t value = 0;
+        mono_field_get_value(instance, field, &value);
+        outValue = std::to_string(static_cast<unsigned int>(value));
+        return true;
+    }
+    case MONO_TYPE_I2:
+    {
+        std::int16_t value = 0;
+        mono_field_get_value(instance, field, &value);
+        outValue = std::to_string(static_cast<int>(value));
+        return true;
+    }
+    case MONO_TYPE_U2:
+    {
+        std::uint16_t value = 0;
+        mono_field_get_value(instance, field, &value);
+        outValue = std::to_string(static_cast<unsigned int>(value));
+        return true;
+    }
+    case MONO_TYPE_I4:
+    {
+        std::int32_t value = 0;
+        mono_field_get_value(instance, field, &value);
+        outValue = std::to_string(value);
+        return true;
+    }
+    case MONO_TYPE_U4:
+    {
+        std::uint32_t value = 0;
+        mono_field_get_value(instance, field, &value);
+        outValue = std::to_string(value);
+        return true;
+    }
+    case MONO_TYPE_I8:
+    {
+        std::int64_t value = 0;
+        mono_field_get_value(instance, field, &value);
+        outValue = std::to_string(value);
+        return true;
+    }
+    case MONO_TYPE_U8:
+    {
+        std::uint64_t value = 0;
+        mono_field_get_value(instance, field, &value);
+        outValue = std::to_string(value);
+        return true;
+    }
+    case MONO_TYPE_VALUETYPE:
+    {
+        if (!fieldClass)
+            return false;
+
+        if (mono_class_is_enum(fieldClass) != 0)
+        {
+            MonoType* enumBaseType = mono_class_enum_basetype(fieldClass);
+            const MonoTypeEnum enumBaseTypeEnum = enumBaseType
+                ? static_cast<MonoTypeEnum>(mono_type_get_type(enumBaseType))
+                : MONO_TYPE_I4;
+
+            switch (enumBaseTypeEnum)
+            {
+            case MONO_TYPE_I1:
+            {
+                std::int8_t value = 0;
+                mono_field_get_value(instance, field, &value);
+                outValue = std::to_string(static_cast<int>(value));
+                return true;
+            }
+            case MONO_TYPE_U1:
+            {
+                std::uint8_t value = 0;
+                mono_field_get_value(instance, field, &value);
+                outValue = std::to_string(static_cast<unsigned int>(value));
+                return true;
+            }
+            case MONO_TYPE_I2:
+            {
+                std::int16_t value = 0;
+                mono_field_get_value(instance, field, &value);
+                outValue = std::to_string(static_cast<int>(value));
+                return true;
+            }
+            case MONO_TYPE_U2:
+            {
+                std::uint16_t value = 0;
+                mono_field_get_value(instance, field, &value);
+                outValue = std::to_string(static_cast<unsigned int>(value));
+                return true;
+            }
+            case MONO_TYPE_U4:
+            {
+                std::uint32_t value = 0;
+                mono_field_get_value(instance, field, &value);
+                outValue = std::to_string(value);
+                return true;
+            }
+            case MONO_TYPE_I8:
+            {
+                std::int64_t value = 0;
+                mono_field_get_value(instance, field, &value);
+                outValue = std::to_string(value);
+                return true;
+            }
+            case MONO_TYPE_U8:
+            {
+                std::uint64_t value = 0;
+                mono_field_get_value(instance, field, &value);
+                outValue = std::to_string(value);
+                return true;
+            }
+            case MONO_TYPE_I4:
+            default:
+            {
+                std::int32_t value = 0;
+                mono_field_get_value(instance, field, &value);
+                outValue = std::to_string(value);
+                return true;
+            }
+            }
+
+            return true;
+        }
+
+        MonoObject* boxed = mono_field_get_value_object(domain, field, instance);
+        if (!boxed)
+            return false;
+
+        std::map<std::string, float> components;
+        void* componentIter = nullptr;
+        while (MonoClassField* component = mono_class_get_fields(fieldClass, &componentIter))
+        {
+            const char* componentName = mono_field_get_name(component);
+            if (!componentName)
+                continue;
+
+            MonoType* componentType = mono_field_get_type(component);
+            if (!componentType || mono_type_get_type(componentType) != MONO_TYPE_R4)
+                continue;
+
+            float value = 0.0f;
+            mono_field_get_value(boxed, component, &value);
+            components[ToLowerAscii(componentName)] = value;
+        }
+
+        if (components.empty())
+            return false;
+
+        std::vector<std::string> order;
+        if (components.count("r") > 0 && components.count("g") > 0 && components.count("b") > 0)
+            order = { "r", "g", "b", "a" };
+        else if (components.count("x") > 0 && components.count("y") > 0)
+            order = { "x", "y", "z", "w" };
+        else
+        {
+            for (const auto& [name, value] : components)
+            {
+                (void)value;
+                order.push_back(name);
+            }
+        }
+
+        std::ostringstream stream;
+        stream.imbue(std::locale::classic());
+
+        bool wroteAny = false;
+        for (const std::string& componentName : order)
+        {
+            const auto it = components.find(componentName);
+            if (it == components.end())
+                continue;
+
+            if (wroteAny)
+                stream << ',';
+
+            stream << it->second;
+            wroteAny = true;
+        }
+
+        if (!wroteAny)
+            return false;
+
+        outValue = stream.str();
+        return true;
+    }
+    default:
+        return false;
+    }
+}
+
+static void EditorBridge_ApplyPersistedScriptFields(std::uint32_t entityId,
+                                                    const ScriptComponent& script,
+                                                    MonoObject* instance,
+                                                    MonoClass* klass,
+                                                    MonoDomain* domain)
+{
+    if (!instance || !klass || !domain || script.serializedFieldState.empty())
+        return;
+
+    const auto persistedFields = ParseSerializedScriptFieldState(script.serializedFieldState);
+    for (const auto& [fieldName, fieldValue] : persistedFields)
+    {
+        if (fieldName.empty())
+            continue;
+
+        (void)entityId;
+        TrySetRuntimeScriptFieldValue(domain, instance, klass, fieldName, fieldValue);
+    }
+}
+
+static MonoString* EditorBridge_GetScriptFieldValue(std::uint32_t entityId, MonoString* fieldName)
+{
+    if (!g_editorSceneContext)
+        return nullptr;
+
+    const std::string fieldNameUtf8 = MonoStringToUtf8(fieldName);
+    if (fieldNameUtf8.empty())
+        return nullptr;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const ScriptComponent* script = g_editorSceneContext->TryGetScript(entity);
+    if (!script)
+        return nullptr;
+
+    std::string value;
+    if (MonoObject* instance = FindRuntimeScriptInstance(entityId))
+    {
+        MonoClass* klass = mono_object_get_class(instance);
+        MonoDomain* domain = mono_domain_get();
+        if (TryGetRuntimeScriptFieldValue(domain, instance, klass, fieldNameUtf8, value))
+        {
+            MonoDomain* currentDomain = mono_domain_get();
+            return currentDomain ? mono_string_new(currentDomain, value.c_str()) : nullptr;
+        }
+    }
+
+    const std::optional<std::string> persisted = FindSerializedScriptFieldState(*script, fieldNameUtf8);
+    if (!persisted.has_value())
+        return nullptr;
+
+    MonoDomain* currentDomain = mono_domain_get();
+    return currentDomain ? mono_string_new(currentDomain, persisted->c_str()) : nullptr;
+}
+
+static bool EditorBridge_SetScriptFieldValue(std::uint32_t entityId, MonoString* fieldName, MonoString* fieldValue)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const std::string fieldNameUtf8 = MonoStringToUtf8(fieldName);
+    if (fieldNameUtf8.empty())
+        return false;
+
+    const std::string fieldValueUtf8 = MonoStringToUtf8(fieldValue);
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    ScriptComponent* script = g_editorSceneContext->TryGetScript(entity);
+    if (!script)
+        return false;
+
+    bool appliedToRuntime = false;
+    if (MonoObject* instance = FindRuntimeScriptInstance(entityId))
+    {
+        MonoClass* klass = mono_object_get_class(instance);
+        MonoDomain* domain = mono_domain_get();
+        appliedToRuntime = TrySetRuntimeScriptFieldValue(domain, instance, klass, fieldNameUtf8, fieldValueUtf8);
+        if (!appliedToRuntime)
+            return false;
+    }
+
+    UpsertSerializedScriptFieldState(*script, fieldNameUtf8, fieldValueUtf8);
+    (void)appliedToRuntime;
+    return true;
+}
+
+static void EditorBridge_SetGameViewSize(float width, float height)
+{
+    if (!g_editorRendererContext)
+        return;
+
+    const int w = static_cast<int>(width);
+    const int h = static_cast<int>(height);
+    if (w < 1 || h < 1)
+        return;
+
+    g_editorRendererContext->SetGameViewSize(w, h);
+}
+
+static std::uint64_t EditorBridge_GetGameViewTextureHandle()
+{
+    if (!g_editorRendererContext)
+        return 0;
+
+    return static_cast<std::uint64_t>(g_editorRendererContext->GetGameViewTextureHandle());
+}
+
+static void EditorDebugDraw_Line(float x0, float y0, float x1, float y1,
+                                 float r, float g, float b, float a,
+                                 float thickness, float durationSeconds)
+{
+    DebugDraw::Line(x0, y0, x1, y1, DebugDraw::Color(r, g, b, a), thickness, durationSeconds);
+}
+
+static void EditorDebugDraw_Circle(float centerX, float centerY, float radius,
+                                   float r, float g, float b, float a,
+                                   float thickness, int segments, float durationSeconds)
+{
+    DebugDraw::Circle(centerX, centerY, radius, DebugDraw::Color(r, g, b, a), thickness, segments, durationSeconds);
+}
+
+static void EditorDebugDraw_FilledCircle(float centerX, float centerY, float radius,
+                                         float r, float g, float b, float a,
+                                         int segments, float durationSeconds)
+{
+    DebugDraw::FilledCircle(centerX, centerY, radius, DebugDraw::Color(r, g, b, a), segments, durationSeconds);
+}
+
+static void EditorDebugDraw_Rect(float x, float y, float width, float height,
+                                 float r, float g, float b, float a,
+                                 float thickness, float durationSeconds)
+{
+    DebugDraw::Rect(x, y, width, height, DebugDraw::Color(r, g, b, a), thickness, durationSeconds);
+}
+
+static void EditorDebugDraw_FilledRect(float x, float y, float width, float height,
+                                       float r, float g, float b, float a,
+                                       float durationSeconds)
+{
+    DebugDraw::FilledRect(x, y, width, height, DebugDraw::Color(r, g, b, a), durationSeconds);
+}
+
+static void EditorDebugDraw_Clear()
+{
+    DebugDraw::Clear();
+}
+
+static MonoString* EditorExplorer_PickFolder(MonoString* title, MonoString* initialPath)
+{
+    const std::string selectedPath = ExplorerDialog::PickFolder(MonoStringToUtf8(title), MonoStringToUtf8(initialPath));
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, selectedPath.c_str()) : nullptr;
+}
+
+static MonoString* EditorExplorer_PickFile(MonoString* title, MonoString* initialPath)
+{
+    const std::string selectedPath = ExplorerDialog::PickFile(MonoStringToUtf8(title), MonoStringToUtf8(initialPath));
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, selectedPath.c_str()) : nullptr;
+}
+
+static MonoString* EditorExplorer_PickFiles(MonoString* title, MonoString* initialPath)
+{
+    const std::vector<std::string> selectedPaths = ExplorerDialog::PickFiles(MonoStringToUtf8(title), MonoStringToUtf8(initialPath));
+
+    std::string joinedPaths;
+    for (std::size_t index = 0; index < selectedPaths.size(); ++index)
+    {
+        if (index > 0)
+            joinedPaths += '\n';
+        joinedPaths += selectedPaths[index];
+    }
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, joinedPaths.c_str()) : nullptr;
+}
+
+static bool EditorBridge_HasTransform(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    return g_editorSceneContext->HasTransform(entity);
+}
+
+static void EditorBridge_AddTransform(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity) || g_editorSceneContext->HasTransform(entity))
+        return;
+
+    auto& transform = g_editorSceneContext->AddTransform(entity);
+    transform.x = 0.0f;
+    transform.y = 0.0f;
+    transform.width = 100.0f;
+    transform.height = 100.0f;
+}
+
+static bool EditorBridge_GetTransform(std::uint32_t entityId, float* x, float* y, float* width, float* height)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const TransformComponent* transform = g_editorSceneContext->TryGetTransform(entity);
+    if (!transform)
+        return false;
+
+    if (x)
+        *x = transform->x;
+    if (y)
+        *y = transform->y;
+    if (width)
+        *width = transform->width;
+    if (height)
+        *height = transform->height;
+    return true;
+}
+
+static void EditorBridge_SetTransform(std::uint32_t entityId, float x, float y, float width, float height)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    TransformComponent* transform = g_editorSceneContext->TryGetTransform(entity);
+    if (!transform)
+        return;
+
+    transform->x = x;
+    transform->y = y;
+    transform->width = width;
+    transform->height = height;
+}
+
+static bool EditorBridge_HasCamera(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    return g_editorSceneContext->HasCamera(entity);
+}
+
+static void EditorBridge_AddCamera(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity) || g_editorSceneContext->HasCamera(entity))
+        return;
+
+    auto& camera = g_editorSceneContext->AddCamera(entity);
+    camera.x = 0.0f;
+    camera.y = 0.0f;
+    camera.zoom = 1.0f;
+}
+
+static bool EditorBridge_GetCamera(std::uint32_t entityId, float* x, float* y, float* zoom)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const CameraComponent* camera = g_editorSceneContext->TryGetCamera(entity);
+    if (!camera)
+        return false;
+
+    if (x)
+        *x = camera->x;
+    if (y)
+        *y = camera->y;
+    if (zoom)
+        *zoom = camera->zoom;
+    return true;
+}
+
+static void EditorBridge_SetCamera(std::uint32_t entityId, float x, float y, float zoom)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    CameraComponent* camera = g_editorSceneContext->TryGetCamera(entity);
+    if (!camera)
+        return;
+
+    camera->x = x;
+    camera->y = y;
+    camera->zoom = zoom;
+}
+
+static void EditorBridge_RemoveCamera(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    g_editorSceneContext->RemoveCamera(entity);
+}
+
+static bool EditorBridge_HasSprite(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    return g_editorSceneContext->HasSprite(entity);
+}
+
+static void EditorBridge_AddSprite(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity) || g_editorSceneContext->HasSprite(entity))
+        return;
+
+    g_editorSceneContext->AddSprite(entity);
+}
+
+static void EditorBridge_RemoveSprite(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    g_editorSceneContext->RemoveSprite(entity);
+}
+
+static bool EditorBridge_HasScript(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    return g_editorSceneContext->HasScript(entity);
+}
+
+static void EditorBridge_AddScript(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity) || g_editorSceneContext->HasScript(entity))
+        return;
+
+    g_editorSceneContext->AddScript(entity);
+}
+
+static void EditorBridge_RemoveScript(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    g_editorSceneContext->RemoveScript(entity);
+}
+
+static bool EditorImGui_Begin(MonoString* title)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string text = MonoStringToUtf8(title);
+    const char* windowTitle = text.empty() ? "C# Window" : text.c_str();
+    return ImGui::Begin(windowTitle);
+}
+
+static bool EditorImGui_BeginTopBar(MonoString* id, float height)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    // Route to main menu bar so dockspace reserves top strip.
+    // Apply dynamic frame padding from requested height for compact/expanded variants.
+    (void)id;
+    const float requestedHeight = height > 8.0f ? height : 36.0f;
+
+    ImGuiStyle& style = ImGui::GetStyle();
+    const float fontSize = ImGui::GetFontSize();
+    float framePaddingY = (requestedHeight - fontSize) * 0.5f;
+    if (framePaddingY < 0.0f)
+        framePaddingY = 0.0f;
+    else if (framePaddingY > 24.0f)
+        framePaddingY = 24.0f;
+
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(style.FramePadding.x, framePaddingY));
+    g_editorTopBarStylePushed = true;
+
+    if (ImGui::BeginMainMenuBar())
+        return true;
+
+    ImGui::PopStyleVar();
+    g_editorTopBarStylePushed = false;
+    return false;
+}
+
+static void EditorImGui_EndTopBar()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::EndMainMenuBar();
+
+    if (g_editorTopBarStylePushed)
+    {
+        ImGui::PopStyleVar();
+        g_editorTopBarStylePushed = false;
+    }
+}
+
+static bool EditorImGui_BeginChild(MonoString* id, float width, float height, bool border)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string value = MonoStringToUtf8(id);
+    const char* childId = value.empty() ? "Child" : value.c_str();
+    return ImGui::BeginChild(childId, ImVec2(width, height), border);
+}
+
+static void EditorImGui_End()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::End();
+}
+
+static void EditorImGui_EndChild()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::EndChild();
+}
+
+static void EditorImGui_Text(MonoString* text)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    const std::string value = MonoStringToUtf8(text);
+    ImGui::TextUnformatted(value.c_str());
+}
+
+static bool EditorImGui_Button(MonoString* label)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string value = MonoStringToUtf8(label);
+    const char* buttonLabel = value.empty() ? "Button" : value.c_str();
+    return ImGui::Button(buttonLabel);
+}
+
+static void EditorImGui_OpenPopup(MonoString* popupId)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    const std::string value = MonoStringToUtf8(popupId);
+    const char* popupName = value.empty() ? "Popup" : value.c_str();
+    ImGui::OpenPopup(popupName);
+}
+
+static bool EditorImGui_BeginPopupModal(MonoString* popupId)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string value = MonoStringToUtf8(popupId);
+    const char* popupName = value.empty() ? "Popup" : value.c_str();
+    return ImGui::BeginPopupModal(popupName, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
+}
+
+static void EditorImGui_EndPopup()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::EndPopup();
+}
+
+static void EditorImGui_CloseCurrentPopup()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::CloseCurrentPopup();
+}
+
+static void EditorImGui_SameLine()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::SameLine();
+}
+
+static void EditorImGui_SetNextItemWidth(float width)
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::SetNextItemWidth(width);
+}
+
+static bool EditorImGui_Selectable(MonoString* label, bool selected)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string value = MonoStringToUtf8(label);
+    const char* selectableLabel = value.empty() ? "Item" : value.c_str();
+    return ImGui::Selectable(selectableLabel, selected);
+}
+
+static bool EditorImGui_SelectableNoClose(MonoString* label, bool selected)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string value = MonoStringToUtf8(label);
+    const char* selectableLabel = value.empty() ? "Item" : value.c_str();
+    return ImGui::Selectable(selectableLabel, selected, ImGuiSelectableFlags_DontClosePopups);
+}
+
+static MonoString* EditorImGui_InputText(MonoString* label, MonoString* value)
+{
+    std::string inputValue = MonoStringToUtf8(value);
+
+    if (ImGui::GetCurrentContext())
+    {
+        const std::string text = MonoStringToUtf8(label);
+        const char* inputLabel = text.empty() ? "Text" : text.c_str();
+
+        char buffer[256] = {};
+        std::snprintf(buffer, sizeof(buffer), "%s", inputValue.c_str());
+        ImGui::InputText(inputLabel, buffer, sizeof(buffer));
+        inputValue = buffer;
+    }
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, inputValue.c_str()) : nullptr;
+}
+
+static bool EditorImGui_InputFloat(MonoString* label, float* value, float step)
+{
+    if (!ImGui::GetCurrentContext() || !value)
+        return false;
+
+    const std::string text = MonoStringToUtf8(label);
+    const char* inputLabel = text.empty() ? "Value" : text.c_str();
+    return ImGui::InputFloat(inputLabel, value, step);
+}
+
+static void EditorImGui_Separator()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::Separator();
+}
+
+static bool EditorImGui_Checkbox(MonoString* label, MonoBoolean* value)
+{
+    if (!ImGui::GetCurrentContext() || !value)
+        return false;
+
+    const std::string text = MonoStringToUtf8(label);
+    const char* checkLabel = text.empty() ? "##cb" : text.c_str();
+    bool v = (*value != 0);
+    bool changed = ImGui::Checkbox(checkLabel, &v);
+    *value = v ? 1 : 0;
+    return changed;
+}
+
+static bool EditorImGui_IsWindowHovered()
+{
+    return ImGui::GetCurrentContext() ? ImGui::IsWindowHovered() : false;
+}
+
+static bool EditorImGui_GetWantCaptureMouse()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().WantCaptureMouse : false;
+}
+
+static bool EditorImGui_GetWantCaptureKeyboard()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().WantCaptureKeyboard : false;
+}
+
+static bool EditorImGui_IsMouseDown(int button)
+{
+    return ImGui::GetCurrentContext() ? ImGui::IsMouseDown(button) : false;
+}
+
+static float EditorImGui_GetMouseDeltaX()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().MouseDelta.x : 0.0f;
+}
+
+static float EditorImGui_GetMouseDeltaY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().MouseDelta.y : 0.0f;
+}
+
+static float EditorImGui_GetMouseWheel()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().MouseWheel : 0.0f;
+}
+
+static float EditorImGui_GetMousePosX()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().MousePos.x : 0.0f;
+}
+
+static float EditorImGui_GetMousePosY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().MousePos.y : 0.0f;
+}
+
+static float EditorImGui_GetDisplayWidth()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().DisplaySize.x : 0.0f;
+}
+
+static float EditorImGui_GetDisplayHeight()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().DisplaySize.y : 0.0f;
+}
+
+static float EditorImGui_GetContentRegionAvailX()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetContentRegionAvail().x : 0.0f;
+}
+
+static float EditorImGui_GetContentRegionAvailY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetContentRegionAvail().y : 0.0f;
+}
+
+static float EditorImGui_GetCursorScreenPosX()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetCursorScreenPos().x : 0.0f;
+}
+
+static float EditorImGui_GetCursorScreenPosY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetCursorScreenPos().y : 0.0f;
+}
+
+static void EditorImGui_Image(std::uint64_t textureHandle, float width, float height)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    ImTextureID textureId = reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(textureHandle));
+    ImGui::Image(textureId, ImVec2(width, height), ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
+}
+
+static bool EditorImGui_InvisibleButton(MonoString* id, float width, float height)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string value = MonoStringToUtf8(id);
+    const char* buttonId = value.empty() ? "##InvisibleButton" : value.c_str();
+    return ImGui::InvisibleButton(buttonId, ImVec2(width, height));
+}
+
+static bool EditorImGui_IsItemHovered()
+{
+    return ImGui::GetCurrentContext() ? ImGui::IsItemHovered() : false;
+}
+
+static bool EditorImGui_IsItemActive()
+{
+    return ImGui::GetCurrentContext() ? ImGui::IsItemActive() : false;
+}
+
+static bool EditorImGui_IsMouseClicked(int button)
+{
+    return ImGui::GetCurrentContext() ? ImGui::IsMouseClicked(button) : false;
+}
+
+static void EditorImGui_DrawLine(float x0,
+                                 float y0,
+                                 float x1,
+                                 float y1,
+                                 float r,
+                                 float g,
+                                 float b,
+                                 float a,
+                                 float thickness)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    if (!drawList)
+        return;
+
+    drawList->AddLine(ImVec2(x0, y0),
+                      ImVec2(x1, y1),
+                      IM_COL32(static_cast<int>(r * 255.0f),
+                               static_cast<int>(g * 255.0f),
+                               static_cast<int>(b * 255.0f),
+                               static_cast<int>(a * 255.0f)),
+                      thickness);
+}
+
+static void EditorImGui_DrawRect(float x,
+                                 float y,
+                                 float width,
+                                 float height,
+                                 float r,
+                                 float g,
+                                 float b,
+                                 float a,
+                                 float thickness)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    if (!drawList)
+        return;
+
+    drawList->AddRect(ImVec2(x, y),
+                      ImVec2(x + width, y + height),
+                      IM_COL32(static_cast<int>(r * 255.0f),
+                               static_cast<int>(g * 255.0f),
+                               static_cast<int>(b * 255.0f),
+                               static_cast<int>(a * 255.0f)),
+                      0.0f,
+                      0,
+                      thickness);
+}
+
+static bool EditorImGuizmo_IsUsing()
+{
+    return ImGui::GetCurrentContext() ? ImGuizmo::IsUsing() : false;
+}
+
+static bool EditorImGuizmo_Manipulate2DTranslate(float viewportX,
+                                                 float viewportY,
+                                                 float viewportWidth,
+                                                 float viewportHeight,
+                                                 float cameraX,
+                                                 float cameraY,
+                                                 float cameraZoom,
+                                                 float* x,
+                                                 float* y,
+                                                 float objectWidth,
+                                                 float objectHeight)
+{
+    if (!ImGui::GetCurrentContext() || !x || !y)
+        return false;
+
+    if (viewportWidth < 1.0f || viewportHeight < 1.0f)
+        return false;
+
+    float zoom = cameraZoom;
+    if (!std::isfinite(zoom) || zoom < 0.01f)
+        zoom = 0.01f;
+    else if (zoom > 100.0f)
+        zoom = 100.0f;
+
+    const float halfWorldWidth = (viewportWidth * 0.5f) / zoom;
+    const float halfWorldHeight = (viewportHeight * 0.5f) / zoom;
+    const float left = cameraX - halfWorldWidth;
+    const float right = cameraX + halfWorldWidth;
+    const float bottom = cameraY - halfWorldHeight;
+    const float top = cameraY + halfWorldHeight;
+
+    const float view[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+
+    const float rl = 1.0f / (right - left);
+    const float tb = 1.0f / (top - bottom);
+    const float projection[16] = {
+        2.0f * rl, 0.0f, 0.0f, 0.0f,
+        0.0f, 2.0f * tb, 0.0f, 0.0f,
+        0.0f, 0.0f, -1.0f, 0.0f,
+        -(right + left) * rl, -(top + bottom) * tb, 0.0f, 1.0f,
+    };
+
+    float matrix[16] = {
+        objectWidth, 0.0f, 0.0f, 0.0f,
+        0.0f, objectHeight, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        *x, *y, 0.0f, 1.0f,
+    };
+
+    ImGuizmo::SetOrthographic(true);
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+    ImGuizmo::SetRect(viewportX, viewportY, viewportWidth, viewportHeight);
+
+    const bool changed = ImGuizmo::Manipulate(view,
+                                              projection,
+                                              ImGuizmo::TRANSLATE,
+                                              ImGuizmo::WORLD,
+                                              matrix,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr);
+
+    if (changed)
+    {
+        *x = matrix[12];
+        *y = matrix[13];
+    }
+
+    return changed;
+}
+
+static bool EngineInput_GetMouseButton(int button)
+{
+    return SDLInputState::GetMouseButton(button);
+}
+
+static bool EngineInput_GetMouseButtonDown(int button)
+{
+    return SDLInputState::GetMouseButtonDown(button);
+}
+
+static bool EngineInput_GetMouseButtonUp(int button)
+{
+    return SDLInputState::GetMouseButtonUp(button);
+}
+
+static float EngineInput_GetMouseDeltaX()
+{
+    return SDLInputState::GetMouseDeltaX();
+}
+
+static float EngineInput_GetMouseDeltaY()
+{
+    return SDLInputState::GetMouseDeltaY();
+}
+
+static float EngineInput_GetMouseWheel()
+{
+    return SDLInputState::GetMouseWheel();
+}
+
+static float EngineInput_GetMousePosX()
+{
+    return SDLInputState::GetMousePosX();
+}
+
+static float EngineInput_GetMousePosY()
+{
+    return SDLInputState::GetMousePosY();
+}
+
+static bool EngineInput_GetKey(int scancode)
+{
+    return SDLInputState::GetKey(scancode);
+}
+
+static bool EngineInput_GetKeyDown(int scancode)
+{
+    return SDLInputState::GetKeyDown(scancode);
+}
+
+static bool EngineInput_GetKeyUp(int scancode)
+{
+    return SDLInputState::GetKeyUp(scancode);
+}
+#endif

@@ -8,6 +8,12 @@ namespace Engine
         public static extern bool Begin(string title);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool BeginTopBar(string id, float height);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void EndTopBar();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool BeginChild(string id, float width, float height, bool border);
 
         [MethodImpl(MethodImplOptions.InternalCall)]

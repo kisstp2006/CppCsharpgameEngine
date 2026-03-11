@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 
 using Engine;
 
@@ -30,9 +29,7 @@ namespace EngineEditor
         private static float _gizmoSnapStep = 32.0f;
         private static bool _componentRegistryInitialized = false;
         private static readonly List<ComponentInspectorEntry> _componentEntries = new List<ComponentInspectorEntry>();
-        private static string[] _cachedRegisteredScriptTypes = new string[0];
-        private static string _cachedScriptAssemblyIdentity = string.Empty;
-        private static DateTime _scriptTypeCacheTimestampUtc = DateTime.MinValue;
+        private static readonly Dictionary<uint, string> _scriptAssignmentErrors = new Dictionary<uint, string>();
 
         private sealed class ComponentInspectorEntry
         {
@@ -64,15 +61,20 @@ namespace EngineEditor
             _gameViewHeight = 1.0f;
             _gizmoSnapEnabled = false;
             _gizmoSnapStep = 32.0f;
-            _cachedRegisteredScriptTypes = new string[0];
-            _cachedScriptAssemblyIdentity = string.Empty;
-            _scriptTypeCacheTimestampUtc = DateTime.MinValue;
+            _scriptAssignmentErrors.Clear();
             DebugDraw.Clear();
         }
 
         public static void ResetSelection()
         {
             _selectedEntityId = -1;
+        }
+
+        public static void CreateEntityAndSelect()
+        {
+            uint created = EditorBridge.CreateEntity();
+            if (EditorBridge.IsEntityValid(created))
+                _selectedEntityId = (int)created;
         }
 
         public static void UpdateTick(float deltaTime)
@@ -422,16 +424,64 @@ namespace EngineEditor
 
         private static void DrawScriptInspector(uint entityId)
         {
-            string scriptTypeName = EditorBridge.GetScriptTypeName(entityId);
-            if (scriptTypeName == null)
-                scriptTypeName = string.Empty;
+            ScriptValidationSnapshot validationSnapshot = ScriptComponentValidation.GetSnapshot();
 
-            string[] registeredScriptTypes = GetRegisteredScriptTypes();
-            if (InspectorInputs.ScriptType("Script Type", ref scriptTypeName, registeredScriptTypes))
-                EditorBridge.SetScriptTypeName(entityId, scriptTypeName);
+            string currentScriptTypeName = EditorBridge.GetScriptTypeName(entityId);
+            if (currentScriptTypeName == null)
+                currentScriptTypeName = string.Empty;
 
-            if (registeredScriptTypes.Length == 0)
+            string requestedScriptTypeName = currentScriptTypeName;
+            if (InspectorInputs.ScriptType("Script Type", ref requestedScriptTypeName, validationSnapshot.RegisteredScriptTypes))
+            {
+                ScriptTypeValidationResult requestedTypeValidation = ScriptComponentValidation.ValidateTypeName(requestedScriptTypeName, validationSnapshot);
+
+                if (validationSnapshot.HasCompileErrors)
+                {
+                    _scriptAssignmentErrors[entityId] = "Assignment blocked: fix script compile errors first.";
+                }
+                else if (!requestedTypeValidation.IsValid)
+                {
+                    _scriptAssignmentErrors[entityId] = "Assignment blocked: " + requestedTypeValidation.Message;
+                }
+                else
+                {
+                    EditorBridge.SetScriptTypeName(entityId, requestedTypeValidation.NormalizedTypeName);
+                    currentScriptTypeName = requestedTypeValidation.NormalizedTypeName;
+                    _scriptAssignmentErrors.Remove(entityId);
+                }
+            }
+
+            ScriptTypeValidationResult currentTypeValidation = ScriptComponentValidation.ValidateTypeName(currentScriptTypeName, validationSnapshot);
+            if (currentTypeValidation.IsValid)
+            {
+                ImGui.Text("Script status: OK");
+            }
+            else
+            {
+                ImGui.Text("Script error: " + currentTypeValidation.Message);
+            }
+
+            if (_scriptAssignmentErrors.TryGetValue(entityId, out string assignmentError) && !string.IsNullOrEmpty(assignmentError))
+                ImGui.Text(assignmentError);
+
+            if (validationSnapshot.IsCompiling)
+            {
+                ImGui.Text("Compile: checking script project...");
+            }
+            else
+            {
+                ImGui.Text("Compile: " + validationSnapshot.CompileSummary);
+            }
+
+            if (validationSnapshot.HasCompileErrors)
+            {
+                for (int i = 0; i < validationSnapshot.CompileErrorLines.Length; ++i)
+                    ImGui.Text(validationSnapshot.CompileErrorLines[i]);
+            }
+            else if (validationSnapshot.RegisteredScriptTypes.Length == 0)
+            {
                 ImGui.Text("No registered C# script classes found in the loaded script assembly.");
+            }
 
             bool scriptEnabled = EditorBridge.GetScriptEnabled(entityId);
             ImGui.Text("Enabled: " + (scriptEnabled ? "yes" : "no"));
@@ -440,120 +490,9 @@ namespace EngineEditor
             if (InspectorInputs.Bool("Script Enabled", ref enabledValue) && enabledValue != scriptEnabled)
                 EditorBridge.SetScriptEnabled(entityId, enabledValue);
 
-        }
+            if (currentTypeValidation.IsValid)
+                ScriptFieldInspector.DrawScriptFields(entityId, currentTypeValidation.NormalizedTypeName, validationSnapshot);
 
-        private static string[] GetRegisteredScriptTypes()
-        {
-            const double refreshIntervalSeconds = 0.75;
-            DateTime nowUtc = DateTime.UtcNow;
-
-            Assembly scriptAssembly = FindLoadedScriptAssembly();
-            string assemblyIdentity = BuildAssemblyIdentity(scriptAssembly);
-            bool assemblyChanged = !string.Equals(_cachedScriptAssemblyIdentity, assemblyIdentity, StringComparison.Ordinal);
-            bool refreshIntervalElapsed = (nowUtc - _scriptTypeCacheTimestampUtc).TotalSeconds >= refreshIntervalSeconds;
-
-            if (!assemblyChanged && !refreshIntervalElapsed)
-                return _cachedRegisteredScriptTypes;
-
-            _cachedScriptAssemblyIdentity = assemblyIdentity;
-            _scriptTypeCacheTimestampUtc = nowUtc;
-            _cachedRegisteredScriptTypes = CollectScriptTypeNames(scriptAssembly);
-            return _cachedRegisteredScriptTypes;
-        }
-
-        private static Assembly FindLoadedScriptAssembly()
-        {
-            Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
-            Assembly selectedAssembly = null;
-
-            for (int i = 0; i < assemblies.Length; ++i)
-            {
-                Assembly assembly = assemblies[i];
-                if (assembly == null || assembly.IsDynamic)
-                    continue;
-
-                Type scriptEntry = assembly.GetType("GameScripts.ScriptEntry", false);
-                if (scriptEntry != null)
-                    selectedAssembly = assembly;
-            }
-
-            return selectedAssembly;
-        }
-
-        private static string BuildAssemblyIdentity(Assembly assembly)
-        {
-            if (assembly == null)
-                return string.Empty;
-
-            string location;
-            try
-            {
-                location = assembly.Location;
-            }
-            catch
-            {
-                location = string.Empty;
-            }
-
-            return assembly.FullName + "|" + location;
-        }
-
-        private static string[] CollectScriptTypeNames(Assembly scriptAssembly)
-        {
-            if (scriptAssembly == null)
-                return new string[0];
-
-            Type[] types;
-            try
-            {
-                types = scriptAssembly.GetTypes();
-            }
-            catch (ReflectionTypeLoadException ex)
-            {
-                types = ex.Types;
-            }
-
-            Type scriptEntry = scriptAssembly.GetType("GameScripts.ScriptEntry", false);
-            var discoveredNames = new List<string>();
-            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            for (int i = 0; i < types.Length; ++i)
-            {
-                Type type = types[i];
-                if (type == null || !type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
-                    continue;
-
-                if (scriptEntry != null && type == scriptEntry)
-                    continue;
-
-                if (!HasScriptLifecycleMethod(type))
-                    continue;
-
-                string fullName = type.FullName;
-                if (string.IsNullOrEmpty(fullName) || !seenNames.Add(fullName))
-                    continue;
-
-                discoveredNames.Add(fullName);
-            }
-
-            discoveredNames.Sort(StringComparer.OrdinalIgnoreCase);
-            return discoveredNames.ToArray();
-        }
-
-        private static bool HasScriptLifecycleMethod(Type type)
-        {
-            const BindingFlags instanceMethodFlags = BindingFlags.Instance | BindingFlags.Public;
-
-            MethodInfo onCreate = type.GetMethod("OnCreate", instanceMethodFlags, null, new Type[] { typeof(uint) }, null);
-            if (onCreate != null)
-                return true;
-
-            MethodInfo onUpdate = type.GetMethod("OnUpdate", instanceMethodFlags, null, new Type[] { typeof(uint), typeof(float) }, null);
-            if (onUpdate != null)
-                return true;
-
-            MethodInfo onDestroy = type.GetMethod("OnDestroy", instanceMethodFlags, null, new Type[] { typeof(uint) }, null);
-            return onDestroy != null;
         }
 
         private static float Clamp(float value, float minValue, float maxValue)

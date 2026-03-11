@@ -28,5 +28,6 @@ struct ScriptComponent
 {
     std::string classNamespace = "GameScripts";
     std::string className = "SpinnerScript";
+    std::string serializedFieldState;
     bool enabled = true;
 };

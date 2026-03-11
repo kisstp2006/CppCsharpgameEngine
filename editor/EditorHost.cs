@@ -31,6 +31,10 @@ namespace EngineEditor
         public static void OnEditorUpdate(float deltaTime)
         {
             bool hasOpenProject = ProjectOperations.HasOpenProject();
+
+            if (hasOpenProject)
+                DrawTopBar();
+
             if (!hasOpenProject)
             {
                 _showProjectManagerView = true;
@@ -51,6 +55,48 @@ namespace EngineEditor
             SceneEditor.DrawInspectorPanel();
             AssetPanel.DrawAssetPanel();
             SceneEditor.UpdateTick(deltaTime);
+        }
+
+        private static void DrawTopBar()
+        {
+            float topBarHeight = _showProjectManagerView ? 30.0f : 40.0f;
+            if (!ImGui.BeginTopBar("##EditorTopBar", topBarHeight))
+                return;
+
+            string activeProjectName = Path.GetFileName(ProjectOperations.ActiveProjectPath);
+            if (string.IsNullOrEmpty(activeProjectName))
+                activeProjectName = "<none>";
+
+            ImGui.Text("CppCSharp Editor");
+            ImGui.SameLine();
+            if (ImGui.Button("Project Manager"))
+                _showProjectManagerView = true;
+
+            ImGui.SameLine();
+            if (ImGui.Button("Scene Workspace"))
+                _showProjectManagerView = false;
+
+            if (!_showProjectManagerView)
+            {
+                ImGui.SameLine();
+                if (ImGui.Button("Create Entity"))
+                    SceneEditor.CreateEntityAndSelect();
+
+                ImGui.SameLine();
+                int selectedEntityId = SceneEditor.SelectedEntityId;
+                if (selectedEntityId >= 0)
+                    ImGui.Text("Selected: Entity " + selectedEntityId);
+                else
+                    ImGui.Text("Selected: <none>");
+            }
+
+            ImGui.SameLine();
+            ImGui.Text("Project: " + activeProjectName);
+
+            ImGui.SameLine();
+            ImGui.Text("Status: " + ProjectOperations.StatusMessage);
+
+            ImGui.EndTopBar();
         }
 
         public static void SetStatusMessage(string message)

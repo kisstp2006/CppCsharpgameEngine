@@ -23,6 +23,16 @@
 Engine::Engine() = default;
 Engine::~Engine() = default;
 
+void Engine::SetEditorMode(bool enabled)
+{
+    m_editorMode = enabled;
+
+#ifndef ENGINE_MONO_DISABLED
+    if (m_mono)
+        m_mono->SetEditorMode(enabled);
+#endif
+}
+
 bool Engine::Initialize(const std::string& title, int width, int height)
 {
     m_window = std::make_unique<SDLWindow>();
@@ -92,6 +102,7 @@ bool Engine::Initialize(const std::string& title, int width, int height)
 
 #ifndef ENGINE_MONO_DISABLED
     m_mono = std::make_unique<MonoRuntime>();
+    m_mono->SetEditorMode(m_editorMode);
 
     if (m_projectContext && m_projectContext->IsOpen())
     {

@@ -16,6 +16,9 @@ public:
     Engine();
     ~Engine();
 
+    void SetEditorMode(bool enabled);
+    bool IsEditorMode() const { return m_editorMode; }
+
     bool Initialize(const std::string& title, int width, int height);
     void Run();
     void Shutdown();
@@ -35,5 +38,6 @@ private:
     std::unique_ptr<ProjectContext> m_projectContext;
     std::unique_ptr<AssetDatabase> m_assetDatabase;
 
+    bool m_editorMode = false;
     bool m_running = false;
 };

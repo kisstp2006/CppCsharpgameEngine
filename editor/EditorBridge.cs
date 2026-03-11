@@ -97,6 +97,12 @@ namespace Engine
         public static extern void SetScriptTypeName(uint entityId, string scriptTypeName);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern string GetScriptFieldValue(uint entityId, string fieldName);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool SetScriptFieldValue(uint entityId, string fieldName, string fieldValue);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void SetGameViewSize(float width, float height);
 
         [MethodImpl(MethodImplOptions.InternalCall)]

@@ -9,9 +9,12 @@ class Renderer;
 class MonoRuntime
 {
 public:
+    struct Impl;
+
     MonoRuntime();
     ~MonoRuntime();
 
+    void SetEditorMode(bool enabled);
     bool Initialize();
     void SetPreferredScriptAssemblyPath(const std::string& assemblyPath);
     void SetPreferredScriptProjectPath(const std::string& projectPath);
@@ -22,6 +25,5 @@ public:
     bool IsEditorLoaded() const;
 
 private:
-    struct Impl;
     std::unique_ptr<Impl> m_impl;
 };
