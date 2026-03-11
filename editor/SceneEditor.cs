@@ -468,14 +468,7 @@ namespace EngineEditor
         {
             if (ImGui.Begin("Scene Tree"))
             {
-                if (ImGui.Button("Project Manager"))
-                {
-                    EditorHost.SetShowProjectManagerView(true);
-                    ImGui.End();
-                    return;
-                }
 
-                ImGui.SameLine();
                 if (ImGui.Button("Create Entity"))
                 {
                     uint created = EditorBridge.CreateEntity();

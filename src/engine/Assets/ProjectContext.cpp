@@ -320,7 +320,7 @@ namespace
                 return false;
             }
 
-            std::cout << "[ProjectContext] Added EngineManagedApi project reference to script project: "
+            std::cout << "[ProjectContext][Migration] Added EngineManagedApi ProjectReference to legacy script project: "
                       << scriptProjectPath << std::endl;
             return true;
         }
@@ -374,8 +374,8 @@ namespace
             return false;
         }
 
-        std::cout << "[ProjectContext] Added Engine API references to script project: "
-                  << scriptProjectPath << std::endl;
+        std::cout << "[ProjectContext][Migration] Added fallback Engine API source links to legacy script project: "
+              << scriptProjectPath << std::endl;
         return true;
     }
 
@@ -694,7 +694,11 @@ void ProjectContext::PrepareManagedScriptProject() const
         ? std::filesystem::current_path()
         : m_workspaceRoot;
 
-    EnsureEngineApiReferencesInCsproj(scriptProjectPath, workspaceRoot, m_metadata.engineApiProject);
+    if (!EnsureEngineApiReferencesInCsproj(scriptProjectPath, workspaceRoot, m_metadata.engineApiProject))
+    {
+        std::cerr << "[ProjectContext][Migration] Could not ensure Engine references in script project: "
+                  << scriptProjectPath << std::endl;
+    }
     BuildDotnetProjectAndReport(scriptProjectPath, "script project");
 }
 

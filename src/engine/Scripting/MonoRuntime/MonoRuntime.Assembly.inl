@@ -49,7 +49,43 @@ static bool TryCreateAssemblyShadowCopy(const std::filesystem::path& sourcePath,
         error.clear();
         std::filesystem::copy_file(sourcePath, outShadowPath, std::filesystem::copy_options::overwrite_existing, error);
         if (!error)
+        {
+            // Keep direct managed dependencies next to the shadow copy so Mono can resolve them by simple name.
+            std::error_code iterError;
+            const std::filesystem::path sourceDirectory = sourcePath.parent_path();
+            for (const auto& entry : std::filesystem::directory_iterator(sourceDirectory, iterError))
+            {
+                if (iterError)
+                    break;
+
+                std::error_code statusError;
+                if (!entry.is_regular_file(statusError) || statusError)
+                    continue;
+
+                const std::filesystem::path dependencyPath = entry.path();
+                if (dependencyPath == sourcePath)
+                    continue;
+
+                std::string extension = dependencyPath.extension().string();
+                for (char& c : extension)
+                    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+                if (extension != ".dll")
+                    continue;
+
+                const std::filesystem::path targetPath = shadowDirectory / dependencyPath.filename();
+                std::error_code copyDependencyError;
+                std::filesystem::copy_file(dependencyPath, targetPath, std::filesystem::copy_options::overwrite_existing, copyDependencyError);
+                if (copyDependencyError)
+                {
+                    std::cerr << "[Mono] Warning: failed to shadow-copy dependency "
+                              << dependencyPath << " -> " << targetPath
+                              << " (" << copyDependencyError.message() << ")" << std::endl;
+                }
+            }
+
             return true;
+        }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(40));
     }
