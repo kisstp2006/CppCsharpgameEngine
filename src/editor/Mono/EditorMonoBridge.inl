@@ -4,6 +4,22 @@ static Renderer* g_editorRendererContext = nullptr;
 static bool g_editorTopBarStylePushed = false;
 static std::string g_editorSceneIoStatus = "Ready.";
 
+enum class EngineLogLevel : std::int32_t
+{
+    Log = 0,
+    Warning = 1,
+    Error = 2
+};
+
+struct EngineLogEntry
+{
+    EngineLogLevel level = EngineLogLevel::Log;
+    std::string line;
+};
+
+static std::vector<EngineLogEntry> g_engineLogEntries;
+static constexpr std::size_t kMaxEngineLogEntries = 4096;
+
 enum class EditorComponentType : std::uint32_t
 {
     Transform = 0,
@@ -24,6 +40,96 @@ static std::string MonoStringToUtf8(MonoString* monoString)
     std::string result(utf8);
     mono_free(utf8);
     return result;
+}
+
+static std::string BuildEngineLogPrefix(const char* level)
+{
+    const auto now = std::chrono::system_clock::now();
+    const auto nowMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch());
+    const auto millis = nowMilliseconds.count() % 1000;
+
+    const std::time_t nowTimeT = std::chrono::system_clock::to_time_t(now);
+    std::tm localTime = {};
+#if defined(_WIN32)
+    localtime_s(&localTime, &nowTimeT);
+#else
+    localtime_r(&nowTimeT, &localTime);
+#endif
+
+    std::ostringstream stream;
+    stream << "[" << std::setfill('0')
+           << std::setw(2) << localTime.tm_hour << ":"
+           << std::setw(2) << localTime.tm_min << ":"
+           << std::setw(2) << localTime.tm_sec << "."
+           << std::setw(3) << millis
+           << "][" << level << "] ";
+    return stream.str();
+}
+
+static void AppendEngineLogEntry(EngineLogLevel level, const std::string& line)
+{
+    EngineLogEntry entry;
+    entry.level = level;
+    entry.line = line;
+    g_engineLogEntries.push_back(std::move(entry));
+
+    if (g_engineLogEntries.size() > kMaxEngineLogEntries)
+        g_engineLogEntries.erase(g_engineLogEntries.begin());
+}
+
+static void EngineDebug_LogInternal(const char* level, EngineLogLevel logLevel, MonoString* message, std::ostream& stream)
+{
+    const std::string utf8Message = MonoStringToUtf8(message);
+    const std::string content = utf8Message.empty() ? "<null>" : utf8Message;
+    const std::string line = BuildEngineLogPrefix(level) + content;
+    stream << line << std::endl;
+    AppendEngineLogEntry(logLevel, line);
+}
+
+static void EngineDebug_Log(MonoString* message)
+{
+    EngineDebug_LogInternal("Log", EngineLogLevel::Log, message, std::cout);
+}
+
+static void EngineDebug_LogWarning(MonoString* message)
+{
+    EngineDebug_LogInternal("Warning", EngineLogLevel::Warning, message, std::cout);
+}
+
+static void EngineDebug_LogError(MonoString* message)
+{
+    EngineDebug_LogInternal("Error", EngineLogLevel::Error, message, std::cerr);
+}
+
+static int EngineDebug_GetLogCount()
+{
+    return static_cast<int>(g_engineLogEntries.size());
+}
+
+static MonoString* EngineDebug_GetLogMessage(int index)
+{
+    if (index < 0 || static_cast<std::size_t>(index) >= g_engineLogEntries.size())
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    if (!domain)
+        return nullptr;
+
+    const std::string& line = g_engineLogEntries[static_cast<std::size_t>(index)].line;
+    return mono_string_new(domain, line.c_str());
+}
+
+static int EngineDebug_GetLogLevel(int index)
+{
+    if (index < 0 || static_cast<std::size_t>(index) >= g_engineLogEntries.size())
+        return static_cast<int>(EngineLogLevel::Log);
+
+    return static_cast<int>(g_engineLogEntries[static_cast<std::size_t>(index)].level);
+}
+
+static void EngineDebug_ClearLogs()
+{
+    g_engineLogEntries.clear();
 }
 
 static int EditorBridge_GetEntityCount()

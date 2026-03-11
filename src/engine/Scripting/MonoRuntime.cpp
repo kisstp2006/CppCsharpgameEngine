@@ -14,6 +14,8 @@
 #include <chrono>
 #include <cmath>
 #include <cctype>
+#include <ctime>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -308,6 +310,13 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.DebugDraw::RectInternal", (const void*)&EditorDebugDraw_Rect);
     mono_add_internal_call("Engine.DebugDraw::FilledRectInternal", (const void*)&EditorDebugDraw_FilledRect);
     mono_add_internal_call("Engine.DebugDraw::ClearInternal", (const void*)&EditorDebugDraw_Clear);
+    mono_add_internal_call("Engine.Debug::LogInternal", (const void*)&EngineDebug_Log);
+    mono_add_internal_call("Engine.Debug::LogWarningInternal", (const void*)&EngineDebug_LogWarning);
+    mono_add_internal_call("Engine.Debug::LogErrorInternal", (const void*)&EngineDebug_LogError);
+    mono_add_internal_call("Engine.Debug::GetLogCountInternal", (const void*)&EngineDebug_GetLogCount);
+    mono_add_internal_call("Engine.Debug::GetLogMessageInternal", (const void*)&EngineDebug_GetLogMessage);
+    mono_add_internal_call("Engine.Debug::GetLogLevelInternal", (const void*)&EngineDebug_GetLogLevel);
+    mono_add_internal_call("Engine.Debug::ClearLogsInternal", (const void*)&EngineDebug_ClearLogs);
 
     if (m_impl->editorMode)
     {

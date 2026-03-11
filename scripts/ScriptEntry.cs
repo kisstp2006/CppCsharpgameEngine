@@ -1,4 +1,5 @@
 using System;
+using Engine;
 
 namespace GameScripts
 {
@@ -8,7 +9,7 @@ namespace GameScripts
 
         public static void OnEngineStart()
         {
-            Console.WriteLine("[GameScripts] OnEngineStart called.");
+            Debug.Log("[GameScripts] OnEngineStart called.");
         }
 
         public static void OnEngineUpdate(float deltaTime)
@@ -18,13 +19,13 @@ namespace GameScripts
             if (_timeAccumulator >= 1.0f)
             {
                 _timeAccumulator = 0.0f;
-                Console.WriteLine("[GameScripts] Tick from C# script.");
+                Debug.Log("[GameScripts] Tick from C# script.");
             }
         }
 
         public static void OnEngineShutdown()
         {
-            Console.WriteLine("[GameScripts] OnEngineShutdown called.");
+            Debug.Log("[GameScripts] OnEngineShutdown called.");
         }
     }
 
@@ -34,7 +35,17 @@ namespace GameScripts
 
         public void OnCreate(uint entityId)
         {
-            Console.WriteLine("[GameScripts] SpinnerScript created for entity " + entityId + ".");
+            Debug.Log("[GameScripts] SpinnerScript created for entity " + entityId + ".");
+        }
+
+        public void OnEnable(uint entityId)
+        {
+            Debug.Log("[GameScripts] SpinnerScript enabled for entity " + entityId + ".");
+        }
+
+        public void OnDisable(uint entityId)
+        {
+            Debug.Log("[GameScripts] SpinnerScript disabled for entity " + entityId + ".");
         }
 
         public void OnUpdate(uint entityId, float deltaTime)
@@ -43,13 +54,13 @@ namespace GameScripts
             if (_accumulator >= 2.0f)
             {
                 _accumulator = 0.0f;
-                Console.WriteLine("[GameScripts] SpinnerScript update on entity " + entityId + ".");
+                Debug.Log("[GameScripts] SpinnerScript update on entity " + entityId + ".");
             }
         }
 
         public void OnDestroy(uint entityId)
         {
-            Console.WriteLine("[GameScripts] SpinnerScript destroyed for entity " + entityId + ".");
+            Debug.Log("[GameScripts] SpinnerScript destroyed for entity " + entityId + ".");
         }
     }
 }

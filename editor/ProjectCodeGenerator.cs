@@ -122,7 +122,7 @@ namespace EngineEditor
 
         private static void WriteInitialScriptTemplate(string scriptTemplatePath, string templateName)
         {
-            string content = "using System;\n\n" +
+            string content = "using Engine;\n\n" +
                              "namespace GameScripts\n" +
                              "{\n" +
                              "    public static class ScriptEntry\n" +
@@ -130,7 +130,7 @@ namespace EngineEditor
                              "        private static float _timeAccumulator;\n\n" +
                              "        public static void OnEngineStart()\n" +
                              "        {\n" +
-                             "            Console.WriteLine(\"[GameScripts] OnEngineStart called. Template: " + StringUtilities.EscapeCSharpString(templateName) + ".\");\n" +
+                             "            Debug.Log(\"[GameScripts] OnEngineStart called. Template: " + StringUtilities.EscapeCSharpString(templateName) + ".\");\n" +
                              "        }\n\n" +
                              "        public static void OnEngineUpdate(float deltaTime)\n" +
                              "        {\n" +
@@ -138,12 +138,12 @@ namespace EngineEditor
                              "            if (_timeAccumulator >= 1.0f)\n" +
                              "            {\n" +
                              "                _timeAccumulator = 0.0f;\n" +
-                             "                Console.WriteLine(\"[GameScripts] Tick from generated project script.\");\n" +
+                             "                Debug.Log(\"[GameScripts] Tick from generated project script.\");\n" +
                              "            }\n" +
                              "        }\n\n" +
                              "        public static void OnEngineShutdown()\n" +
                              "        {\n" +
-                             "            Console.WriteLine(\"[GameScripts] OnEngineShutdown called.\");\n" +
+                             "            Debug.Log(\"[GameScripts] OnEngineShutdown called.\");\n" +
                              "        }\n" +
                              "    }\n\n" +
                              "    public sealed class SpinnerScript\n" +
@@ -151,15 +151,15 @@ namespace EngineEditor
                              "        private float _accumulator;\n\n" +
                              "        public void OnCreate(uint entityId)\n" +
                              "        {\n" +
-                             "            Console.WriteLine(\"[GameScripts] SpinnerScript created for entity \" + entityId + \".\");\n" +
+                             "            Debug.Log(\"[GameScripts] SpinnerScript created for entity \" + entityId + \".\");\n" +
                              "        }\n\n" +
                              "        public void OnEnable(uint entityId)\n" +
                              "        {\n" +
-                             "            Console.WriteLine(\"[GameScripts] SpinnerScript enabled for entity \" + entityId + \".\");\n" +
+                             "            Debug.Log(\"[GameScripts] SpinnerScript enabled for entity \" + entityId + \".\");\n" +
                              "        }\n\n" +
                              "        public void OnDisable(uint entityId)\n" +
                              "        {\n" +
-                             "            Console.WriteLine(\"[GameScripts] SpinnerScript disabled for entity \" + entityId + \".\");\n" +
+                             "            Debug.Log(\"[GameScripts] SpinnerScript disabled for entity \" + entityId + \".\");\n" +
                              "        }\n\n" +
                              "        public void OnUpdate(uint entityId, float deltaTime)\n" +
                              "        {\n" +
@@ -167,12 +167,12 @@ namespace EngineEditor
                              "            if (_accumulator >= 2.0f)\n" +
                              "            {\n" +
                              "                _accumulator = 0.0f;\n" +
-                             "                Console.WriteLine(\"[GameScripts] SpinnerScript update on entity \" + entityId + \".\");\n" +
+                             "                Debug.Log(\"[GameScripts] SpinnerScript update on entity \" + entityId + \".\");\n" +
                              "            }\n" +
                              "        }\n\n" +
                              "        public void OnDestroy(uint entityId)\n" +
                              "        {\n" +
-                             "            Console.WriteLine(\"[GameScripts] SpinnerScript destroyed for entity \" + entityId + \".\");\n" +
+                             "            Debug.Log(\"[GameScripts] SpinnerScript destroyed for entity \" + entityId + \".\");\n" +
                              "        }\n" +
                              "    }\n" +
                              "}\n";

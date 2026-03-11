@@ -48,6 +48,7 @@ namespace EngineEditor
                 SceneEditor.ResetEditorState();
                 ProjectManager.DrawProjectPanel();
                 EditorOptionsWindow.Draw();
+                EditorConsoleWindow.Draw();
                 return;
             }
 
@@ -56,6 +57,7 @@ namespace EngineEditor
                 SceneEditor.ResetEditorState();
                 ProjectManager.DrawProjectPanel();
                 EditorOptionsWindow.Draw();
+                EditorConsoleWindow.Draw();
                 return;
             }
 
@@ -65,6 +67,7 @@ namespace EngineEditor
             AssetPanel.DrawAssetPanel();
             SceneEditor.UpdateTick(deltaTime);
             EditorOptionsWindow.Draw();
+            EditorConsoleWindow.Draw();
         }
 
         private static void DrawTopBar()
@@ -89,6 +92,10 @@ namespace EngineEditor
             ImGui.SameLine();
             if (ImGui.Button("Editor Options"))
                 EditorOptionsWindow.Toggle();
+
+            ImGui.SameLine();
+            if (ImGui.Button("Console"))
+                EditorConsoleWindow.Toggle();
 
             if (!_showProjectManagerView)
             {
