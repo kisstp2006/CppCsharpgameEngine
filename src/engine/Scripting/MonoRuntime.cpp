@@ -89,15 +89,121 @@ struct MonoRuntime::Impl
     std::filesystem::path preferredScriptAssemblyPath;
     std::filesystem::path preferredScriptProjectPath;
     bool editorMode = false;
+    MonoRuntime::SimulationState simulationState = MonoRuntime::SimulationState::Edit;
+    bool gameplaySessionActive = false;
     bool scriptLoaded = false;
     bool editorLoaded = false;
 };
 
 #if ENGINE_MONO_RUNTIME_AVAILABLE
 static MonoRuntime::Impl* g_monoRuntimeImplForEditorBridge = nullptr;
+static bool MonoRuntime_ShouldRunGameplay(const MonoRuntime::Impl* impl);
+static void MonoRuntime_StopActiveScriptInstances(MonoRuntime::Impl* impl, Scene* scene);
+static void MonoRuntime_StartPlaySession(MonoRuntime::Impl* impl, Scene* scene);
+static void MonoRuntime_StopPlaySession(MonoRuntime::Impl* impl, Scene* scene);
 #endif
 
 #include "editor/Mono/EditorMonoBridge.inl"
+
+#if ENGINE_MONO_RUNTIME_AVAILABLE
+static bool MonoRuntime_ShouldRunGameplay(const MonoRuntime::Impl* impl)
+{
+    if (!impl)
+        return false;
+
+    if (!impl->editorMode)
+        return impl->gameplaySessionActive;
+
+    return impl->gameplaySessionActive && impl->simulationState == MonoRuntime::SimulationState::Play;
+}
+
+static void MonoRuntime_InvokeEntityLifecycle(MonoMethod* method, MonoObject* instanceObject, std::uint32_t entityId)
+{
+    if (!method)
+        return;
+
+    void* args[1] = { (void*)&entityId };
+    mono_runtime_invoke(method, instanceObject, args, nullptr);
+}
+
+static void MonoRuntime_TeardownScriptInstance(std::uint32_t entityId, MonoRuntime::Impl::ScriptInstance& instance)
+{
+    if (!instance.created)
+        return;
+
+    if (instance.active)
+    {
+        MonoRuntime_InvokeEntityLifecycle(instance.onDisable, instance.instance, entityId);
+        instance.active = false;
+    }
+
+    MonoRuntime_InvokeEntityLifecycle(instance.onDestroy, instance.instance, entityId);
+    instance.created = false;
+}
+
+static void MonoRuntime_StopActiveScriptInstances(MonoRuntime::Impl* impl, Scene* scene)
+{
+    if (!impl)
+        return;
+
+    if (!scene)
+    {
+        impl->entityScripts.clear();
+        return;
+    }
+
+    auto& registry = scene->Registry();
+    for (auto& [entityId, instance] : impl->entityScripts)
+    {
+        const auto entity = static_cast<entt::entity>(entityId);
+        if (instance.created && registry.valid(entity))
+            MonoRuntime_TeardownScriptInstance(entityId, instance);
+    }
+
+    impl->entityScripts.clear();
+}
+
+static void MonoRuntime_StartPlaySession(MonoRuntime::Impl* impl, Scene* scene)
+{
+    if (!impl || !impl->editorMode)
+        return;
+
+    if (impl->simulationState == MonoRuntime::SimulationState::Play)
+        return;
+
+    if (impl->simulationState == MonoRuntime::SimulationState::Pause)
+    {
+        impl->simulationState = MonoRuntime::SimulationState::Play;
+        return;
+    }
+
+    MonoRuntime_StopActiveScriptInstances(impl, scene);
+
+    if (impl->scriptLoaded && impl->onStart)
+        mono_runtime_invoke(impl->onStart, nullptr, nullptr, nullptr);
+
+    impl->gameplaySessionActive = impl->scriptLoaded;
+
+    impl->simulationState = MonoRuntime::SimulationState::Play;
+}
+
+static void MonoRuntime_StopPlaySession(MonoRuntime::Impl* impl, Scene* scene)
+{
+    if (!impl || !impl->editorMode)
+        return;
+
+    if (impl->simulationState == MonoRuntime::SimulationState::Edit)
+        return;
+
+    MonoRuntime_StopActiveScriptInstances(impl, scene);
+
+    if (impl->gameplaySessionActive && impl->scriptLoaded && impl->onShutdown)
+        mono_runtime_invoke(impl->onShutdown, nullptr, nullptr, nullptr);
+
+    impl->gameplaySessionActive = false;
+    impl->simulationState = MonoRuntime::SimulationState::Edit;
+}
+#endif
 
 static std::filesystem::path FindScriptAssemblyPath(const std::filesystem::path& preferredPath, bool verbose = true)
 {
@@ -219,6 +325,8 @@ void MonoRuntime::SetEditorMode(bool enabled)
 #endif
 
     m_impl->editorMode = enabled;
+    m_impl->simulationState = enabled ? SimulationState::Edit : SimulationState::Play;
+    m_impl->gameplaySessionActive = false;
 }
 
 void MonoRuntime::SetPreferredScriptAssemblyPath(const std::string& assemblyPath)
@@ -285,6 +393,10 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::SaveScene", (const void*)&EditorBridge_SaveScene);
         mono_add_internal_call("Engine.EditorBridge::LoadScene", (const void*)&EditorBridge_LoadScene);
         mono_add_internal_call("Engine.EditorBridge::GetLastSceneIoStatus", (const void*)&EditorBridge_GetLastSceneIoStatus);
+        mono_add_internal_call("Engine.EditorBridge::GetSimulationState", (const void*)&EditorBridge_GetSimulationState);
+        mono_add_internal_call("Engine.EditorBridge::StartPlayMode", (const void*)&EditorBridge_StartPlayMode);
+        mono_add_internal_call("Engine.EditorBridge::StopPlayMode", (const void*)&EditorBridge_StopPlayMode);
+        mono_add_internal_call("Engine.EditorBridge::SetSimulationPaused", (const void*)&EditorBridge_SetSimulationPaused);
         mono_add_internal_call("Engine.EditorBridge::GetScriptedEntityCount", (const void*)&EditorBridge_GetScriptedEntityCount);
         mono_add_internal_call("Engine.EditorBridge::HasComponent", (const void*)&EditorBridge_HasComponent);
         mono_add_internal_call("Engine.EditorBridge::AddComponent", (const void*)&EditorBridge_AddComponent);
@@ -447,8 +559,16 @@ bool MonoRuntime::Initialize()
             m_impl->resolvedScriptAssemblyPath = assemblyPath;
             m_impl->hasScriptAssemblyWriteTime = TryGetFileWriteTime(assemblyPath, m_impl->scriptAssemblyWriteTime);
 
-            if (m_impl->onStart)
-                mono_runtime_invoke(m_impl->onStart, nullptr, nullptr, nullptr);
+            if (!m_impl->editorMode)
+            {
+                if (m_impl->onStart)
+                    mono_runtime_invoke(m_impl->onStart, nullptr, nullptr, nullptr);
+                m_impl->gameplaySessionActive = true;
+            }
+            else
+            {
+                m_impl->gameplaySessionActive = false;
+            }
 
             std::cout << "[Mono] Loaded script assembly: " << assemblyPath << std::endl;
         }
@@ -524,35 +644,11 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
                 ScriptAssemblyBindings newScriptBindings;
                 if (TryLoadScriptAssemblyBindings(m_impl->domain, m_impl->shadowCopyDirectory, scriptPath, newScriptBindings))
                 {
-                    if (scene)
-                    {
-                        auto& registry = scene->Registry();
-                        for (auto& [entityId, instance] : m_impl->entityScripts)
-                        {
-                            const auto entity = static_cast<entt::entity>(entityId);
-                            if (instance.created && registry.valid(entity))
-                            {
-                                std::uint32_t lifecycleEntityId = entityId;
+                    MonoRuntime_StopActiveScriptInstances(m_impl.get(), scene);
 
-                                if (instance.active && instance.onDisable)
-                                {
-                                    void* disableArgs[1] = { (void*)&lifecycleEntityId };
-                                    mono_runtime_invoke(instance.onDisable, instance.instance, disableArgs, nullptr);
-                                    instance.active = false;
-                                }
+                    const bool wasGameplaySessionActive = m_impl->gameplaySessionActive;
 
-                                if (instance.onDestroy)
-                                {
-                                    void* destroyArgs[1] = { (void*)&lifecycleEntityId };
-                                    mono_runtime_invoke(instance.onDestroy, instance.instance, destroyArgs, nullptr);
-                                }
-                            }
-                        }
-                    }
-
-                    m_impl->entityScripts.clear();
-
-                    if (m_impl->scriptLoaded && m_impl->onShutdown)
+                    if (wasGameplaySessionActive && m_impl->scriptLoaded && m_impl->onShutdown)
                         mono_runtime_invoke(m_impl->onShutdown, nullptr, nullptr, nullptr);
 
                     m_impl->assembly = newScriptBindings.assembly;
@@ -568,8 +664,16 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
                     if (hasScriptWriteTime)
                         m_impl->scriptAssemblyWriteTime = scriptWriteTime;
 
-                    if (m_impl->onStart)
-                        mono_runtime_invoke(m_impl->onStart, nullptr, nullptr, nullptr);
+                    if (wasGameplaySessionActive)
+                    {
+                        if (m_impl->onStart)
+                            mono_runtime_invoke(m_impl->onStart, nullptr, nullptr, nullptr);
+                        m_impl->gameplaySessionActive = true;
+                    }
+                    else
+                    {
+                        m_impl->gameplaySessionActive = false;
+                    }
 
                     if (scriptNeedsLoad)
                         std::cout << "[Mono] Script assembly became available: " << scriptPath << std::endl;
@@ -645,13 +749,15 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
         g_editorRendererContext = nullptr;
     }
 
-    if (m_impl->onUpdate)
+    const bool runGameplay = MonoRuntime_ShouldRunGameplay(m_impl.get());
+
+    if (runGameplay && m_impl->onUpdate)
     {
         void* args[1] = { &deltaTime };
         mono_runtime_invoke(m_impl->onUpdate, nullptr, args, nullptr);
     }
 
-    if (!scene || !m_impl->scriptLoaded || !m_impl->image)
+    if (!runGameplay || !scene || !m_impl->scriptLoaded || !m_impl->image)
     {
         g_editorSceneContext = nullptr;
         g_editorRendererContext = nullptr;
@@ -660,30 +766,6 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
 
     auto& registry = scene->Registry();
     auto view = registry.view<ScriptComponent>();
-
-    auto invokeScriptMethod = [](MonoMethod* method, MonoObject* instanceObject, std::uint32_t entityId)
-    {
-        if (!method)
-            return;
-
-        void* args[1] = { (void*)&entityId };
-        mono_runtime_invoke(method, instanceObject, args, nullptr);
-    };
-
-    auto teardownScriptInstance = [&](std::uint32_t entityId, MonoRuntime::Impl::ScriptInstance& instance)
-    {
-        if (!instance.created)
-            return;
-
-        if (instance.active)
-        {
-            invokeScriptMethod(instance.onDisable, instance.instance, entityId);
-            instance.active = false;
-        }
-
-        invokeScriptMethod(instance.onDestroy, instance.instance, entityId);
-        instance.created = false;
-    };
 
     for (const auto entity : view)
     {
@@ -698,7 +780,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
                                    || existing.className != script.className;
             if (classChanged)
             {
-                teardownScriptInstance(entityId, existing);
+                MonoRuntime_TeardownScriptInstance(entityId, existing);
                 m_impl->entityScripts.erase(instanceIt);
                 instanceIt = m_impl->entityScripts.end();
             }
@@ -711,7 +793,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
                 auto& instance = instanceIt->second;
                 if (instance.active)
                 {
-                    invokeScriptMethod(instance.onDisable, instance.instance, entityId);
+                    MonoRuntime_InvokeEntityLifecycle(instance.onDisable, instance.instance, entityId);
                     instance.active = false;
                 }
             }
@@ -765,13 +847,13 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
 
         if (!instance.created)
         {
-            invokeScriptMethod(instance.onCreate, instance.instance, entityId);
+            MonoRuntime_InvokeEntityLifecycle(instance.onCreate, instance.instance, entityId);
             instance.created = true;
         }
 
         if (!instance.active)
         {
-            invokeScriptMethod(instance.onEnable, instance.instance, entityId);
+            MonoRuntime_InvokeEntityLifecycle(instance.onEnable, instance.instance, entityId);
             instance.active = true;
         }
 
@@ -789,7 +871,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
 
         if (!hasComponent)
         {
-            teardownScriptInstance(it->first, it->second);
+            MonoRuntime_TeardownScriptInstance(it->first, it->second);
             it = m_impl->entityScripts.erase(it);
         }
         else
@@ -812,6 +894,9 @@ void MonoRuntime::Shutdown(Scene* scene)
     if (!m_impl)
         return;
 
+    if (m_impl->editorMode)
+        MonoRuntime_StopPlaySession(m_impl.get(), scene);
+
 #if ENGINE_MONO_RUNTIME_AVAILABLE
     g_monoRuntimeImplForEditorBridge = nullptr;
 #endif
@@ -828,36 +913,12 @@ void MonoRuntime::Shutdown(Scene* scene)
         g_editorRendererContext = nullptr;
     }
 
-    if (scene)
-    {
-        auto& registry = scene->Registry();
-        for (auto& [entityId, instance] : m_impl->entityScripts)
-        {
-            const auto entity = static_cast<entt::entity>(entityId);
-            if (instance.created && registry.valid(entity))
-            {
-                std::uint32_t lifecycleEntityId = entityId;
+    MonoRuntime_StopActiveScriptInstances(m_impl.get(), scene);
 
-                if (instance.active && instance.onDisable)
-                {
-                    void* disableArgs[1] = { (void*)&lifecycleEntityId };
-                    mono_runtime_invoke(instance.onDisable, instance.instance, disableArgs, nullptr);
-                    instance.active = false;
-                }
-
-                if (instance.onDestroy)
-                {
-                    void* destroyArgs[1] = { (void*)&lifecycleEntityId };
-                    mono_runtime_invoke(instance.onDestroy, instance.instance, destroyArgs, nullptr);
-                }
-            }
-        }
-    }
-
-    m_impl->entityScripts.clear();
-
-    if (m_impl->scriptLoaded && m_impl->onShutdown)
+    if (m_impl->gameplaySessionActive && m_impl->scriptLoaded && m_impl->onShutdown)
         mono_runtime_invoke(m_impl->onShutdown, nullptr, nullptr, nullptr);
+
+    m_impl->gameplaySessionActive = false;
 
     if (m_impl->domain)
     {
@@ -867,6 +928,59 @@ void MonoRuntime::Shutdown(Scene* scene)
 
     m_impl.reset();
 #endif
+}
+
+MonoRuntime::SimulationState MonoRuntime::GetSimulationState() const
+{
+    if (!m_impl)
+        return SimulationState::Edit;
+
+    if (!m_impl->editorMode)
+        return SimulationState::Play;
+
+    return m_impl->simulationState;
+}
+
+bool MonoRuntime::StartPlayMode(Scene* scene)
+{
+#if !ENGINE_MONO_RUNTIME_AVAILABLE
+    (void)scene;
+    return false;
+#else
+    if (!m_impl || !m_impl->editorMode)
+        return false;
+
+    MonoRuntime_StartPlaySession(m_impl.get(), scene);
+    return m_impl->simulationState == SimulationState::Play;
+#endif
+}
+
+void MonoRuntime::StopPlayMode(Scene* scene)
+{
+#if !ENGINE_MONO_RUNTIME_AVAILABLE
+    (void)scene;
+#else
+    if (!m_impl || !m_impl->editorMode)
+        return;
+
+    MonoRuntime_StopPlaySession(m_impl.get(), scene);
+#endif
+}
+
+void MonoRuntime::SetSimulationPaused(bool paused)
+{
+    if (!m_impl || !m_impl->editorMode)
+        return;
+
+    if (paused)
+    {
+        if (m_impl->simulationState == SimulationState::Play)
+            m_impl->simulationState = SimulationState::Pause;
+        return;
+    }
+
+    if (m_impl->simulationState == SimulationState::Pause)
+        m_impl->simulationState = SimulationState::Play;
 }
 
 bool MonoRuntime::IsScriptLoaded() const

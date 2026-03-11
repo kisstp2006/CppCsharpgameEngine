@@ -11,6 +11,13 @@ class MonoRuntime
 public:
     struct Impl;
 
+    enum class SimulationState
+    {
+        Edit = 0,
+        Play = 1,
+        Pause = 2
+    };
+
     MonoRuntime();
     ~MonoRuntime();
 
@@ -19,6 +26,10 @@ public:
     void SetPreferredScriptAssemblyPath(const std::string& assemblyPath);
     void SetPreferredScriptProjectPath(const std::string& projectPath);
     void Update(float deltaTime, Scene* scene, Renderer* renderer);
+    SimulationState GetSimulationState() const;
+    bool StartPlayMode(Scene* scene);
+    void StopPlayMode(Scene* scene);
+    void SetSimulationPaused(bool paused);
     void Shutdown(Scene* scene = nullptr);
 
     bool IsScriptLoaded() const;

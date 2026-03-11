@@ -395,6 +395,63 @@ static MonoString* EditorBridge_GetLastSceneIoStatus()
     return domain ? mono_string_new(domain, g_editorSceneIoStatus.c_str()) : nullptr;
 }
 
+static int EditorBridge_GetSimulationState()
+{
+    if (!g_monoRuntimeImplForEditorBridge)
+        return static_cast<int>(MonoRuntime::SimulationState::Edit);
+
+    if (!g_monoRuntimeImplForEditorBridge->editorMode)
+        return static_cast<int>(MonoRuntime::SimulationState::Play);
+
+    return static_cast<int>(g_monoRuntimeImplForEditorBridge->simulationState);
+}
+
+static bool EditorBridge_StartPlayMode()
+{
+    if (!g_monoRuntimeImplForEditorBridge)
+    {
+        g_editorSceneIoStatus = "Play failed: runtime context unavailable.";
+        return false;
+    }
+
+    MonoRuntime_StartPlaySession(g_monoRuntimeImplForEditorBridge, g_editorSceneContext);
+    g_editorSceneIoStatus = "Entered play mode.";
+    return true;
+}
+
+static void EditorBridge_StopPlayMode()
+{
+    if (!g_monoRuntimeImplForEditorBridge)
+    {
+        g_editorSceneIoStatus = "Stop failed: runtime context unavailable.";
+        return;
+    }
+
+    MonoRuntime_StopPlaySession(g_monoRuntimeImplForEditorBridge, g_editorSceneContext);
+    g_editorSceneIoStatus = "Stopped play mode.";
+}
+
+static void EditorBridge_SetSimulationPaused(bool paused)
+{
+    if (!g_monoRuntimeImplForEditorBridge)
+    {
+        g_editorSceneIoStatus = "Pause failed: runtime context unavailable.";
+        return;
+    }
+
+    if (g_monoRuntimeImplForEditorBridge->simulationState == MonoRuntime::SimulationState::Edit)
+    {
+        g_editorSceneIoStatus = "Pause ignored: simulation is in edit mode.";
+        return;
+    }
+
+    g_monoRuntimeImplForEditorBridge->simulationState = paused
+        ? MonoRuntime::SimulationState::Pause
+        : MonoRuntime::SimulationState::Play;
+
+    g_editorSceneIoStatus = paused ? "Paused play mode." : "Resumed play mode.";
+}
+
 static int EditorBridge_GetScriptedEntityCount()
 {
     if (!g_editorSceneContext)

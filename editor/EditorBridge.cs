@@ -12,6 +12,10 @@ namespace Engine
 
     public static class EditorBridge
     {
+        public const int SimulationEdit = 0;
+        public const int SimulationPlay = 1;
+        public const int SimulationPause = 2;
+
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern int GetEntityCount();
 
@@ -68,6 +72,18 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern string GetLastSceneIoStatus();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern int GetSimulationState();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool StartPlayMode();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void StopPlayMode();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetSimulationPaused(bool paused);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern int GetScriptedEntityCount();

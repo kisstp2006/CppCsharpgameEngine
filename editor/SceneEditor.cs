@@ -255,6 +255,30 @@ namespace EngineEditor
             LoadSceneFromPath(picked);
         }
 
+        public static bool RestoreSceneFromPlaySnapshot(string snapshotPath)
+        {
+            if (string.IsNullOrWhiteSpace(snapshotPath) || !File.Exists(snapshotPath))
+            {
+                ProjectOperations.SetStatusMessage("Stop failed: play snapshot missing.");
+                return false;
+            }
+
+            if (!EditorBridge.LoadScene(snapshotPath, SceneStorageBinary))
+            {
+                string error = EditorBridge.GetLastSceneIoStatus();
+                if (string.IsNullOrEmpty(error))
+                    error = "Stop failed: could not restore play snapshot.";
+
+                ProjectOperations.SetStatusMessage(error);
+                return false;
+            }
+
+            _selectedEntityId = -1;
+            _scriptAssignmentErrors.Clear();
+            _componentFoldoutStates.Clear();
+            return true;
+        }
+
         public static bool SaveScene()
         {
             if (string.IsNullOrWhiteSpace(_activeScenePath))
@@ -417,6 +441,8 @@ namespace EngineEditor
         public static void DrawWorldViewportPanel(float deltaTime)
         {
             EnsureWorldInitialized();
+            int simulationState = EditorBridge.GetSimulationState();
+            bool simulationRunning = simulationState == EditorBridge.SimulationPlay || simulationState == EditorBridge.SimulationPause;
 
             if (!ImGui.Begin("Game View"))
             {
@@ -444,7 +470,9 @@ namespace EngineEditor
             _gameViewWidth = availWidth;
             _gameViewHeight = availHeight;
 
-            EditorBridge.SetGameViewSize(_gameViewWidth, _gameViewHeight);
+            if (!simulationRunning)
+                EditorBridge.SetGameViewSize(_gameViewWidth, _gameViewHeight);
+
             ulong gameViewTextureHandle = EditorBridge.GetGameViewTextureHandle();
             if (gameViewTextureHandle != 0)
                 ImGui.Image(gameViewTextureHandle, _gameViewWidth, _gameViewHeight);
@@ -475,6 +503,40 @@ namespace EngineEditor
 
             HandleViewportSelectionAndDrag(viewportCanHandleMouse);
             DrawGridAndGizmos(deltaTime);
+
+            ImGui.End();
+        }
+
+        public static void DrawRuntimeGamePanel()
+        {
+            int simulationState = EditorBridge.GetSimulationState();
+            bool playing = simulationState == EditorBridge.SimulationPlay;
+            bool paused = simulationState == EditorBridge.SimulationPause;
+            if (!playing && !paused)
+                return;
+
+            if (!ImGui.Begin("Game Runtime"))
+            {
+                ImGui.End();
+                return;
+            }
+
+            ImGui.Text(paused ? "Runtime view (paused)." : "Runtime view (playing).");
+            ImGui.Separator();
+
+            float availWidth = ImGui.GetContentRegionAvailX();
+            float availHeight = ImGui.GetContentRegionAvailY();
+            if (availWidth < 1.0f)
+                availWidth = 1.0f;
+            if (availHeight < 1.0f)
+                availHeight = 1.0f;
+
+            EditorBridge.SetGameViewSize(availWidth, availHeight);
+            ulong gameViewTextureHandle = EditorBridge.GetGameViewTextureHandle();
+            if (gameViewTextureHandle != 0)
+                ImGui.Image(gameViewTextureHandle, availWidth, availHeight);
+            else
+                ImGui.InvisibleButton("##RuntimeGameImagePlaceholder", availWidth, availHeight);
 
             ImGui.End();
         }
