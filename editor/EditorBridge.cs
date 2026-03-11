@@ -86,6 +86,39 @@ namespace Engine
         public static extern void SetSimulationPaused(bool paused);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern uint CreateAuxiliaryWindow(string title,
+                                int width,
+                                int height,
+                                bool resizable,
+                                bool borderless,
+                                bool alwaysOnTop,
+                                bool startHidden);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool DestroyAuxiliaryWindow(uint windowId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void DestroyAllAuxiliaryWindows();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool ShowAuxiliaryWindow(uint windowId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool HideAuxiliaryWindow(uint windowId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool SetAuxiliaryWindowTitle(uint windowId, string title);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool SetAuxiliaryWindowSize(uint windowId, int width, int height);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool CenterAuxiliaryWindow(uint windowId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern int GetAuxiliaryWindowCount();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern int GetScriptedEntityCount();
 
         [MethodImpl(MethodImplOptions.InternalCall)]

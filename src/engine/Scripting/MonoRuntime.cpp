@@ -1,5 +1,6 @@
 #include "MonoRuntime.h"
 
+#include "engine/Engine.h"
 #include "engine/ECS/Components.h"
 #include "engine/ECS/Scene.h"
 #include "engine/Platform/ExplorerDialog.h"
@@ -397,6 +398,15 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::StartPlayMode", (const void*)&EditorBridge_StartPlayMode);
         mono_add_internal_call("Engine.EditorBridge::StopPlayMode", (const void*)&EditorBridge_StopPlayMode);
         mono_add_internal_call("Engine.EditorBridge::SetSimulationPaused", (const void*)&EditorBridge_SetSimulationPaused);
+        mono_add_internal_call("Engine.EditorBridge::CreateAuxiliaryWindow", (const void*)&EditorBridge_CreateAuxiliaryWindow);
+        mono_add_internal_call("Engine.EditorBridge::DestroyAuxiliaryWindow", (const void*)&EditorBridge_DestroyAuxiliaryWindow);
+        mono_add_internal_call("Engine.EditorBridge::DestroyAllAuxiliaryWindows", (const void*)&EditorBridge_DestroyAllAuxiliaryWindows);
+        mono_add_internal_call("Engine.EditorBridge::ShowAuxiliaryWindow", (const void*)&EditorBridge_ShowAuxiliaryWindow);
+        mono_add_internal_call("Engine.EditorBridge::HideAuxiliaryWindow", (const void*)&EditorBridge_HideAuxiliaryWindow);
+        mono_add_internal_call("Engine.EditorBridge::SetAuxiliaryWindowTitle", (const void*)&EditorBridge_SetAuxiliaryWindowTitle);
+        mono_add_internal_call("Engine.EditorBridge::SetAuxiliaryWindowSize", (const void*)&EditorBridge_SetAuxiliaryWindowSize);
+        mono_add_internal_call("Engine.EditorBridge::CenterAuxiliaryWindow", (const void*)&EditorBridge_CenterAuxiliaryWindow);
+        mono_add_internal_call("Engine.EditorBridge::GetAuxiliaryWindowCount", (const void*)&EditorBridge_GetAuxiliaryWindowCount);
         mono_add_internal_call("Engine.EditorBridge::GetScriptedEntityCount", (const void*)&EditorBridge_GetScriptedEntityCount);
         mono_add_internal_call("Engine.EditorBridge::HasComponent", (const void*)&EditorBridge_HasComponent);
         mono_add_internal_call("Engine.EditorBridge::AddComponent", (const void*)&EditorBridge_AddComponent);
@@ -611,12 +621,13 @@ bool MonoRuntime::Initialize()
 #endif
 }
 
-void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
+void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engine* engineContext)
 {
 #if !ENGINE_MONO_RUNTIME_AVAILABLE
     (void)deltaTime;
     (void)scene;
     (void)renderer;
+    (void)engineContext;
 #else
     if (!m_impl)
         return;
@@ -736,6 +747,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
     {
         g_editorSceneContext = scene;
         g_editorRendererContext = renderer;
+        g_editorEngineContext = engineContext;
 
         if (m_impl->editorLoaded && m_impl->editorOnUpdate)
         {
@@ -747,6 +759,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
     {
         g_editorSceneContext = nullptr;
         g_editorRendererContext = nullptr;
+        g_editorEngineContext = nullptr;
     }
 
     const bool runGameplay = MonoRuntime_ShouldRunGameplay(m_impl.get());
@@ -761,6 +774,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
     {
         g_editorSceneContext = nullptr;
         g_editorRendererContext = nullptr;
+        g_editorEngineContext = nullptr;
         return;
     }
 
@@ -882,6 +896,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
 
     g_editorSceneContext = nullptr;
     g_editorRendererContext = nullptr;
+    g_editorEngineContext = nullptr;
 #endif
 }
 
@@ -905,12 +920,14 @@ void MonoRuntime::Shutdown(Scene* scene)
     {
         g_editorSceneContext = scene;
         g_editorRendererContext = nullptr;
+        g_editorEngineContext = nullptr;
 
         if (m_impl->editorLoaded && m_impl->editorOnShutdown)
             mono_runtime_invoke(m_impl->editorOnShutdown, nullptr, nullptr, nullptr);
 
         g_editorSceneContext = nullptr;
         g_editorRendererContext = nullptr;
+        g_editorEngineContext = nullptr;
     }
 
     MonoRuntime_StopActiveScriptInstances(m_impl.get(), scene);

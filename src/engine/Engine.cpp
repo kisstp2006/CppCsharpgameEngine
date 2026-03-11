@@ -393,7 +393,7 @@ void Engine::Run()
 
 #ifndef ENGINE_MONO_DISABLED
         if (m_mono)
-            m_mono->Update(deltaTime, m_scene.get(), m_renderer.get());
+            m_mono->Update(deltaTime, m_scene.get(), m_renderer.get(), this);
 #endif
 
         if (m_scene && m_renderer)

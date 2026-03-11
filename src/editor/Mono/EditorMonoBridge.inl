@@ -1,6 +1,7 @@
 #if ENGINE_MONO_RUNTIME_AVAILABLE
 static Scene* g_editorSceneContext = nullptr;
 static Renderer* g_editorRendererContext = nullptr;
+static Engine* g_editorEngineContext = nullptr;
 static bool g_editorTopBarStylePushed = false;
 static std::string g_editorSceneIoStatus = "Ready.";
 
@@ -450,6 +451,106 @@ static void EditorBridge_SetSimulationPaused(bool paused)
         : MonoRuntime::SimulationState::Play;
 
     g_editorSceneIoStatus = paused ? "Paused play mode." : "Resumed play mode.";
+}
+
+static std::uint32_t EditorBridge_CreateAuxiliaryWindow(MonoString* title,
+                                                        int width,
+                                                        int height,
+                                                        bool resizable,
+                                                        bool borderless,
+                                                        bool alwaysOnTop,
+                                                        bool startHidden)
+{
+    if (!g_editorEngineContext || !g_editorEngineContext->IsEditorMode())
+    {
+        g_editorSceneIoStatus = "Aux window create failed: editor engine context unavailable.";
+        return 0;
+    }
+
+    Engine::AuxiliaryWindowDesc desc;
+    desc.title = MonoStringToUtf8(title);
+    desc.width = width;
+    desc.height = height;
+    desc.resizable = resizable;
+    desc.borderless = borderless;
+    desc.alwaysOnTop = alwaysOnTop;
+    desc.startHidden = startHidden;
+
+    const Engine::AuxiliaryWindowId id = g_editorEngineContext->CreateAuxiliaryWindow(desc);
+    if (id == 0)
+        g_editorSceneIoStatus = "Aux window create failed.";
+    else
+        g_editorSceneIoStatus = "Created auxiliary window.";
+
+    return id;
+}
+
+static bool EditorBridge_DestroyAuxiliaryWindow(std::uint32_t id)
+{
+    if (!g_editorEngineContext || !g_editorEngineContext->IsEditorMode())
+        return false;
+
+    const bool ok = g_editorEngineContext->DestroyAuxiliaryWindow(id);
+    if (!ok)
+        g_editorSceneIoStatus = "Aux window destroy failed.";
+    return ok;
+}
+
+static void EditorBridge_DestroyAllAuxiliaryWindows()
+{
+    if (!g_editorEngineContext || !g_editorEngineContext->IsEditorMode())
+        return;
+
+    g_editorEngineContext->DestroyAllAuxiliaryWindows();
+    g_editorSceneIoStatus = "Destroyed all auxiliary windows.";
+}
+
+static bool EditorBridge_ShowAuxiliaryWindow(std::uint32_t id)
+{
+    if (!g_editorEngineContext || !g_editorEngineContext->IsEditorMode())
+        return false;
+
+    return g_editorEngineContext->ShowAuxiliaryWindow(id);
+}
+
+static bool EditorBridge_HideAuxiliaryWindow(std::uint32_t id)
+{
+    if (!g_editorEngineContext || !g_editorEngineContext->IsEditorMode())
+        return false;
+
+    return g_editorEngineContext->HideAuxiliaryWindow(id);
+}
+
+static bool EditorBridge_SetAuxiliaryWindowTitle(std::uint32_t id, MonoString* title)
+{
+    if (!g_editorEngineContext || !g_editorEngineContext->IsEditorMode())
+        return false;
+
+    return g_editorEngineContext->SetAuxiliaryWindowTitle(id, MonoStringToUtf8(title));
+}
+
+static bool EditorBridge_SetAuxiliaryWindowSize(std::uint32_t id, int width, int height)
+{
+    if (!g_editorEngineContext || !g_editorEngineContext->IsEditorMode())
+        return false;
+
+    return g_editorEngineContext->SetAuxiliaryWindowSize(id, width, height);
+}
+
+static bool EditorBridge_CenterAuxiliaryWindow(std::uint32_t id)
+{
+    if (!g_editorEngineContext || !g_editorEngineContext->IsEditorMode())
+        return false;
+
+    return g_editorEngineContext->CenterAuxiliaryWindow(id);
+}
+
+static int EditorBridge_GetAuxiliaryWindowCount()
+{
+    if (!g_editorEngineContext || !g_editorEngineContext->IsEditorMode())
+        return 0;
+
+    return static_cast<int>(g_editorEngineContext->GetAuxiliaryWindowCount());
 }
 
 static int EditorBridge_GetScriptedEntityCount()

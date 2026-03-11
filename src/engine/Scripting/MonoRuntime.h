@@ -5,6 +5,7 @@
 
 class Scene;
 class Renderer;
+class Engine;
 
 class MonoRuntime
 {
@@ -25,7 +26,7 @@ public:
     bool Initialize();
     void SetPreferredScriptAssemblyPath(const std::string& assemblyPath);
     void SetPreferredScriptProjectPath(const std::string& projectPath);
-    void Update(float deltaTime, Scene* scene, Renderer* renderer);
+    void Update(float deltaTime, Scene* scene, Renderer* renderer, Engine* engineContext = nullptr);
     SimulationState GetSimulationState() const;
     bool StartPlayMode(Scene* scene);
     void StopPlayMode(Scene* scene);
