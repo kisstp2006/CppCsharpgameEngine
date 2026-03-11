@@ -6,6 +6,7 @@
 #include "ECS/Scene.h"
 #include "Platform/SDLInputState.h"
 #include "Platform/SDLWindow.h"
+#include "Platform/AuxiliaryWindowManager.h"
 #include "Render/DebugDraw.h"
 #include "Render/Renderer.h"
 #include "Render/Texture.h"
@@ -162,6 +163,63 @@ bool Engine::LoadScene(const std::filesystem::path& scenePath, SceneStorageForma
     return true;
 }
 
+Engine::AuxiliaryWindowId Engine::CreateAuxiliaryWindow(const AuxiliaryWindowDesc& desc)
+{
+    if (!m_auxiliaryWindows)
+        return 0;
+
+    AuxiliaryWindowManager::CreateDesc nativeDesc;
+    nativeDesc.title = desc.title;
+    nativeDesc.width = desc.width;
+    nativeDesc.height = desc.height;
+    nativeDesc.resizable = desc.resizable;
+    nativeDesc.borderless = desc.borderless;
+    nativeDesc.alwaysOnTop = desc.alwaysOnTop;
+    nativeDesc.startHidden = desc.startHidden;
+    return m_auxiliaryWindows->CreateWindow(nativeDesc);
+}
+
+bool Engine::DestroyAuxiliaryWindow(AuxiliaryWindowId id)
+{
+    return m_auxiliaryWindows && m_auxiliaryWindows->DestroyWindow(id);
+}
+
+void Engine::DestroyAllAuxiliaryWindows()
+{
+    if (m_auxiliaryWindows)
+        m_auxiliaryWindows->DestroyAllWindows();
+}
+
+bool Engine::ShowAuxiliaryWindow(AuxiliaryWindowId id)
+{
+    return m_auxiliaryWindows && m_auxiliaryWindows->ShowWindow(id);
+}
+
+bool Engine::HideAuxiliaryWindow(AuxiliaryWindowId id)
+{
+    return m_auxiliaryWindows && m_auxiliaryWindows->HideWindow(id);
+}
+
+bool Engine::SetAuxiliaryWindowTitle(AuxiliaryWindowId id, const std::string& title)
+{
+    return m_auxiliaryWindows && m_auxiliaryWindows->SetWindowTitle(id, title);
+}
+
+bool Engine::SetAuxiliaryWindowSize(AuxiliaryWindowId id, int width, int height)
+{
+    return m_auxiliaryWindows && m_auxiliaryWindows->SetWindowSize(id, width, height);
+}
+
+bool Engine::CenterAuxiliaryWindow(AuxiliaryWindowId id)
+{
+    return m_auxiliaryWindows && m_auxiliaryWindows->CenterWindow(id);
+}
+
+std::size_t Engine::GetAuxiliaryWindowCount() const
+{
+    return m_auxiliaryWindows ? m_auxiliaryWindows->GetWindowCount() : 0;
+}
+
 void Engine::SetEditorMode(bool enabled)
 {
     m_editorMode = enabled;
@@ -177,6 +235,8 @@ bool Engine::Initialize(const std::string& title, int width, int height)
     m_window = std::make_unique<SDLWindow>();
     if (!m_window->Initialize(title, width, height))
         return false;
+
+    m_auxiliaryWindows = std::make_unique<AuxiliaryWindowManager>();
 
     m_renderer = std::make_unique<Renderer>();
     if (!m_renderer->Initialize(width, height))
@@ -281,6 +341,9 @@ void Engine::Run()
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
+            if (m_auxiliaryWindows && m_auxiliaryWindows->HandleWindowCloseEvent(event))
+                continue;
+
             SDLInputState::ProcessEvent(event);
             ImGui_ImplSDL2_ProcessEvent(&event);
             if (event.type == SDL_QUIT)
@@ -457,6 +520,9 @@ void Engine::Run()
 
 void Engine::Shutdown()
 {
+    DestroyAllAuxiliaryWindows();
+    m_auxiliaryWindows.reset();
+
     ShutdownImGui();
 
 #ifndef ENGINE_MONO_DISABLED

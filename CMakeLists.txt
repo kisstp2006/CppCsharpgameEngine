@@ -174,6 +174,7 @@ add_library(Engine STATIC
   src/engine/Assets/ProjectContext.cpp
   src/engine/ECS/Scene.cpp
   src/engine/Platform/ExplorerDialog.cpp
+  src/engine/Platform/AuxiliaryWindowManager.cpp
   src/engine/Platform/SDLInputState.cpp
   src/engine/Render/DebugDraw.cpp
   src/engine/Platform/SDLWindow.cpp
