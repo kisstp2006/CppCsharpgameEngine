@@ -383,10 +383,8 @@ namespace EngineEditor
                 return;
 
             bool changed = false;
-            changed |= ImGui.InputFloat("X", ref x, 1.0f);
-            changed |= ImGui.InputFloat("Y", ref y, 1.0f);
-            changed |= ImGui.InputFloat("Width", ref width, 1.0f);
-            changed |= ImGui.InputFloat("Height", ref height, 1.0f);
+            changed |= InspectorInputs.Vector2("Position", ref x, ref y, 1.0f);
+            changed |= InspectorInputs.Vector2("Size", ref width, ref height, 1.0f);
 
             if (changed)
                 EditorBridge.SetTransform(entityId, x, y, width, height);
@@ -406,8 +404,7 @@ namespace EngineEditor
             if (EditorBridge.GetCamera(entityId, out camX, out camY, out camZoom))
             {
                 bool cameraChanged = false;
-                cameraChanged |= ImGui.InputFloat("Cam X", ref camX, 1.0f);
-                cameraChanged |= ImGui.InputFloat("Cam Y", ref camY, 1.0f);
+                cameraChanged |= InspectorInputs.Vector2("Cam Position", ref camX, ref camY, 1.0f);
                 cameraChanged |= ImGui.InputFloat("Cam Zoom", ref camZoom, 0.1f);
 
                 if (cameraChanged)
@@ -422,15 +419,15 @@ namespace EngineEditor
             if (scriptTypeName == null)
                 scriptTypeName = string.Empty;
 
-            string updatedScriptTypeName = ImGui.InputText("Script Type", scriptTypeName);
-            if (updatedScriptTypeName != scriptTypeName)
-                EditorBridge.SetScriptTypeName(entityId, updatedScriptTypeName);
+            if (InspectorInputs.ScriptType("Script Type", ref scriptTypeName))
+                EditorBridge.SetScriptTypeName(entityId, scriptTypeName);
 
             bool scriptEnabled = EditorBridge.GetScriptEnabled(entityId);
             ImGui.Text("Enabled: " + (scriptEnabled ? "yes" : "no"));
 
-            if (ImGui.Button(scriptEnabled ? "Disable Script" : "Enable Script"))
-                EditorBridge.SetScriptEnabled(entityId, !scriptEnabled);
+            bool enabledValue = scriptEnabled;
+            if (InspectorInputs.Bool("Script Enabled", ref enabledValue) && enabledValue != scriptEnabled)
+                EditorBridge.SetScriptEnabled(entityId, enabledValue);
 
         }
 
