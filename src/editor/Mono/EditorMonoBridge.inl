@@ -168,6 +168,134 @@ static bool EditorBridge_IsEntityValid(std::uint32_t entityId)
     return g_editorSceneContext->IsValid(entity);
 }
 
+static EntityMetadataComponent* EditorBridge_GetMetadata(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return nullptr;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity))
+        return nullptr;
+
+    return g_editorSceneContext->TryGetMetadata(entity);
+}
+
+static const EntityMetadataComponent* EditorBridge_GetMetadataConst(std::uint32_t entityId)
+{
+    return EditorBridge_GetMetadata(entityId);
+}
+
+static std::string TrimWhitespace(const std::string& value)
+{
+    const std::string whitespace = " \t\r\n";
+    const std::size_t start = value.find_first_not_of(whitespace);
+    if (start == std::string::npos)
+        return {};
+
+    const std::size_t end = value.find_last_not_of(whitespace);
+    return value.substr(start, end - start + 1);
+}
+
+static MonoString* EditorBridge_GetEntityName(std::uint32_t entityId)
+{
+    const EntityMetadataComponent* metadata = EditorBridge_GetMetadataConst(entityId);
+    if (!metadata)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, metadata->name.c_str()) : nullptr;
+}
+
+static void EditorBridge_SetEntityName(std::uint32_t entityId, MonoString* value)
+{
+    EntityMetadataComponent* metadata = EditorBridge_GetMetadata(entityId);
+    if (!metadata)
+        return;
+
+    std::string name = TrimWhitespace(MonoStringToUtf8(value));
+    if (name.empty())
+        name = "Entity " + std::to_string(metadata->sceneEntityId);
+
+    metadata->name = name;
+}
+
+static MonoString* EditorBridge_GetEntityTag(std::uint32_t entityId)
+{
+    const EntityMetadataComponent* metadata = EditorBridge_GetMetadataConst(entityId);
+    if (!metadata)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, metadata->tag.c_str()) : nullptr;
+}
+
+static void EditorBridge_SetEntityTag(std::uint32_t entityId, MonoString* value)
+{
+    EntityMetadataComponent* metadata = EditorBridge_GetMetadata(entityId);
+    if (!metadata)
+        return;
+
+    std::string tag = TrimWhitespace(MonoStringToUtf8(value));
+    if (tag.empty())
+        tag = "Untagged";
+
+    metadata->tag = tag;
+}
+
+static std::uint32_t EditorBridge_GetEntityLayer(std::uint32_t entityId)
+{
+    const EntityMetadataComponent* metadata = EditorBridge_GetMetadataConst(entityId);
+    if (!metadata)
+        return 0;
+
+    return metadata->layer > 31 ? 31 : metadata->layer;
+}
+
+static void EditorBridge_SetEntityLayer(std::uint32_t entityId, std::uint32_t value)
+{
+    EntityMetadataComponent* metadata = EditorBridge_GetMetadata(entityId);
+    if (!metadata)
+        return;
+
+    metadata->layer = value > 31 ? 31 : value;
+}
+
+static bool EditorBridge_GetEntityStatic(std::uint32_t entityId)
+{
+    const EntityMetadataComponent* metadata = EditorBridge_GetMetadataConst(entityId);
+    if (!metadata)
+        return false;
+
+    return metadata->isStatic;
+}
+
+static void EditorBridge_SetEntityStatic(std::uint32_t entityId, bool value)
+{
+    EntityMetadataComponent* metadata = EditorBridge_GetMetadata(entityId);
+    if (!metadata)
+        return;
+
+    metadata->isStatic = value;
+}
+
+static bool EditorBridge_GetEntityActive(std::uint32_t entityId)
+{
+    const EntityMetadataComponent* metadata = EditorBridge_GetMetadataConst(entityId);
+    if (!metadata)
+        return false;
+
+    return metadata->active;
+}
+
+static void EditorBridge_SetEntityActive(std::uint32_t entityId, bool value)
+{
+    EntityMetadataComponent* metadata = EditorBridge_GetMetadata(entityId);
+    if (!metadata)
+        return;
+
+    metadata->active = value;
+}
+
 static std::uint32_t EditorBridge_CreateEntity()
 {
     if (!g_editorSceneContext)

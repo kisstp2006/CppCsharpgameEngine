@@ -13,7 +13,7 @@
 
 namespace
 {
-    constexpr std::uint32_t kSceneFileVersion = 1;
+    constexpr std::uint32_t kSceneFileVersion = 2;
 
     enum ComponentFlags : std::uint8_t
     {
@@ -27,7 +27,10 @@ namespace
     {
         std::uint64_t sceneEntityId = 0;
         std::string name;
+        std::string tag = "Untagged";
+        std::uint32_t layer = 0;
         bool active = true;
+        bool isStatic = false;
 
         bool hasTransform = false;
         TransformComponent transform;
@@ -100,6 +103,25 @@ namespace
         }
 
         outValue = value.GetBool();
+        return true;
+    }
+
+    static bool ReadOptionalUInt32(const rapidjson::Value& object,
+                                   const char* key,
+                                   std::uint32_t& outValue,
+                                   std::string& outError)
+    {
+        if (!object.HasMember(key))
+            return true;
+
+        const rapidjson::Value& value = object[key];
+        if (!value.IsUint())
+        {
+            outError = std::string("Field '") + key + "' must be uint32.";
+            return false;
+        }
+
+        outValue = value.GetUint();
         return true;
     }
 
@@ -192,13 +214,19 @@ namespace
             {
                 persisted.sceneEntityId = metadata->sceneEntityId;
                 persisted.name = metadata->name;
+                persisted.tag = metadata->tag;
+                persisted.layer = metadata->layer;
                 persisted.active = metadata->active;
+                persisted.isStatic = metadata->isStatic;
             }
             else
             {
                 persisted.sceneEntityId = static_cast<std::uint64_t>(scene.ToEntityId(entity));
                 persisted.name = "Entity " + std::to_string(persisted.sceneEntityId);
+                persisted.tag = "Untagged";
+                persisted.layer = 0;
                 persisted.active = true;
+                persisted.isStatic = false;
             }
 
             if (const TransformComponent* transform = scene.TryGetTransform(entity))
@@ -359,6 +387,12 @@ EntityMetadataComponent& Scene::AddMetadata(Entity entity, const EntityMetadataC
 
     if (value.name.empty())
         value.name = "Entity " + std::to_string(value.sceneEntityId);
+
+    if (value.tag.empty())
+        value.tag = "Untagged";
+
+    if (value.layer > 31)
+        value.layer = 31;
 
     m_sceneEntityLookup[value.sceneEntityId] = entity;
 
@@ -522,6 +556,10 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
 
             const std::uint8_t active = entity.active ? 1 : 0;
             WriteBinary(output, active);
+            WriteStringBinary(output, entity.tag);
+            WriteBinary(output, entity.layer);
+            const std::uint8_t isStatic = entity.isStatic ? 1 : 0;
+            WriteBinary(output, isStatic);
             WriteBinary(output, componentMask);
 
             if (entity.hasTransform)
@@ -579,7 +617,14 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
         rapidjson::Value nameValue;
         nameValue.SetString(entity.name.c_str(), static_cast<rapidjson::SizeType>(entity.name.size()), allocator);
         entityObject.AddMember("name", nameValue, allocator);
+
+        rapidjson::Value tagValue;
+        tagValue.SetString(entity.tag.c_str(), static_cast<rapidjson::SizeType>(entity.tag.size()), allocator);
+        entityObject.AddMember("tag", tagValue, allocator);
+
+        entityObject.AddMember("layer", entity.layer, allocator);
         entityObject.AddMember("active", entity.active, allocator);
+        entityObject.AddMember("static", entity.isStatic, allocator);
 
         rapidjson::Value componentsObject(rapidjson::kObjectType);
 
@@ -690,7 +735,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             return false;
         }
 
-        if (fileVersion != kSceneFileVersion)
+        if (fileVersion < 1 || fileVersion > kSceneFileVersion)
         {
             m_lastIoError = "Unsupported binary scene version: " + std::to_string(fileVersion);
             return false;
@@ -709,18 +754,46 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
         {
             PersistedEntity entity;
             std::uint8_t active = 0;
+            std::uint8_t isStatic = 0;
             std::uint8_t componentMask = 0;
 
             if (!ReadBinary(input, entity.sceneEntityId) ||
                 !ReadStringBinary(input, entity.name) ||
-                !ReadBinary(input, active) ||
-                !ReadBinary(input, componentMask))
+                !ReadBinary(input, active))
             {
                 m_lastIoError = "Failed to read binary entity header data.";
                 return false;
             }
 
+            if (fileVersion >= 2)
+            {
+                if (!ReadStringBinary(input, entity.tag) ||
+                    !ReadBinary(input, entity.layer) ||
+                    !ReadBinary(input, isStatic) ||
+                    !ReadBinary(input, componentMask))
+                {
+                    m_lastIoError = "Failed to read binary entity metadata data.";
+                    return false;
+                }
+            }
+            else
+            {
+                if (!ReadBinary(input, componentMask))
+                {
+                    m_lastIoError = "Failed to read binary entity component mask.";
+                    return false;
+                }
+
+                entity.tag = "Untagged";
+                entity.layer = 0;
+                isStatic = 0;
+            }
+
             entity.active = active != 0;
+            entity.isStatic = isStatic != 0;
+
+            if (entity.layer > 31)
+                entity.layer = 31;
             entity.hasTransform = (componentMask & Component_Transform) != 0;
             entity.hasCamera = (componentMask & Component_Camera) != 0;
             entity.hasSprite = (componentMask & Component_Sprite) != 0;
@@ -840,14 +913,28 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             }
 
             entity.name = "Entity " + std::to_string(entity.sceneEntityId);
+            entity.tag = "Untagged";
+            entity.layer = 0;
             entity.active = true;
+            entity.isStatic = false;
 
             if (!ReadOptionalString(entityValue, "name", entity.name, parseError) ||
+                !ReadOptionalString(entityValue, "tag", entity.tag, parseError) ||
+                !ReadOptionalUInt32(entityValue, "layer", entity.layer, parseError) ||
                 !ReadOptionalBool(entityValue, "active", entity.active, parseError))
             {
                 m_lastIoError = "Invalid JSON entity header: " + parseError;
                 return false;
             }
+
+            if (!ReadOptionalBool(entityValue, "static", entity.isStatic, parseError))
+            {
+                m_lastIoError = "Invalid JSON entity static flag: " + parseError;
+                return false;
+            }
+
+            if (entity.layer > 31)
+                entity.layer = 31;
 
             if (entityValue.HasMember("components"))
             {
@@ -940,7 +1027,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
         }
     }
 
-    if (fileVersion != kSceneFileVersion)
+    if (fileVersion < 1 || fileVersion > kSceneFileVersion)
     {
         m_lastIoError = "Unsupported scene version: " + std::to_string(fileVersion);
         return false;
@@ -967,6 +1054,13 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
         {
             m_lastIoError = "Failed to create entity while loading scene.";
             return false;
+        }
+
+        if (EntityMetadataComponent* metadata = TryGetMetadata(entity))
+        {
+            metadata->tag = persisted.tag.empty() ? "Untagged" : persisted.tag;
+            metadata->layer = persisted.layer > 31 ? 31 : persisted.layer;
+            metadata->isStatic = persisted.isStatic;
         }
 
         if (persisted.hasTransform)

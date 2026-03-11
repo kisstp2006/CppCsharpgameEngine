@@ -22,6 +22,36 @@ namespace Engine
         public static extern bool IsEntityValid(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern string GetEntityName(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetEntityName(uint entityId, string value);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern string GetEntityTag(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetEntityTag(uint entityId, string value);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern uint GetEntityLayer(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetEntityLayer(uint entityId, uint value);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool GetEntityStatic(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetEntityStatic(uint entityId, bool value);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool GetEntityActive(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetEntityActive(uint entityId, bool value);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern uint CreateEntity();
 
         [MethodImpl(MethodImplOptions.InternalCall)]

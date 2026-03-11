@@ -6,6 +6,74 @@ namespace EngineEditor
 {
     internal static class InspectorInputs
     {
+        public static bool String(string label, ref string value)
+        {
+            string current = value ?? string.Empty;
+            string updated = ImGui.InputText(label, current);
+            if (updated == null || updated == current)
+                return false;
+
+            value = updated;
+            return true;
+        }
+
+        public static bool SelectString(string label, ref string value, string[] options)
+        {
+            bool changed = false;
+
+            string current = value ?? string.Empty;
+            string updated = ImGui.InputText(label, current);
+            if (updated != null && updated != current)
+            {
+                value = updated;
+                current = updated;
+                changed = true;
+            }
+
+            string popupId = "ValueSelector##" + label;
+            ImGui.SameLine();
+            if (ImGui.Button("Select##" + label))
+                ImGui.OpenPopup(popupId);
+
+            if (ImGui.BeginPopupModal(popupId))
+            {
+                ImGui.Text("Available values");
+                ImGui.Separator();
+
+                if (options == null || options.Length == 0)
+                {
+                    ImGui.Text("No options available.");
+                }
+                else
+                {
+                    for (int i = 0; i < options.Length; ++i)
+                    {
+                        string option = options[i] ?? string.Empty;
+                        bool selected = string.Equals(option, current, StringComparison.Ordinal);
+                        if (ImGui.Selectable(option + "##SelectOption" + label + i, selected))
+                        {
+                            if (!string.Equals(value, option, StringComparison.Ordinal))
+                            {
+                                value = option;
+                                changed = true;
+                            }
+
+                            ImGui.CloseCurrentPopup();
+                            break;
+                        }
+                    }
+                }
+
+                ImGui.Separator();
+                if (ImGui.Button("Close##" + popupId))
+                    ImGui.CloseCurrentPopup();
+
+                ImGui.EndPopup();
+            }
+
+            return changed;
+        }
+
         public static bool Vector2(string label, ref float x, ref float y, float step)
         {
             ImGui.Text(label);

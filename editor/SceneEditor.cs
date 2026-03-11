@@ -31,12 +31,23 @@ namespace EngineEditor
         private static bool _componentRegistryInitialized = false;
         private static readonly List<ComponentInspectorEntry> _componentEntries = new List<ComponentInspectorEntry>();
         private static readonly Dictionary<uint, string> _scriptAssignmentErrors = new Dictionary<uint, string>();
+        private static readonly Dictionary<string, bool> _componentFoldoutStates = new Dictionary<string, bool>();
         private static string _activeScenePath = string.Empty;
         private static int _activeSceneStorageFormat = SceneStorageJson;
         private static bool _optionsRegistered = false;
         private static bool _assetContextMenuRegistered = false;
         private static bool _defaultGizmoSnapEnabled = false;
         private static float _defaultGizmoSnapStep = 32.0f;
+        private static readonly string[] _defaultTags = new string[]
+        {
+            "Untagged",
+            "Player",
+            "Enemy",
+            "Environment",
+            "Collectible",
+            "UI"
+        };
+        private static readonly string[] _layerOptions = BuildLayerOptions();
 
         private const int SceneStorageJson = 0;
         private const int SceneStorageBinary = 1;
@@ -73,6 +84,7 @@ namespace EngineEditor
             _gizmoSnapEnabled = _defaultGizmoSnapEnabled;
             _gizmoSnapStep = _defaultGizmoSnapStep;
             _scriptAssignmentErrors.Clear();
+            _componentFoldoutStates.Clear();
             DebugDraw.Clear();
         }
 
@@ -131,6 +143,7 @@ namespace EngineEditor
             EditorBridge.NewScene();
             _selectedEntityId = -1;
             _scriptAssignmentErrors.Clear();
+            _componentFoldoutStates.Clear();
             _activeScenePath = string.Empty;
             _activeSceneStorageFormat = SceneStorageJson;
 
@@ -188,6 +201,7 @@ namespace EngineEditor
             _scriptAssignmentErrors.Clear();
             _activeScenePath = Path.GetFullPath(candidatePath);
             _activeSceneStorageFormat = storageFormat;
+            _componentFoldoutStates.Clear();
 
             ProjectOperations.SetStatusMessage("Created scene: " + Path.GetFileName(_activeScenePath));
             return true;
@@ -215,6 +229,7 @@ namespace EngineEditor
                 _activeSceneStorageFormat = format;
                 _selectedEntityId = -1;
                 _scriptAssignmentErrors.Clear();
+                _componentFoldoutStates.Clear();
                 ProjectOperations.SetStatusMessage("Loaded scene: " + Path.GetFileName(resolvedPath));
                 return true;
             }
@@ -481,7 +496,11 @@ namespace EngineEditor
                 for (int i = 0; i < entityCount; ++i)
                 {
                     uint entityId = EditorBridge.GetEntityIdAtIndex(i);
-                    string label = "Entity " + entityId;
+                    string entityName = EditorBridge.GetEntityName(entityId);
+                    if (string.IsNullOrWhiteSpace(entityName))
+                        entityName = "Entity " + entityId;
+
+                    string label = entityName + "##SceneTreeEntity" + entityId;
                     bool selected = ((uint)_selectedEntityId == entityId);
                     if (ImGui.Selectable(label, selected))
                         _selectedEntityId = (int)entityId;
@@ -509,12 +528,8 @@ namespace EngineEditor
                     }
                     else
                     {
-                        ImGui.Text("Entity: " + entityId);
-
-                        if (ImGui.Button("Delete Entity"))
+                        if (!DrawEntityHeaderInspector(entityId))
                         {
-                            EditorBridge.DestroyEntity(entityId);
-                            _selectedEntityId = -1;
                             ImGui.End();
                             return;
                         }
@@ -528,25 +543,168 @@ namespace EngineEditor
                             if (!EditorBridge.HasComponent(entityId, entry.ComponentType))
                                 continue;
 
-                            ImGui.Separator();
-                            ImGui.Text(entry.Name);
-
-                            if (entry.CanRemove)
-                            {
-                                ImGui.SameLine();
-                                if (ImGui.Button("Remove##" + entry.Name))
-                                {
-                                    EditorBridge.RemoveComponent(entityId, entry.ComponentType);
-                                    continue;
-                                }
-                            }
-
-                            entry.Draw(entityId);
+                            DrawComponentCard(entityId, entry);
                         }
                     }
                 }
             }
             ImGui.End();
+        }
+
+        private static bool DrawEntityHeaderInspector(uint entityId)
+        {
+            ImGui.Text("Entity " + entityId);
+            ImGui.SameLine();
+
+            if (ImGui.Button("Delete Entity"))
+            {
+                EditorBridge.DestroyEntity(entityId);
+                _selectedEntityId = -1;
+                return false;
+            }
+
+            string entityName = EditorBridge.GetEntityName(entityId);
+            if (string.IsNullOrWhiteSpace(entityName))
+                entityName = "Entity " + entityId;
+
+            if (InspectorInputs.String("Name", ref entityName))
+                EditorBridge.SetEntityName(entityId, entityName);
+
+            string tag = EditorBridge.GetEntityTag(entityId);
+            if (string.IsNullOrWhiteSpace(tag))
+                tag = "Untagged";
+
+            if (InspectorInputs.SelectString("Tag", ref tag, BuildTagOptions(entityId)))
+                EditorBridge.SetEntityTag(entityId, tag);
+
+            uint layer = EditorBridge.GetEntityLayer(entityId);
+            string layerValue = LayerToLabel(layer);
+            if (InspectorInputs.SelectString("Layer", ref layerValue, _layerOptions))
+            {
+                if (TryParseLayerLabel(layerValue, out uint parsedLayer))
+                    EditorBridge.SetEntityLayer(entityId, parsedLayer);
+            }
+
+            bool isStatic = EditorBridge.GetEntityStatic(entityId);
+            if (InspectorInputs.Bool("Static", ref isStatic))
+                EditorBridge.SetEntityStatic(entityId, isStatic);
+
+            bool active = EditorBridge.GetEntityActive(entityId);
+            if (InspectorInputs.Bool("Active", ref active))
+                EditorBridge.SetEntityActive(entityId, active);
+
+            return true;
+        }
+
+        private static void DrawComponentCard(uint entityId, ComponentInspectorEntry entry)
+        {
+            string foldoutKey = entityId + ":" + entry.ComponentType;
+            bool expanded;
+            if (!_componentFoldoutStates.TryGetValue(foldoutKey, out expanded))
+            {
+                expanded = true;
+                _componentFoldoutStates[foldoutKey] = true;
+            }
+
+            ImGui.Separator();
+            string foldoutLabel = (expanded ? "v " : "> ") + entry.Name + "##ComponentFoldout" + foldoutKey;
+            if (ImGui.Button(foldoutLabel))
+            {
+                expanded = !expanded;
+                _componentFoldoutStates[foldoutKey] = expanded;
+            }
+
+            if (entry.CanRemove)
+            {
+                ImGui.SameLine();
+                if (ImGui.Button("Remove##" + foldoutKey))
+                {
+                    EditorBridge.RemoveComponent(entityId, entry.ComponentType);
+                    _componentFoldoutStates.Remove(foldoutKey);
+                    return;
+                }
+            }
+
+            if (expanded)
+                entry.Draw(entityId);
+        }
+
+        private static string[] BuildTagOptions(uint selectedEntityId)
+        {
+            var tags = new List<string>();
+
+            for (int i = 0; i < _defaultTags.Length; ++i)
+            {
+                string tag = _defaultTags[i];
+                if (!string.IsNullOrWhiteSpace(tag) && !tags.Contains(tag))
+                    tags.Add(tag);
+            }
+
+            int entityCount = EditorBridge.GetEntityCount();
+            for (int i = 0; i < entityCount; ++i)
+            {
+                uint entityId = EditorBridge.GetEntityIdAtIndex(i);
+                if (entityId == 0 || !EditorBridge.IsEntityValid(entityId))
+                    continue;
+
+                string tag = EditorBridge.GetEntityTag(entityId);
+                if (string.IsNullOrWhiteSpace(tag))
+                    continue;
+
+                if (!tags.Contains(tag))
+                    tags.Add(tag);
+            }
+
+            string selectedTag = EditorBridge.GetEntityTag(selectedEntityId);
+            if (!string.IsNullOrWhiteSpace(selectedTag) && !tags.Contains(selectedTag))
+                tags.Add(selectedTag);
+
+            if (tags.Count == 0)
+                tags.Add("Untagged");
+
+            return tags.ToArray();
+        }
+
+        private static string[] BuildLayerOptions()
+        {
+            var options = new string[32];
+            options[0] = "Layer 0 (Default)";
+            for (int i = 1; i < options.Length; ++i)
+                options[i] = "Layer " + i;
+
+            return options;
+        }
+
+        private static string LayerToLabel(uint layer)
+        {
+            uint clamped = layer > 31 ? 31u : layer;
+            return _layerOptions[(int)clamped];
+        }
+
+        private static bool TryParseLayerLabel(string label, out uint layer)
+        {
+            layer = 0;
+            if (string.IsNullOrWhiteSpace(label))
+                return false;
+
+            string trimmed = label.Trim();
+            if (!trimmed.StartsWith("Layer ", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            int startIndex = "Layer ".Length;
+            int endIndex = trimmed.IndexOf(' ', startIndex);
+            string numberText = endIndex < 0
+                ? trimmed.Substring(startIndex)
+                : trimmed.Substring(startIndex, endIndex - startIndex);
+
+            if (!uint.TryParse(numberText, out uint parsed))
+                return false;
+
+            if (parsed > 31)
+                parsed = 31;
+
+            layer = parsed;
+            return true;
         }
 
         private static void EnsureWorldInitialized()
