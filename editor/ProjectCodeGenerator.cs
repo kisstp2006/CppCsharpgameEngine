@@ -6,6 +6,8 @@ namespace EngineEditor
     internal static class ProjectCodeGenerator
     {
         private const string GeneratedScriptTargetFramework = "net48";
+        private const int GeneratedProjectFileVersion = 2;
+        private const string GeneratedEngineVersion = "2026.03";
 
         private sealed class ProjectGenerationResult
         {
@@ -71,7 +73,8 @@ namespace EngineEditor
             return "{\n" +
                    "  \"name\": \"" + StringUtilities.EscapeJson(projectName) + "\",\n" +
                    "  \"template\": \"" + StringUtilities.EscapeJson(templateName) + "\",\n" +
-                   "  \"version\": 1,\n" +
+                   "  \"version\": " + GeneratedProjectFileVersion + ",\n" +
+                   "  \"engineVersion\": \"" + GeneratedEngineVersion + "\",\n" +
                    "  \"assetsRoot\": \"Assets\",\n" +
                    "  \"scriptsRoot\": \"Scripts\",\n" +
                    "  \"scenesRoot\": \"Scenes\",\n" +

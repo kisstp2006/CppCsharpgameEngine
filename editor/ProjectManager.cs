@@ -155,10 +155,6 @@ namespace EngineEditor
                 PopupDialogs.OpenCreateProjectPopup(_projectsRoot);
             }
 
-            ImGui.SameLine();
-            if (ImGui.Button(EditorConsoleWindow.IsOpen ? "Hide Console" : "Show Console"))
-                EditorConsoleWindow.SetOpen(!EditorConsoleWindow.IsOpen);
-
             if (ProjectOperations.HasOpenProject())
             {
                 ImGui.SameLine();

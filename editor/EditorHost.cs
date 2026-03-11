@@ -48,7 +48,6 @@ namespace EngineEditor
                 SceneEditor.ResetEditorState();
                 ProjectManager.DrawProjectPanel();
                 EditorOptionsWindow.Draw();
-                EditorConsoleWindow.Draw();
                 return;
             }
 
@@ -57,7 +56,6 @@ namespace EngineEditor
                 SceneEditor.ResetEditorState();
                 ProjectManager.DrawProjectPanel();
                 EditorOptionsWindow.Draw();
-                EditorConsoleWindow.Draw();
                 return;
             }
 

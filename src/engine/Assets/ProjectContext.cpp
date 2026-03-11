@@ -1,12 +1,99 @@
 #include "ProjectContext.h"
 
+#include <array>
+#include <cctype>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <optional>
 #include <sstream>
+#include <vector>
 
 namespace
 {
+    std::string ToLowerAscii(std::string value)
+    {
+        for (char& c : value)
+            c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        return value;
+    }
+
+    bool ContainsCaseInsensitive(const std::string& text, const std::string& token)
+    {
+        if (token.empty())
+            return true;
+
+        const std::string lowerText = ToLowerAscii(text);
+        const std::string lowerToken = ToLowerAscii(token);
+        return lowerText.find(lowerToken) != std::string::npos;
+    }
+
+    std::string EscapeXmlAttribute(const std::string& value)
+    {
+        std::string escaped;
+        escaped.reserve(value.size());
+
+        for (const char c : value)
+        {
+            switch (c)
+            {
+            case '&':
+                escaped += "&amp;";
+                break;
+            case '<':
+                escaped += "&lt;";
+                break;
+            case '>':
+                escaped += "&gt;";
+                break;
+            case '"':
+                escaped += "&quot;";
+                break;
+            case '\'':
+                escaped += "&apos;";
+                break;
+            default:
+                escaped.push_back(c);
+                break;
+            }
+        }
+
+        return escaped;
+    }
+
+    std::string EscapeJsonString(const std::string& value)
+    {
+        std::string escaped;
+        escaped.reserve(value.size());
+
+        for (const char c : value)
+        {
+            switch (c)
+            {
+            case '\\':
+                escaped += "\\\\";
+                break;
+            case '"':
+                escaped += "\\\"";
+                break;
+            case '\n':
+                escaped += "\\n";
+                break;
+            case '\r':
+                escaped += "\\r";
+                break;
+            case '\t':
+                escaped += "\\t";
+                break;
+            default:
+                escaped.push_back(c);
+                break;
+            }
+        }
+
+        return escaped;
+    }
+
     std::string Trim(const std::string& value)
     {
         const std::string whitespace = " \t\r\n";
@@ -122,6 +209,199 @@ namespace
 
         return line.empty() ? std::filesystem::path{} : std::filesystem::path(line);
     }
+
+    bool EnsureEngineApiReferencesInCsproj(const std::filesystem::path& scriptProjectPath,
+                                           const std::filesystem::path& workspaceRoot)
+    {
+        if (scriptProjectPath.empty() || !std::filesystem::exists(scriptProjectPath))
+            return false;
+
+        if (!ContainsCaseInsensitive(scriptProjectPath.extension().string(), ".csproj"))
+            return false;
+
+        std::ifstream input(scriptProjectPath);
+        if (!input.is_open())
+        {
+            std::cerr << "[ProjectContext] Failed to open script project for reference check: "
+                      << scriptProjectPath << std::endl;
+            return false;
+        }
+
+        std::stringstream buffer;
+        buffer << input.rdbuf();
+        std::string content = buffer.str();
+
+        const std::vector<std::string> wrapperNames = {
+            "Debug.cs",
+            "Input.cs",
+            "DebugDraw.cs",
+            "Camera2D.cs",
+            "ImGuizmo.cs",
+        };
+
+        bool hasEngineReference = ContainsCaseInsensitive(content, "EngineManagedApiReferences");
+        if (!hasEngineReference)
+        {
+            int foundWrapperTokens = 0;
+            for (const auto& wrapper : wrapperNames)
+            {
+                if (ContainsCaseInsensitive(content, wrapper))
+                    ++foundWrapperTokens;
+            }
+
+            hasEngineReference = foundWrapperTokens >= 2;
+        }
+
+        if (hasEngineReference)
+            return true;
+
+        const std::filesystem::path engineRoot = workspaceRoot.empty()
+            ? std::filesystem::current_path()
+            : workspaceRoot;
+
+        std::vector<std::filesystem::path> wrapperPaths;
+        for (const auto& wrapperName : wrapperNames)
+        {
+            const std::filesystem::path wrapperPath = engineRoot / "scripts" / wrapperName;
+            if (std::filesystem::exists(wrapperPath))
+                wrapperPaths.push_back(wrapperPath.lexically_normal());
+        }
+
+        if (wrapperPaths.empty())
+        {
+            std::cerr << "[ProjectContext] Engine API wrappers not found under: "
+                      << (engineRoot / "scripts") << std::endl;
+            return false;
+        }
+
+        const std::size_t projectTagPos = content.rfind("</Project>");
+        if (projectTagPos == std::string::npos)
+        {
+            std::cerr << "[ProjectContext] Could not patch script project (missing </Project>): "
+                      << scriptProjectPath << std::endl;
+            return false;
+        }
+
+        const std::filesystem::path projectDir = scriptProjectPath.parent_path();
+        std::string itemGroup = "  <ItemGroup Label=\"EngineManagedApiReferences\">\n";
+
+        for (const auto& wrapperPath : wrapperPaths)
+        {
+            std::error_code relativeError;
+            std::filesystem::path includePath = std::filesystem::relative(wrapperPath, projectDir, relativeError);
+            if (relativeError || includePath.empty())
+                includePath = wrapperPath;
+
+            const std::string includeValue = EscapeXmlAttribute(includePath.generic_string());
+            const std::string linkValue = EscapeXmlAttribute((std::string("Engine/") + wrapperPath.filename().string()));
+            itemGroup += "    <Compile Include=\"" + includeValue + "\" Link=\"" + linkValue + "\" />\n";
+        }
+
+        itemGroup += "  </ItemGroup>\n";
+
+        content.insert(projectTagPos, itemGroup);
+
+        std::ofstream output(scriptProjectPath, std::ios::trunc);
+        if (!output.is_open())
+        {
+            std::cerr << "[ProjectContext] Failed to write patched script project: "
+                      << scriptProjectPath << std::endl;
+            return false;
+        }
+
+        output << content;
+        if (!output.good())
+        {
+            std::cerr << "[ProjectContext] Failed while saving patched script project: "
+                      << scriptProjectPath << std::endl;
+            return false;
+        }
+
+        std::cout << "[ProjectContext] Added Engine API references to script project: "
+                  << scriptProjectPath << std::endl;
+        return true;
+    }
+
+    bool BuildDotnetProjectAndReport(const std::filesystem::path& projectPath, const char* projectLabel)
+    {
+        if (projectPath.empty() || !std::filesystem::exists(projectPath))
+        {
+            std::cout << "[ProjectContext] Skip build (project missing): " << projectLabel << std::endl;
+            return false;
+        }
+
+        const std::string command = "dotnet build \"" + projectPath.string() + "\" -c Debug -nologo 2>&1";
+        std::cout << "[ProjectContext] Building " << projectLabel << ": " << projectPath << std::endl;
+
+#if defined(_WIN32)
+        FILE* pipe = _popen(command.c_str(), "r");
+#else
+        FILE* pipe = popen(command.c_str(), "r");
+#endif
+        if (!pipe)
+        {
+            std::cerr << "[ProjectContext] Failed to start dotnet build process for " << projectLabel << "." << std::endl;
+            return false;
+        }
+
+        std::string output;
+        std::array<char, 512> buffer{};
+        while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr)
+            output += buffer.data();
+
+        int exitCode = -1;
+#if defined(_WIN32)
+        exitCode = _pclose(pipe);
+#else
+        exitCode = pclose(pipe);
+#endif
+
+        std::vector<std::string> warningLines;
+        std::vector<std::string> errorLines;
+
+        std::stringstream stream(output);
+        std::string line;
+        while (std::getline(stream, line))
+        {
+            const std::string trimmed = Trim(line);
+            if (trimmed.empty())
+                continue;
+
+            const std::string lowered = ToLowerAscii(trimmed);
+            if (lowered.find(": error ") != std::string::npos || lowered.find(" error cs") != std::string::npos)
+            {
+                errorLines.push_back(trimmed);
+            }
+            else if (lowered.find(": warning ") != std::string::npos || lowered.find(" warning cs") != std::string::npos)
+            {
+                warningLines.push_back(trimmed);
+            }
+        }
+
+        const std::size_t maxDiagnosticLines = 12;
+        for (std::size_t i = 0; i < warningLines.size() && i < maxDiagnosticLines; ++i)
+            std::cout << "[ProjectContext][CSharp][Warning] " << warningLines[i] << std::endl;
+
+        for (std::size_t i = 0; i < errorLines.size() && i < maxDiagnosticLines; ++i)
+            std::cerr << "[ProjectContext][CSharp][Error] " << errorLines[i] << std::endl;
+
+        if (exitCode == 0)
+        {
+            std::cout << "[ProjectContext] Build succeeded for " << projectLabel
+                      << " (warnings: " << warningLines.size() << ")." << std::endl;
+            return true;
+        }
+
+        std::cerr << "[ProjectContext] Build failed for " << projectLabel
+                  << " (exit code: " << exitCode
+                  << ", warnings: " << warningLines.size()
+                  << ", errors: " << errorLines.size() << ")." << std::endl;
+
+        if (errorLines.empty() && !output.empty())
+            std::cerr << "[ProjectContext][CSharp][Output] " << Trim(output) << std::endl;
+
+        return false;
+    }
 }
 
 bool ProjectContext::OpenWorkspace(const std::filesystem::path& workspaceRoot)
@@ -153,6 +433,12 @@ bool ProjectContext::OpenProject(const std::filesystem::path& projectRoot)
     }
 
     ApplyMetadataDefaults();
+    if (!UpgradeProjectMetadataIfNeeded())
+    {
+        std::cerr << "[ProjectContext] Failed to upgrade metadata for: " << m_projectFilePath << std::endl;
+        m_isOpen = false;
+        return false;
+    }
 
     m_assetsRoot = (m_projectRoot / m_metadata.assetsRoot).lexically_normal();
     m_scriptsRoot = (m_projectRoot / m_metadata.scriptsRoot).lexically_normal();
@@ -165,6 +451,7 @@ bool ProjectContext::OpenProject(const std::filesystem::path& projectRoot)
     std::filesystem::create_directories(m_libraryRoot);
 
     m_isOpen = true;
+    PrepareManagedScriptProject();
     return true;
 }
 
@@ -217,6 +504,9 @@ bool ProjectContext::LoadProjectMetadata()
     if (const auto version = ExtractJsonInt(json, "version"))
         m_metadata.version = *version;
 
+    if (const auto engineVersion = ExtractJsonString(json, "engineVersion"))
+        m_metadata.engineVersion = *engineVersion;
+
     if (const auto name = ExtractJsonString(json, "name"))
         m_metadata.name = *name;
 
@@ -250,8 +540,87 @@ bool ProjectContext::LoadProjectMetadata()
     return true;
 }
 
+bool ProjectContext::UpgradeProjectMetadataIfNeeded()
+{
+    if (m_metadata.version > CurrentProjectVersion)
+    {
+        std::cerr << "[ProjectContext] project.json version " << m_metadata.version
+                  << " is newer than supported version " << CurrentProjectVersion
+                  << ". Opening without migration." << std::endl;
+        return true;
+    }
+
+    const bool hasExpectedEngineVersion = m_metadata.engineVersion == ProjectEngineVersion;
+    if (m_metadata.version == CurrentProjectVersion && hasExpectedEngineVersion)
+        return true;
+
+    const int previousVersion = m_metadata.version;
+    m_metadata.version = CurrentProjectVersion;
+    m_metadata.engineVersion = ProjectEngineVersion;
+
+    if (!SaveProjectMetadata())
+        return false;
+
+    if (previousVersion < CurrentProjectVersion)
+    {
+        std::cout << "[ProjectContext] Upgraded project.json from version " << previousVersion
+                  << " to " << CurrentProjectVersion << "." << std::endl;
+    }
+    else
+    {
+        std::cout << "[ProjectContext] Refreshed project.json engineVersion to "
+                  << ProjectEngineVersion << "." << std::endl;
+    }
+
+    return true;
+}
+
+bool ProjectContext::SaveProjectMetadata() const
+{
+    std::ofstream output(m_projectFilePath, std::ios::trunc);
+    if (!output.is_open())
+        return false;
+
+    output << "{\n"
+           << "  \"name\": \"" << EscapeJsonString(m_metadata.name) << "\",\n"
+           << "  \"template\": \"" << EscapeJsonString(m_metadata.templateName) << "\",\n"
+           << "  \"version\": " << m_metadata.version << ",\n"
+           << "  \"engineVersion\": \"" << EscapeJsonString(m_metadata.engineVersion) << "\",\n"
+           << "  \"assetsRoot\": \"" << EscapeJsonString(m_metadata.assetsRoot) << "\",\n"
+           << "  \"scriptsRoot\": \"" << EscapeJsonString(m_metadata.scriptsRoot) << "\",\n"
+           << "  \"scenesRoot\": \"" << EscapeJsonString(m_metadata.scenesRoot) << "\",\n"
+           << "  \"libraryRoot\": \"" << EscapeJsonString(m_metadata.libraryRoot) << "\",\n"
+           << "  \"scriptProject\": \"" << EscapeJsonString(m_metadata.scriptProject) << "\",\n"
+           << "  \"scriptSolution\": \"" << EscapeJsonString(m_metadata.scriptSolution) << "\",\n"
+           << "  \"assemblyPath\": \"" << EscapeJsonString(m_metadata.assemblyPath) << "\",\n"
+           << "  \"targetFramework\": \"" << EscapeJsonString(m_metadata.targetFramework) << "\"\n"
+           << "}\n";
+
+    return output.good();
+}
+
+void ProjectContext::PrepareManagedScriptProject() const
+{
+    const std::filesystem::path scriptProjectPath = ScriptProjectPath();
+    if (scriptProjectPath.empty())
+    {
+        std::cout << "[ProjectContext] Script project path is empty; skipping C# build." << std::endl;
+        return;
+    }
+
+    const std::filesystem::path workspaceRoot = m_workspaceRoot.empty()
+        ? std::filesystem::current_path()
+        : m_workspaceRoot;
+
+    EnsureEngineApiReferencesInCsproj(scriptProjectPath, workspaceRoot);
+    BuildDotnetProjectAndReport(scriptProjectPath, "script project");
+}
+
 void ProjectContext::ApplyMetadataDefaults()
 {
+    if (m_metadata.version < 1)
+        m_metadata.version = 1;
+
     if (m_metadata.assetsRoot.empty())
         m_metadata.assetsRoot = "Assets";
 

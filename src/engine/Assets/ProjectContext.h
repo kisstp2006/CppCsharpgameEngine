@@ -6,9 +6,13 @@
 class ProjectContext
 {
 public:
+    static constexpr int CurrentProjectVersion = 2;
+    static constexpr const char* ProjectEngineVersion = "2026.03";
+
     struct Metadata
     {
         int version = 1;
+        std::string engineVersion;
         std::string name;
         std::string templateName;
         std::string assetsRoot = "Assets";
@@ -42,6 +46,9 @@ public:
 
 private:
     bool LoadProjectMetadata();
+    bool UpgradeProjectMetadataIfNeeded();
+    bool SaveProjectMetadata() const;
+    void PrepareManagedScriptProject() const;
     void ApplyMetadataDefaults();
 
 private:

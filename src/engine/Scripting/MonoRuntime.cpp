@@ -389,7 +389,12 @@ bool MonoRuntime::Initialize()
 
     const std::filesystem::path scriptProjectPath = FindScriptProjectPath(m_impl->preferredScriptProjectPath);
     if (!scriptProjectPath.empty())
-        TryBuildDotnetProject(scriptProjectPath, "script project");
+    {
+        if (!m_impl->preferredScriptProjectPath.empty())
+            std::cout << "[Mono] Script project build already handled by ProjectContext during project open." << std::endl;
+        else
+            TryBuildDotnetProject(scriptProjectPath, "script project");
+    }
     else
         std::cout << "[Mono] Script project file not found; skipping script build step." << std::endl;
 
