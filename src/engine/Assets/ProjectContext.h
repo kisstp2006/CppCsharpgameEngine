@@ -6,7 +6,7 @@
 class ProjectContext
 {
 public:
-    static constexpr int CurrentProjectVersion = 2;
+    static constexpr int CurrentProjectVersion = 3;
     static constexpr const char* ProjectEngineVersion = "2026.03";
 
     struct Metadata
@@ -22,6 +22,7 @@ public:
         std::string scriptProject;
         std::string scriptSolution;
         std::string assemblyPath;
+        std::string engineApiProject;
         std::string targetFramework = "net472";
     };
 

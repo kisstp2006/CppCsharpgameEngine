@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>8.0</LangVersion>
+    <AssemblyName>EngineManagedApi</AssemblyName>
+    <RootNamespace>Engine</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Camera2D.cs" />
+    <Compile Include="Debug.cs" />
+    <Compile Include="DebugDraw.cs" />
+    <Compile Include="ImGuizmo.cs" />
+    <Compile Include="Input.cs" />
+  </ItemGroup>
+</Project>

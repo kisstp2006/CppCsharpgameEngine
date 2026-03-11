@@ -211,7 +211,8 @@ namespace
     }
 
     bool EnsureEngineApiReferencesInCsproj(const std::filesystem::path& scriptProjectPath,
-                                           const std::filesystem::path& workspaceRoot)
+                                           const std::filesystem::path& workspaceRoot,
+                                           const std::string& configuredEngineApiProject)
     {
         if (scriptProjectPath.empty() || !std::filesystem::exists(scriptProjectPath))
             return false;
@@ -239,6 +240,11 @@ namespace
             "ImGuizmo.cs",
         };
 
+        const bool hasProjectReference = ContainsCaseInsensitive(content, "<ProjectReference") &&
+                                         ContainsCaseInsensitive(content, "EngineManagedApi.csproj");
+        if (hasProjectReference)
+            return true;
+
         bool hasEngineReference = ContainsCaseInsensitive(content, "EngineManagedApiReferences");
         if (!hasEngineReference)
         {
@@ -255,9 +261,69 @@ namespace
         if (hasEngineReference)
             return true;
 
+        const std::filesystem::path scriptProjectDirectory = scriptProjectPath.parent_path();
         const std::filesystem::path engineRoot = workspaceRoot.empty()
             ? std::filesystem::current_path()
             : workspaceRoot;
+
+        std::filesystem::path engineApiProjectPath;
+        if (!configuredEngineApiProject.empty())
+        {
+            const std::filesystem::path configuredPathCandidate(configuredEngineApiProject);
+            if (configuredPathCandidate.is_absolute())
+                engineApiProjectPath = configuredPathCandidate;
+            else
+                engineApiProjectPath = (scriptProjectDirectory / configuredPathCandidate).lexically_normal();
+        }
+
+        if ((engineApiProjectPath.empty() || !std::filesystem::exists(engineApiProjectPath)) && !engineRoot.empty())
+        {
+            const std::filesystem::path workspaceCandidate = (engineRoot / "scripts" / "EngineManagedApi.csproj").lexically_normal();
+            if (std::filesystem::exists(workspaceCandidate))
+                engineApiProjectPath = workspaceCandidate;
+        }
+
+        const std::size_t projectTagPos = content.rfind("</Project>");
+        if (projectTagPos == std::string::npos)
+        {
+            std::cerr << "[ProjectContext] Could not patch script project (missing </Project>): "
+                      << scriptProjectPath << std::endl;
+            return false;
+        }
+
+        if (!engineApiProjectPath.empty() && std::filesystem::exists(engineApiProjectPath))
+        {
+            std::error_code relativeError;
+            std::filesystem::path referencePath = std::filesystem::relative(engineApiProjectPath, scriptProjectDirectory, relativeError);
+            if (relativeError || referencePath.empty())
+                referencePath = engineApiProjectPath;
+
+            std::string itemGroup = "  <ItemGroup Label=\"EngineManagedApiProjectReference\">\n";
+            itemGroup += "    <ProjectReference Include=\"" + EscapeXmlAttribute(referencePath.generic_string()) + "\" />\n";
+            itemGroup += "  </ItemGroup>\n";
+
+            content.insert(projectTagPos, itemGroup);
+
+            std::ofstream output(scriptProjectPath, std::ios::trunc);
+            if (!output.is_open())
+            {
+                std::cerr << "[ProjectContext] Failed to write patched script project: "
+                          << scriptProjectPath << std::endl;
+                return false;
+            }
+
+            output << content;
+            if (!output.good())
+            {
+                std::cerr << "[ProjectContext] Failed while saving patched script project: "
+                          << scriptProjectPath << std::endl;
+                return false;
+            }
+
+            std::cout << "[ProjectContext] Added EngineManagedApi project reference to script project: "
+                      << scriptProjectPath << std::endl;
+            return true;
+        }
 
         std::vector<std::filesystem::path> wrapperPaths;
         for (const auto& wrapperName : wrapperNames)
@@ -274,21 +340,12 @@ namespace
             return false;
         }
 
-        const std::size_t projectTagPos = content.rfind("</Project>");
-        if (projectTagPos == std::string::npos)
-        {
-            std::cerr << "[ProjectContext] Could not patch script project (missing </Project>): "
-                      << scriptProjectPath << std::endl;
-            return false;
-        }
-
-        const std::filesystem::path projectDir = scriptProjectPath.parent_path();
         std::string itemGroup = "  <ItemGroup Label=\"EngineManagedApiReferences\">\n";
 
         for (const auto& wrapperPath : wrapperPaths)
         {
             std::error_code relativeError;
-            std::filesystem::path includePath = std::filesystem::relative(wrapperPath, projectDir, relativeError);
+            std::filesystem::path includePath = std::filesystem::relative(wrapperPath, scriptProjectDirectory, relativeError);
             if (relativeError || includePath.empty())
                 includePath = wrapperPath;
 
@@ -534,6 +591,9 @@ bool ProjectContext::LoadProjectMetadata()
     if (const auto assemblyPath = ExtractJsonString(json, "assemblyPath"))
         m_metadata.assemblyPath = *assemblyPath;
 
+    if (const auto engineApiProject = ExtractJsonString(json, "engineApiProject"))
+        m_metadata.engineApiProject = *engineApiProject;
+
     if (const auto targetFramework = ExtractJsonString(json, "targetFramework"))
         m_metadata.targetFramework = *targetFramework;
 
@@ -550,8 +610,29 @@ bool ProjectContext::UpgradeProjectMetadataIfNeeded()
         return true;
     }
 
+    const std::filesystem::path workspaceRoot = m_workspaceRoot.empty()
+        ? std::filesystem::current_path()
+        : m_workspaceRoot;
+
+    std::string expectedEngineApiProject;
+    const std::filesystem::path engineApiAbsolutePath = (workspaceRoot / "scripts" / "EngineManagedApi.csproj").lexically_normal();
+    if (std::filesystem::exists(engineApiAbsolutePath))
+    {
+        std::error_code relativeError;
+        const std::filesystem::path relativePath = std::filesystem::relative(engineApiAbsolutePath, m_projectRoot, relativeError);
+        if (!relativeError && !relativePath.empty())
+            expectedEngineApiProject = relativePath.generic_string();
+    }
+
+    bool metadataChanged = false;
+    if (m_metadata.engineApiProject.empty() && !expectedEngineApiProject.empty())
+    {
+        m_metadata.engineApiProject = expectedEngineApiProject;
+        metadataChanged = true;
+    }
+
     const bool hasExpectedEngineVersion = m_metadata.engineVersion == ProjectEngineVersion;
-    if (m_metadata.version == CurrentProjectVersion && hasExpectedEngineVersion)
+    if (m_metadata.version == CurrentProjectVersion && hasExpectedEngineVersion && !metadataChanged)
         return true;
 
     const int previousVersion = m_metadata.version;
@@ -593,6 +674,7 @@ bool ProjectContext::SaveProjectMetadata() const
            << "  \"scriptProject\": \"" << EscapeJsonString(m_metadata.scriptProject) << "\",\n"
            << "  \"scriptSolution\": \"" << EscapeJsonString(m_metadata.scriptSolution) << "\",\n"
            << "  \"assemblyPath\": \"" << EscapeJsonString(m_metadata.assemblyPath) << "\",\n"
+           << "  \"engineApiProject\": \"" << EscapeJsonString(m_metadata.engineApiProject) << "\",\n"
            << "  \"targetFramework\": \"" << EscapeJsonString(m_metadata.targetFramework) << "\"\n"
            << "}\n";
 
@@ -612,7 +694,7 @@ void ProjectContext::PrepareManagedScriptProject() const
         ? std::filesystem::current_path()
         : m_workspaceRoot;
 
-    EnsureEngineApiReferencesInCsproj(scriptProjectPath, workspaceRoot);
+    EnsureEngineApiReferencesInCsproj(scriptProjectPath, workspaceRoot, m_metadata.engineApiProject);
     BuildDotnetProjectAndReport(scriptProjectPath, "script project");
 }
 
@@ -641,6 +723,21 @@ void ProjectContext::ApplyMetadataDefaults()
 
     if (m_metadata.scriptSolution.empty() && !m_metadata.name.empty())
         m_metadata.scriptSolution = m_metadata.name + ".sln";
+
+    if (m_metadata.engineApiProject.empty())
+    {
+        const std::filesystem::path workspaceRoot = m_workspaceRoot.empty()
+            ? std::filesystem::current_path()
+            : m_workspaceRoot;
+        const std::filesystem::path engineApiAbsolutePath = (workspaceRoot / "scripts" / "EngineManagedApi.csproj").lexically_normal();
+        if (std::filesystem::exists(engineApiAbsolutePath))
+        {
+            std::error_code relativeError;
+            const std::filesystem::path relativePath = std::filesystem::relative(engineApiAbsolutePath, m_projectRoot, relativeError);
+            if (!relativeError && !relativePath.empty())
+                m_metadata.engineApiProject = relativePath.generic_string();
+        }
+    }
 
     if (m_metadata.assemblyPath.empty())
     {

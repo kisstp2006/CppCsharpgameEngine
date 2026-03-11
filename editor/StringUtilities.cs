@@ -57,5 +57,28 @@ namespace EngineEditor
         {
             return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
         }
+
+        public static string MakeRelativePath(string fromDirectory, string toPath)
+        {
+            if (string.IsNullOrWhiteSpace(fromDirectory) || string.IsNullOrWhiteSpace(toPath))
+                return toPath ?? string.Empty;
+
+            Uri fromUri = new Uri(AppendDirectorySeparator(Path.GetFullPath(fromDirectory)));
+            Uri toUri = new Uri(Path.GetFullPath(toPath));
+            Uri relativeUri = fromUri.MakeRelativeUri(toUri);
+            string relative = Uri.UnescapeDataString(relativeUri.ToString()).Replace('/', '\\');
+            return relative;
+        }
+
+        private static string AppendDirectorySeparator(string path)
+        {
+            if (string.IsNullOrEmpty(path))
+                return path;
+
+            if (path[path.Length - 1] == Path.DirectorySeparatorChar || path[path.Length - 1] == Path.AltDirectorySeparatorChar)
+                return path;
+
+            return path + Path.DirectorySeparatorChar;
+        }
     }
 }
