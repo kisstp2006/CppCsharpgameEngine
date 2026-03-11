@@ -14,7 +14,15 @@ public:
     void Shutdown();
 
     void BeginFrame();
+    void SetGameViewSize(int width, int height);
+    void BeginGameView();
+    void EndGameView();
+    unsigned long long GetGameViewTextureHandle() const;
+    void SetCameraProjection(float cameraX, float cameraY, float cameraZoom);
     void DrawSprite(Texture& texture, float x, float y, float width, float height);
+
+    int GetViewWidth() const;
+    int GetViewHeight() const;
 
 private:
     int m_viewWidth = 0;

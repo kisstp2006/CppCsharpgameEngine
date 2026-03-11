@@ -35,6 +35,30 @@ namespace Engine
         public static extern void SetTransform(uint entityId, float x, float y, float width, float height);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool HasCamera(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void AddCamera(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool GetCamera(uint entityId, out float x, out float y, out float zoom);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetCamera(uint entityId, float x, float y, float zoom);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void RemoveCamera(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool HasSprite(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void AddSprite(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void RemoveSprite(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool HasScript(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -48,5 +72,11 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool GetScriptEnabled(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetGameViewSize(float width, float height);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern ulong GetGameViewTextureHandle();
     }
 }

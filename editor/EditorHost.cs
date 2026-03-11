@@ -34,18 +34,20 @@ namespace EngineEditor
             if (!hasOpenProject)
             {
                 _showProjectManagerView = true;
-                SceneEditor.ResetSelection();
+                SceneEditor.ResetEditorState();
                 ProjectManager.DrawProjectPanel();
                 return;
             }
 
             if (_showProjectManagerView)
             {
+                SceneEditor.ResetEditorState();
                 ProjectManager.DrawProjectPanel();
                 return;
             }
 
             SceneEditor.DrawSceneTreePanel();
+            SceneEditor.DrawWorldViewportPanel(deltaTime);
             SceneEditor.DrawInspectorPanel();
             AssetPanel.DrawAssetPanel();
             SceneEditor.UpdateTick(deltaTime);

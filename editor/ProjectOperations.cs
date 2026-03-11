@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 namespace EngineEditor
@@ -8,16 +9,27 @@ namespace EngineEditor
         private static string _activeProjectPath = string.Empty;
         private static string _editorConfigDir = string.Empty;
         private static string _lastProjectFile = string.Empty;
+        private static string _recentProjectsFile = string.Empty;
         private static string _statusMessage = "No project loaded.";
+        private static readonly List<string> _recentProjectPaths = new List<string>();
+
+        private const int MaxRecentProjects = 10;
 
         public static string ActiveProjectPath => _activeProjectPath;
         public static string StatusMessage => _statusMessage;
+
+        public static string[] GetRecentProjects()
+        {
+            return _recentProjectPaths.ToArray();
+        }
 
         public static void Initialize(string editorConfigDir)
         {
             _editorConfigDir = editorConfigDir;
             _lastProjectFile = Path.Combine(editorConfigDir, "last_project.txt");
+            _recentProjectsFile = Path.Combine(editorConfigDir, "recent_projects.txt");
             Directory.CreateDirectory(editorConfigDir);
+            LoadRecentProjects();
         }
 
         public static bool HasOpenProject()
@@ -34,15 +46,23 @@ namespace EngineEditor
         {
             try
             {
-                if (!Directory.Exists(projectPath))
+                if (string.IsNullOrWhiteSpace(projectPath))
+                {
+                    _statusMessage = "Open failed: invalid project path.";
+                    return;
+                }
+
+                string normalizedProjectPath = NormalizeProjectPath(projectPath);
+                if (!Directory.Exists(normalizedProjectPath))
                 {
                     _statusMessage = "Open failed: missing folder.";
                     return;
                 }
 
-                _activeProjectPath = projectPath;
-                _statusMessage = "Opened project: " + Path.GetFileName(projectPath);
-                SaveLastProjectPath(projectPath);
+                _activeProjectPath = normalizedProjectPath;
+                _statusMessage = "Opened project: " + Path.GetFileName(normalizedProjectPath);
+                SaveLastProjectPath(normalizedProjectPath);
+                AddRecentProjectPath(normalizedProjectPath);
             }
             catch (Exception ex)
             {
@@ -150,6 +170,7 @@ namespace EngineEditor
                 bool resolvedConflict = !string.Equals(newProjectPath, requestedProjectPath, StringComparison.OrdinalIgnoreCase);
 
                 Directory.Move(oldProjectPath, newProjectPath);
+                ReplaceRecentProjectPath(oldProjectPath, newProjectPath);
 
                 if (string.Equals(_activeProjectPath, oldProjectPath, StringComparison.OrdinalIgnoreCase))
                 {
@@ -191,6 +212,8 @@ namespace EngineEditor
                         File.Delete(_lastProjectFile);
                 }
 
+                RemoveRecentProjectPath(projectPath);
+
                 ProjectManager.RefreshProjectList();
                 _statusMessage = "Deleted project: " + projectName;
             }
@@ -222,6 +245,108 @@ namespace EngineEditor
             }
         }
 
+        private static void LoadRecentProjects()
+        {
+            _recentProjectPaths.Clear();
+
+            if (!File.Exists(_recentProjectsFile))
+                return;
+
+            try
+            {
+                string[] lines = File.ReadAllLines(_recentProjectsFile);
+                for (int i = 0; i < lines.Length; ++i)
+                {
+                    string candidate = lines[i].Trim();
+                    if (string.IsNullOrEmpty(candidate))
+                        continue;
+
+                    string normalizedPath;
+                    try
+                    {
+                        normalizedPath = NormalizeProjectPath(candidate);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (!Directory.Exists(normalizedPath))
+                        continue;
+
+                    if (_recentProjectPaths.Exists(path => string.Equals(path, normalizedPath, StringComparison.OrdinalIgnoreCase)))
+                        continue;
+
+                    _recentProjectPaths.Add(normalizedPath);
+                    if (_recentProjectPaths.Count >= MaxRecentProjects)
+                        break;
+                }
+
+                SaveRecentProjects();
+            }
+            catch (Exception ex)
+            {
+                _statusMessage = "Warning: could not load recent projects: " + ex.Message;
+            }
+        }
+
+        private static void AddRecentProjectPath(string projectPath)
+        {
+            _recentProjectPaths.RemoveAll(path => string.Equals(path, projectPath, StringComparison.OrdinalIgnoreCase));
+            _recentProjectPaths.Insert(0, projectPath);
+
+            if (_recentProjectPaths.Count > MaxRecentProjects)
+                _recentProjectPaths.RemoveRange(MaxRecentProjects, _recentProjectPaths.Count - MaxRecentProjects);
+
+            SaveRecentProjects();
+        }
+
+        private static void ReplaceRecentProjectPath(string oldProjectPath, string newProjectPath)
+        {
+            string normalizedOldPath = NormalizeProjectPath(oldProjectPath);
+            string normalizedNewPath = NormalizeProjectPath(newProjectPath);
+
+            bool removedOld = _recentProjectPaths.RemoveAll(path => string.Equals(path, normalizedOldPath, StringComparison.OrdinalIgnoreCase)) > 0;
+            _recentProjectPaths.RemoveAll(path => string.Equals(path, normalizedNewPath, StringComparison.OrdinalIgnoreCase));
+
+            if (removedOld)
+            {
+                _recentProjectPaths.Insert(0, normalizedNewPath);
+                if (_recentProjectPaths.Count > MaxRecentProjects)
+                    _recentProjectPaths.RemoveRange(MaxRecentProjects, _recentProjectPaths.Count - MaxRecentProjects);
+                SaveRecentProjects();
+            }
+        }
+
+        private static void RemoveRecentProjectPath(string projectPath)
+        {
+            string normalizedPath;
+            try
+            {
+                normalizedPath = NormalizeProjectPath(projectPath);
+            }
+            catch
+            {
+                return;
+            }
+
+            int removed = _recentProjectPaths.RemoveAll(path => string.Equals(path, normalizedPath, StringComparison.OrdinalIgnoreCase));
+            if (removed > 0)
+                SaveRecentProjects();
+        }
+
+        private static void SaveRecentProjects()
+        {
+            try
+            {
+                File.WriteAllLines(_recentProjectsFile, _recentProjectPaths);
+            }
+            catch (Exception ex)
+            {
+                _statusMessage = "Warning: could not save recent projects: " + ex.Message;
+            }
+        }
+
         private static void SaveLastProjectPath(string projectPath)
         {
             try
@@ -232,6 +357,11 @@ namespace EngineEditor
             {
                 _statusMessage = "Warning: could not save last project path: " + ex.Message;
             }
+        }
+
+        private static string NormalizeProjectPath(string projectPath)
+        {
+            return Path.GetFullPath(projectPath.Trim());
         }
     }
 }

@@ -20,6 +20,9 @@ public:
     void Run();
     void Shutdown();
 
+    Scene* GetScene() { return m_scene.get(); }
+    const Scene* GetScene() const { return m_scene.get(); }
+
 private:
     bool InitializeImGui();
     void ShutdownImGui();

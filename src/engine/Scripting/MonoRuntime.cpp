@@ -3,11 +3,16 @@
 #include "engine/ECS/Components.h"
 #include "engine/ECS/Scene.h"
 #include "engine/Platform/ExplorerDialog.h"
+#include "engine/Platform/SDLInputState.h"
+#include "engine/Render/DebugDraw.h"
+#include "engine/Render/Renderer.h"
 
 #include <filesystem>
+#include <cstdlib>
 #include <cstdio>
 #include <cstdint>
 #include <chrono>
+#include <cmath>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -16,6 +21,7 @@
 
 #include <entt/entt.hpp>
 #include <imgui.h>
+#include <ImGuizmo.h>
 
 #if !defined(__INTELLISENSE__) && !defined(ENGINE_MONO_DISABLED) && __has_include(<mono/jit/jit.h>) && __has_include(<mono/metadata/assembly.h>) && __has_include(<mono/metadata/debug-helpers.h>) && __has_include(<mono/metadata/mono-config.h>) && __has_include(<mono/metadata/object.h>)
 #define ENGINE_MONO_RUNTIME_AVAILABLE 1
@@ -69,12 +75,14 @@ struct MonoRuntime::Impl
     float hotReloadPollAccumulator = 0.0f;
 #endif
     std::filesystem::path preferredScriptAssemblyPath;
+    std::filesystem::path preferredScriptProjectPath;
     bool scriptLoaded = false;
     bool editorLoaded = false;
 };
 
 #if ENGINE_MONO_RUNTIME_AVAILABLE
 static Scene* g_editorSceneContext = nullptr;
+static Renderer* g_editorRendererContext = nullptr;
 
 static std::string MonoStringToUtf8(MonoString* monoString)
 {
@@ -122,9 +130,8 @@ static bool EditorBridge_IsEntityValid(std::uint32_t entityId)
     if (!g_editorSceneContext)
         return false;
 
-    auto& registry = g_editorSceneContext->Registry();
-    const auto entity = static_cast<entt::entity>(entityId);
-    return registry.valid(entity);
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    return g_editorSceneContext->IsValid(entity);
 }
 
 static std::uint32_t EditorBridge_CreateEntity()
@@ -141,7 +148,7 @@ static void EditorBridge_DestroyEntity(std::uint32_t entityId)
     if (!g_editorSceneContext)
         return;
 
-    g_editorSceneContext->DestroyEntity(static_cast<entt::entity>(entityId));
+    g_editorSceneContext->DestroyEntity(g_editorSceneContext->FromEntityId(entityId));
 }
 
 static int EditorBridge_GetScriptedEntityCount()
@@ -165,12 +172,12 @@ static void EditorBridge_SetScriptEnabled(std::uint32_t entityId, bool enabled)
     if (!g_editorSceneContext)
         return;
 
-    auto& registry = g_editorSceneContext->Registry();
-    const auto entity = static_cast<entt::entity>(entityId);
-    if (!registry.valid(entity) || !registry.all_of<ScriptComponent>(entity))
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    ScriptComponent* script = g_editorSceneContext->TryGetScript(entity);
+    if (!script)
         return;
 
-    registry.get<ScriptComponent>(entity).enabled = enabled;
+    script->enabled = enabled;
 }
 
 static bool EditorBridge_GetScriptEnabled(std::uint32_t entityId)
@@ -178,12 +185,73 @@ static bool EditorBridge_GetScriptEnabled(std::uint32_t entityId)
     if (!g_editorSceneContext)
         return false;
 
-    auto& registry = g_editorSceneContext->Registry();
-    const auto entity = static_cast<entt::entity>(entityId);
-    if (!registry.valid(entity) || !registry.all_of<ScriptComponent>(entity))
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const ScriptComponent* script = g_editorSceneContext->TryGetScript(entity);
+    if (!script)
         return false;
 
-    return registry.get<ScriptComponent>(entity).enabled;
+    return script->enabled;
+}
+
+static void EditorBridge_SetGameViewSize(float width, float height)
+{
+    if (!g_editorRendererContext)
+        return;
+
+    const int w = static_cast<int>(width);
+    const int h = static_cast<int>(height);
+    if (w < 1 || h < 1)
+        return;
+
+    g_editorRendererContext->SetGameViewSize(w, h);
+}
+
+static std::uint64_t EditorBridge_GetGameViewTextureHandle()
+{
+    if (!g_editorRendererContext)
+        return 0;
+
+    return static_cast<std::uint64_t>(g_editorRendererContext->GetGameViewTextureHandle());
+}
+
+static void EditorDebugDraw_Line(float x0, float y0, float x1, float y1,
+                                 float r, float g, float b, float a,
+                                 float thickness, float durationSeconds)
+{
+    DebugDraw::Line(x0, y0, x1, y1, DebugDraw::Color(r, g, b, a), thickness, durationSeconds);
+}
+
+static void EditorDebugDraw_Circle(float centerX, float centerY, float radius,
+                                   float r, float g, float b, float a,
+                                   float thickness, int segments, float durationSeconds)
+{
+    DebugDraw::Circle(centerX, centerY, radius, DebugDraw::Color(r, g, b, a), thickness, segments, durationSeconds);
+}
+
+static void EditorDebugDraw_FilledCircle(float centerX, float centerY, float radius,
+                                         float r, float g, float b, float a,
+                                         int segments, float durationSeconds)
+{
+    DebugDraw::FilledCircle(centerX, centerY, radius, DebugDraw::Color(r, g, b, a), segments, durationSeconds);
+}
+
+static void EditorDebugDraw_Rect(float x, float y, float width, float height,
+                                 float r, float g, float b, float a,
+                                 float thickness, float durationSeconds)
+{
+    DebugDraw::Rect(x, y, width, height, DebugDraw::Color(r, g, b, a), thickness, durationSeconds);
+}
+
+static void EditorDebugDraw_FilledRect(float x, float y, float width, float height,
+                                       float r, float g, float b, float a,
+                                       float durationSeconds)
+{
+    DebugDraw::FilledRect(x, y, width, height, DebugDraw::Color(r, g, b, a), durationSeconds);
+}
+
+static void EditorDebugDraw_Clear()
+{
+    DebugDraw::Clear();
 }
 
 static MonoString* EditorExplorer_PickFolder(MonoString* title, MonoString* initialPath)
@@ -221,9 +289,8 @@ static bool EditorBridge_HasTransform(std::uint32_t entityId)
     if (!g_editorSceneContext)
         return false;
 
-    auto& registry = g_editorSceneContext->Registry();
-    const auto entity = static_cast<entt::entity>(entityId);
-    return registry.valid(entity) && registry.all_of<TransformComponent>(entity);
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    return g_editorSceneContext->HasTransform(entity);
 }
 
 static void EditorBridge_AddTransform(std::uint32_t entityId)
@@ -231,12 +298,11 @@ static void EditorBridge_AddTransform(std::uint32_t entityId)
     if (!g_editorSceneContext)
         return;
 
-    auto& registry = g_editorSceneContext->Registry();
-    const auto entity = static_cast<entt::entity>(entityId);
-    if (!registry.valid(entity) || registry.all_of<TransformComponent>(entity))
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity) || g_editorSceneContext->HasTransform(entity))
         return;
 
-    auto& transform = registry.emplace<TransformComponent>(entity);
+    auto& transform = g_editorSceneContext->AddTransform(entity);
     transform.x = 0.0f;
     transform.y = 0.0f;
     transform.width = 100.0f;
@@ -248,20 +314,19 @@ static bool EditorBridge_GetTransform(std::uint32_t entityId, float* x, float* y
     if (!g_editorSceneContext)
         return false;
 
-    auto& registry = g_editorSceneContext->Registry();
-    const auto entity = static_cast<entt::entity>(entityId);
-    if (!registry.valid(entity) || !registry.all_of<TransformComponent>(entity))
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const TransformComponent* transform = g_editorSceneContext->TryGetTransform(entity);
+    if (!transform)
         return false;
 
-    const auto& transform = registry.get<TransformComponent>(entity);
     if (x)
-        *x = transform.x;
+        *x = transform->x;
     if (y)
-        *y = transform.y;
+        *y = transform->y;
     if (width)
-        *width = transform.width;
+        *width = transform->width;
     if (height)
-        *height = transform.height;
+        *height = transform->height;
     return true;
 }
 
@@ -270,16 +335,112 @@ static void EditorBridge_SetTransform(std::uint32_t entityId, float x, float y, 
     if (!g_editorSceneContext)
         return;
 
-    auto& registry = g_editorSceneContext->Registry();
-    const auto entity = static_cast<entt::entity>(entityId);
-    if (!registry.valid(entity) || !registry.all_of<TransformComponent>(entity))
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    TransformComponent* transform = g_editorSceneContext->TryGetTransform(entity);
+    if (!transform)
         return;
 
-    auto& transform = registry.get<TransformComponent>(entity);
-    transform.x = x;
-    transform.y = y;
-    transform.width = width;
-    transform.height = height;
+    transform->x = x;
+    transform->y = y;
+    transform->width = width;
+    transform->height = height;
+}
+
+static bool EditorBridge_HasCamera(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    return g_editorSceneContext->HasCamera(entity);
+}
+
+static void EditorBridge_AddCamera(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity) || g_editorSceneContext->HasCamera(entity))
+        return;
+
+    auto& camera = g_editorSceneContext->AddCamera(entity);
+    camera.x = 0.0f;
+    camera.y = 0.0f;
+    camera.zoom = 1.0f;
+}
+
+static bool EditorBridge_GetCamera(std::uint32_t entityId, float* x, float* y, float* zoom)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const CameraComponent* camera = g_editorSceneContext->TryGetCamera(entity);
+    if (!camera)
+        return false;
+
+    if (x)
+        *x = camera->x;
+    if (y)
+        *y = camera->y;
+    if (zoom)
+        *zoom = camera->zoom;
+    return true;
+}
+
+static void EditorBridge_SetCamera(std::uint32_t entityId, float x, float y, float zoom)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    CameraComponent* camera = g_editorSceneContext->TryGetCamera(entity);
+    if (!camera)
+        return;
+
+    camera->x = x;
+    camera->y = y;
+    camera->zoom = zoom;
+}
+
+static void EditorBridge_RemoveCamera(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    g_editorSceneContext->RemoveCamera(entity);
+}
+
+static bool EditorBridge_HasSprite(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    return g_editorSceneContext->HasSprite(entity);
+}
+
+static void EditorBridge_AddSprite(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity) || g_editorSceneContext->HasSprite(entity))
+        return;
+
+    g_editorSceneContext->AddSprite(entity);
+}
+
+static void EditorBridge_RemoveSprite(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    g_editorSceneContext->RemoveSprite(entity);
 }
 
 static bool EditorBridge_HasScript(std::uint32_t entityId)
@@ -287,9 +448,8 @@ static bool EditorBridge_HasScript(std::uint32_t entityId)
     if (!g_editorSceneContext)
         return false;
 
-    auto& registry = g_editorSceneContext->Registry();
-    const auto entity = static_cast<entt::entity>(entityId);
-    return registry.valid(entity) && registry.all_of<ScriptComponent>(entity);
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    return g_editorSceneContext->HasScript(entity);
 }
 
 static void EditorBridge_AddScript(std::uint32_t entityId)
@@ -297,12 +457,11 @@ static void EditorBridge_AddScript(std::uint32_t entityId)
     if (!g_editorSceneContext)
         return;
 
-    auto& registry = g_editorSceneContext->Registry();
-    const auto entity = static_cast<entt::entity>(entityId);
-    if (!registry.valid(entity) || registry.all_of<ScriptComponent>(entity))
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity) || g_editorSceneContext->HasScript(entity))
         return;
 
-    registry.emplace<ScriptComponent>(entity);
+    g_editorSceneContext->AddScript(entity);
 }
 
 static void EditorBridge_RemoveScript(std::uint32_t entityId)
@@ -310,12 +469,8 @@ static void EditorBridge_RemoveScript(std::uint32_t entityId)
     if (!g_editorSceneContext)
         return;
 
-    auto& registry = g_editorSceneContext->Registry();
-    const auto entity = static_cast<entt::entity>(entityId);
-    if (!registry.valid(entity) || !registry.all_of<ScriptComponent>(entity))
-        return;
-
-    registry.remove<ScriptComponent>(entity);
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    g_editorSceneContext->RemoveScript(entity);
 }
 
 static bool EditorImGui_Begin(MonoString* title)
@@ -480,6 +635,306 @@ static bool EditorImGui_Checkbox(MonoString* label, MonoBoolean* value)
     *value = v ? 1 : 0;
     return changed;
 }
+
+static bool EditorImGui_IsWindowHovered()
+{
+    return ImGui::GetCurrentContext() ? ImGui::IsWindowHovered() : false;
+}
+
+static bool EditorImGui_GetWantCaptureMouse()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().WantCaptureMouse : false;
+}
+
+static bool EditorImGui_GetWantCaptureKeyboard()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().WantCaptureKeyboard : false;
+}
+
+static bool EditorImGui_IsMouseDown(int button)
+{
+    return ImGui::GetCurrentContext() ? ImGui::IsMouseDown(button) : false;
+}
+
+static float EditorImGui_GetMouseDeltaX()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().MouseDelta.x : 0.0f;
+}
+
+static float EditorImGui_GetMouseDeltaY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().MouseDelta.y : 0.0f;
+}
+
+static float EditorImGui_GetMouseWheel()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().MouseWheel : 0.0f;
+}
+
+static float EditorImGui_GetMousePosX()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().MousePos.x : 0.0f;
+}
+
+static float EditorImGui_GetMousePosY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().MousePos.y : 0.0f;
+}
+
+static float EditorImGui_GetDisplayWidth()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().DisplaySize.x : 0.0f;
+}
+
+static float EditorImGui_GetDisplayHeight()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().DisplaySize.y : 0.0f;
+}
+
+static float EditorImGui_GetContentRegionAvailX()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetContentRegionAvail().x : 0.0f;
+}
+
+static float EditorImGui_GetContentRegionAvailY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetContentRegionAvail().y : 0.0f;
+}
+
+static float EditorImGui_GetCursorScreenPosX()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetCursorScreenPos().x : 0.0f;
+}
+
+static float EditorImGui_GetCursorScreenPosY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetCursorScreenPos().y : 0.0f;
+}
+
+static void EditorImGui_Image(std::uint64_t textureHandle, float width, float height)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    ImTextureID textureId = reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(textureHandle));
+    ImGui::Image(textureId, ImVec2(width, height), ImVec2(0.0f, 1.0f), ImVec2(1.0f, 0.0f));
+}
+
+static bool EditorImGui_InvisibleButton(MonoString* id, float width, float height)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string value = MonoStringToUtf8(id);
+    const char* buttonId = value.empty() ? "##InvisibleButton" : value.c_str();
+    return ImGui::InvisibleButton(buttonId, ImVec2(width, height));
+}
+
+static bool EditorImGui_IsItemHovered()
+{
+    return ImGui::GetCurrentContext() ? ImGui::IsItemHovered() : false;
+}
+
+static bool EditorImGui_IsItemActive()
+{
+    return ImGui::GetCurrentContext() ? ImGui::IsItemActive() : false;
+}
+
+static bool EditorImGui_IsMouseClicked(int button)
+{
+    return ImGui::GetCurrentContext() ? ImGui::IsMouseClicked(button) : false;
+}
+
+static void EditorImGui_DrawLine(float x0,
+                                 float y0,
+                                 float x1,
+                                 float y1,
+                                 float r,
+                                 float g,
+                                 float b,
+                                 float a,
+                                 float thickness)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    if (!drawList)
+        return;
+
+    drawList->AddLine(ImVec2(x0, y0),
+                      ImVec2(x1, y1),
+                      IM_COL32(static_cast<int>(r * 255.0f),
+                               static_cast<int>(g * 255.0f),
+                               static_cast<int>(b * 255.0f),
+                               static_cast<int>(a * 255.0f)),
+                      thickness);
+}
+
+static void EditorImGui_DrawRect(float x,
+                                 float y,
+                                 float width,
+                                 float height,
+                                 float r,
+                                 float g,
+                                 float b,
+                                 float a,
+                                 float thickness)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    if (!drawList)
+        return;
+
+    drawList->AddRect(ImVec2(x, y),
+                      ImVec2(x + width, y + height),
+                      IM_COL32(static_cast<int>(r * 255.0f),
+                               static_cast<int>(g * 255.0f),
+                               static_cast<int>(b * 255.0f),
+                               static_cast<int>(a * 255.0f)),
+                      0.0f,
+                      0,
+                      thickness);
+}
+
+static bool EditorImGuizmo_IsUsing()
+{
+    return ImGui::GetCurrentContext() ? ImGuizmo::IsUsing() : false;
+}
+
+static bool EditorImGuizmo_Manipulate2DTranslate(float viewportX,
+                                                 float viewportY,
+                                                 float viewportWidth,
+                                                 float viewportHeight,
+                                                 float cameraX,
+                                                 float cameraY,
+                                                 float cameraZoom,
+                                                 float* x,
+                                                 float* y,
+                                                 float objectWidth,
+                                                 float objectHeight)
+{
+    if (!ImGui::GetCurrentContext() || !x || !y)
+        return false;
+
+    if (viewportWidth < 1.0f || viewportHeight < 1.0f)
+        return false;
+
+    float zoom = cameraZoom;
+    if (!std::isfinite(zoom) || zoom < 0.01f)
+        zoom = 0.01f;
+    else if (zoom > 100.0f)
+        zoom = 100.0f;
+
+    const float halfWorldWidth = (viewportWidth * 0.5f) / zoom;
+    const float halfWorldHeight = (viewportHeight * 0.5f) / zoom;
+    const float left = cameraX - halfWorldWidth;
+    const float right = cameraX + halfWorldWidth;
+    const float bottom = cameraY - halfWorldHeight;
+    const float top = cameraY + halfWorldHeight;
+
+    const float view[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+
+    const float rl = 1.0f / (right - left);
+    const float tb = 1.0f / (top - bottom);
+    const float projection[16] = {
+        2.0f * rl, 0.0f, 0.0f, 0.0f,
+        0.0f, 2.0f * tb, 0.0f, 0.0f,
+        0.0f, 0.0f, -1.0f, 0.0f,
+        -(right + left) * rl, -(top + bottom) * tb, 0.0f, 1.0f,
+    };
+
+    float matrix[16] = {
+        objectWidth, 0.0f, 0.0f, 0.0f,
+        0.0f, objectHeight, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        *x, *y, 0.0f, 1.0f,
+    };
+
+    ImGuizmo::SetOrthographic(true);
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+    ImGuizmo::SetRect(viewportX, viewportY, viewportWidth, viewportHeight);
+
+    const bool changed = ImGuizmo::Manipulate(view,
+                                              projection,
+                                              ImGuizmo::TRANSLATE,
+                                              ImGuizmo::WORLD,
+                                              matrix,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr);
+
+    if (changed)
+    {
+        *x = matrix[12];
+        *y = matrix[13];
+    }
+
+    return changed;
+}
+
+static bool EngineInput_GetMouseButton(int button)
+{
+    return SDLInputState::GetMouseButton(button);
+}
+
+static bool EngineInput_GetMouseButtonDown(int button)
+{
+    return SDLInputState::GetMouseButtonDown(button);
+}
+
+static bool EngineInput_GetMouseButtonUp(int button)
+{
+    return SDLInputState::GetMouseButtonUp(button);
+}
+
+static float EngineInput_GetMouseDeltaX()
+{
+    return SDLInputState::GetMouseDeltaX();
+}
+
+static float EngineInput_GetMouseDeltaY()
+{
+    return SDLInputState::GetMouseDeltaY();
+}
+
+static float EngineInput_GetMouseWheel()
+{
+    return SDLInputState::GetMouseWheel();
+}
+
+static float EngineInput_GetMousePosX()
+{
+    return SDLInputState::GetMousePosX();
+}
+
+static float EngineInput_GetMousePosY()
+{
+    return SDLInputState::GetMousePosY();
+}
+
+static bool EngineInput_GetKey(int scancode)
+{
+    return SDLInputState::GetKey(scancode);
+}
+
+static bool EngineInput_GetKeyDown(int scancode)
+{
+    return SDLInputState::GetKeyDown(scancode);
+}
+
+static bool EngineInput_GetKeyUp(int scancode)
+{
+    return SDLInputState::GetKeyUp(scancode);
+}
 #endif
 
 static std::filesystem::path FindScriptAssemblyPath(const std::filesystem::path& preferredPath, bool verbose = true)
@@ -525,6 +980,25 @@ static std::filesystem::path FindScriptAssemblyPath(const std::filesystem::path&
     return {};
 }
 
+static std::filesystem::path FindScriptProjectPath(const std::filesystem::path& preferredPath)
+{
+    if (!preferredPath.empty() && std::filesystem::exists(preferredPath))
+        return preferredPath;
+
+    const auto cwd = std::filesystem::current_path();
+    const std::vector<std::filesystem::path> candidates = {
+        cwd / "scripts" / "GameScripts.csproj",
+    };
+
+    for (const auto& candidate : candidates)
+    {
+        if (std::filesystem::exists(candidate))
+            return candidate;
+    }
+
+    return {};
+}
+
 static std::filesystem::path FindEditorAssemblyPath()
 {
     const auto cwd = std::filesystem::current_path();
@@ -543,6 +1017,61 @@ static std::filesystem::path FindEditorAssemblyPath()
     }
 
     return {};
+}
+
+static std::filesystem::path FindEditorProjectPath()
+{
+    const auto cwd = std::filesystem::current_path();
+    const std::vector<std::filesystem::path> candidates = {
+        cwd / "editor" / "EngineEditor.csproj",
+    };
+
+    for (const auto& candidate : candidates)
+    {
+        if (std::filesystem::exists(candidate))
+            return candidate;
+    }
+
+    return {};
+}
+
+static bool TryBuildDotnetProject(const std::filesystem::path& projectPath, const char* projectLabel)
+{
+    if (projectPath.empty() || !std::filesystem::exists(projectPath))
+    {
+        std::cout << "[Mono] Skip build (project missing): " << projectLabel << std::endl;
+        return false;
+    }
+
+    const std::string command = "dotnet build \"" + projectPath.string() + "\" -c Debug -nologo";
+    std::cout << "[Mono] Building " << projectLabel << ": " << projectPath << std::endl;
+
+    const int exitCode = std::system(command.c_str());
+    if (exitCode == 0)
+    {
+        std::cout << "[Mono] Build succeeded for " << projectLabel << "." << std::endl;
+        return true;
+    }
+
+    std::cerr << "[Mono] Build failed for " << projectLabel << " (exit code: " << exitCode << ")." << std::endl;
+    return false;
+}
+
+static void ReportAssemblyAvailability(const std::filesystem::path& assemblyPath, const char* assemblyLabel)
+{
+    if (assemblyPath.empty())
+    {
+        std::cerr << "[Mono] " << assemblyLabel << " path could not be resolved." << std::endl;
+        return;
+    }
+
+    if (!std::filesystem::exists(assemblyPath))
+    {
+        std::cerr << "[Mono] Missing " << assemblyLabel << ": " << assemblyPath << std::endl;
+        return;
+    }
+
+    std::cout << "[Mono] Verified " << assemblyLabel << ": " << assemblyPath << std::endl;
 }
 
 #if ENGINE_MONO_RUNTIME_AVAILABLE
@@ -722,6 +1251,14 @@ void MonoRuntime::SetPreferredScriptAssemblyPath(const std::string& assemblyPath
     m_impl->preferredScriptAssemblyPath = std::filesystem::path(assemblyPath);
 }
 
+void MonoRuntime::SetPreferredScriptProjectPath(const std::string& projectPath)
+{
+    if (!m_impl)
+        m_impl = std::make_unique<Impl>();
+
+    m_impl->preferredScriptProjectPath = std::filesystem::path(projectPath);
+}
+
 bool MonoRuntime::Initialize()
 {
 #if !ENGINE_MONO_RUNTIME_AVAILABLE
@@ -759,11 +1296,28 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.EditorBridge::AddTransform", (const void*)&EditorBridge_AddTransform);
     mono_add_internal_call("Engine.EditorBridge::GetTransform", (const void*)&EditorBridge_GetTransform);
     mono_add_internal_call("Engine.EditorBridge::SetTransform", (const void*)&EditorBridge_SetTransform);
+    mono_add_internal_call("Engine.EditorBridge::HasCamera", (const void*)&EditorBridge_HasCamera);
+    mono_add_internal_call("Engine.EditorBridge::AddCamera", (const void*)&EditorBridge_AddCamera);
+    mono_add_internal_call("Engine.EditorBridge::GetCamera", (const void*)&EditorBridge_GetCamera);
+    mono_add_internal_call("Engine.EditorBridge::SetCamera", (const void*)&EditorBridge_SetCamera);
+    mono_add_internal_call("Engine.EditorBridge::RemoveCamera", (const void*)&EditorBridge_RemoveCamera);
+    mono_add_internal_call("Engine.EditorBridge::HasSprite", (const void*)&EditorBridge_HasSprite);
+    mono_add_internal_call("Engine.EditorBridge::AddSprite", (const void*)&EditorBridge_AddSprite);
+    mono_add_internal_call("Engine.EditorBridge::RemoveSprite", (const void*)&EditorBridge_RemoveSprite);
     mono_add_internal_call("Engine.EditorBridge::HasScript", (const void*)&EditorBridge_HasScript);
     mono_add_internal_call("Engine.EditorBridge::AddScript", (const void*)&EditorBridge_AddScript);
     mono_add_internal_call("Engine.EditorBridge::RemoveScript", (const void*)&EditorBridge_RemoveScript);
     mono_add_internal_call("Engine.EditorBridge::SetScriptEnabled", (const void*)&EditorBridge_SetScriptEnabled);
     mono_add_internal_call("Engine.EditorBridge::GetScriptEnabled", (const void*)&EditorBridge_GetScriptEnabled);
+    mono_add_internal_call("Engine.EditorBridge::SetGameViewSize", (const void*)&EditorBridge_SetGameViewSize);
+    mono_add_internal_call("Engine.EditorBridge::GetGameViewTextureHandle", (const void*)&EditorBridge_GetGameViewTextureHandle);
+
+    mono_add_internal_call("Engine.DebugDraw::LineInternal", (const void*)&EditorDebugDraw_Line);
+    mono_add_internal_call("Engine.DebugDraw::CircleInternal", (const void*)&EditorDebugDraw_Circle);
+    mono_add_internal_call("Engine.DebugDraw::FilledCircleInternal", (const void*)&EditorDebugDraw_FilledCircle);
+    mono_add_internal_call("Engine.DebugDraw::RectInternal", (const void*)&EditorDebugDraw_Rect);
+    mono_add_internal_call("Engine.DebugDraw::FilledRectInternal", (const void*)&EditorDebugDraw_FilledRect);
+    mono_add_internal_call("Engine.DebugDraw::ClearInternal", (const void*)&EditorDebugDraw_Clear);
 
     mono_add_internal_call("Engine.Explorer::PickFolderInternal", (const void*)&EditorExplorer_PickFolder);
     mono_add_internal_call("Engine.Explorer::PickFileInternal", (const void*)&EditorExplorer_PickFile);
@@ -787,12 +1341,62 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.ImGui::InputFloat", (const void*)&EditorImGui_InputFloat);
     mono_add_internal_call("Engine.ImGui::Separator", (const void*)&EditorImGui_Separator);
     mono_add_internal_call("Engine.ImGui::Checkbox", (const void*)&EditorImGui_Checkbox);
+    mono_add_internal_call("Engine.ImGui::IsWindowHovered", (const void*)&EditorImGui_IsWindowHovered);
+    mono_add_internal_call("Engine.ImGui::GetWantCaptureMouse", (const void*)&EditorImGui_GetWantCaptureMouse);
+    mono_add_internal_call("Engine.ImGui::GetWantCaptureKeyboard", (const void*)&EditorImGui_GetWantCaptureKeyboard);
+    mono_add_internal_call("Engine.ImGui::IsMouseDown", (const void*)&EditorImGui_IsMouseDown);
+    mono_add_internal_call("Engine.ImGui::GetMouseDeltaX", (const void*)&EditorImGui_GetMouseDeltaX);
+    mono_add_internal_call("Engine.ImGui::GetMouseDeltaY", (const void*)&EditorImGui_GetMouseDeltaY);
+    mono_add_internal_call("Engine.ImGui::GetMouseWheel", (const void*)&EditorImGui_GetMouseWheel);
+    mono_add_internal_call("Engine.ImGui::GetMousePosX", (const void*)&EditorImGui_GetMousePosX);
+    mono_add_internal_call("Engine.ImGui::GetMousePosY", (const void*)&EditorImGui_GetMousePosY);
+    mono_add_internal_call("Engine.ImGui::GetDisplayWidth", (const void*)&EditorImGui_GetDisplayWidth);
+    mono_add_internal_call("Engine.ImGui::GetDisplayHeight", (const void*)&EditorImGui_GetDisplayHeight);
+    mono_add_internal_call("Engine.ImGui::GetContentRegionAvailX", (const void*)&EditorImGui_GetContentRegionAvailX);
+    mono_add_internal_call("Engine.ImGui::GetContentRegionAvailY", (const void*)&EditorImGui_GetContentRegionAvailY);
+    mono_add_internal_call("Engine.ImGui::GetCursorScreenPosX", (const void*)&EditorImGui_GetCursorScreenPosX);
+    mono_add_internal_call("Engine.ImGui::GetCursorScreenPosY", (const void*)&EditorImGui_GetCursorScreenPosY);
+    mono_add_internal_call("Engine.ImGui::Image", (const void*)&EditorImGui_Image);
+    mono_add_internal_call("Engine.ImGui::InvisibleButton", (const void*)&EditorImGui_InvisibleButton);
+    mono_add_internal_call("Engine.ImGui::IsItemHovered", (const void*)&EditorImGui_IsItemHovered);
+    mono_add_internal_call("Engine.ImGui::IsItemActive", (const void*)&EditorImGui_IsItemActive);
+    mono_add_internal_call("Engine.ImGui::IsMouseClicked", (const void*)&EditorImGui_IsMouseClicked);
+    mono_add_internal_call("Engine.ImGui::DrawLine", (const void*)&EditorImGui_DrawLine);
+    mono_add_internal_call("Engine.ImGui::DrawRect", (const void*)&EditorImGui_DrawRect);
+
+    mono_add_internal_call("Engine.ImGuizmo::IsUsing", (const void*)&EditorImGuizmo_IsUsing);
+    mono_add_internal_call("Engine.ImGuizmo::Manipulate2DTranslate", (const void*)&EditorImGuizmo_Manipulate2DTranslate);
+
+    mono_add_internal_call("Engine.Input::GetMouseButton", (const void*)&EngineInput_GetMouseButton);
+    mono_add_internal_call("Engine.Input::GetMouseButtonDown", (const void*)&EngineInput_GetMouseButtonDown);
+    mono_add_internal_call("Engine.Input::GetMouseButtonUp", (const void*)&EngineInput_GetMouseButtonUp);
+    mono_add_internal_call("Engine.Input::GetMouseDeltaX", (const void*)&EngineInput_GetMouseDeltaX);
+    mono_add_internal_call("Engine.Input::GetMouseDeltaY", (const void*)&EngineInput_GetMouseDeltaY);
+    mono_add_internal_call("Engine.Input::GetMouseWheel", (const void*)&EngineInput_GetMouseWheel);
+    mono_add_internal_call("Engine.Input::GetMousePosX", (const void*)&EngineInput_GetMousePosX);
+    mono_add_internal_call("Engine.Input::GetMousePosY", (const void*)&EngineInput_GetMousePosY);
+    mono_add_internal_call("Engine.Input::GetKey", (const void*)&EngineInput_GetKey);
+    mono_add_internal_call("Engine.Input::GetKeyDown", (const void*)&EngineInput_GetKeyDown);
+    mono_add_internal_call("Engine.Input::GetKeyUp", (const void*)&EngineInput_GetKeyUp);
 
     m_impl->shadowCopyDirectory = std::filesystem::current_path() / ".mono_cache";
     std::error_code shadowError;
     std::filesystem::create_directories(m_impl->shadowCopyDirectory, shadowError);
 
+    const std::filesystem::path scriptProjectPath = FindScriptProjectPath(m_impl->preferredScriptProjectPath);
+    if (!scriptProjectPath.empty())
+        TryBuildDotnetProject(scriptProjectPath, "script project");
+    else
+        std::cout << "[Mono] Script project file not found; skipping script build step." << std::endl;
+
+    const std::filesystem::path editorProjectPath = FindEditorProjectPath();
+    if (!editorProjectPath.empty())
+        TryBuildDotnetProject(editorProjectPath, "editor project");
+    else
+        std::cout << "[Mono] Editor project file not found; skipping editor build step." << std::endl;
+
     const auto assemblyPath = FindScriptAssemblyPath(m_impl->preferredScriptAssemblyPath);
+    ReportAssemblyAvailability(assemblyPath, "script assembly");
     if (assemblyPath.empty())
     {
         std::cout << "[Mono] No script assembly found (metadata path + legacy candidates checked)." << std::endl;
@@ -825,6 +1429,7 @@ bool MonoRuntime::Initialize()
     }
 
     const auto editorPath = FindEditorAssemblyPath();
+    ReportAssemblyAvailability(editorPath, "editor assembly");
     if (editorPath.empty())
     {
         std::cout << "[Mono] No editor assembly found (expected editor/bin/*/net472/EngineEditor.dll)." << std::endl;
@@ -857,11 +1462,12 @@ bool MonoRuntime::Initialize()
 #endif
 }
 
-void MonoRuntime::Update(float deltaTime, Scene* scene)
+void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer)
 {
 #if !ENGINE_MONO_RUNTIME_AVAILABLE
     (void)deltaTime;
     (void)scene;
+    (void)renderer;
 #else
     if (!m_impl)
         return;
@@ -980,6 +1586,8 @@ void MonoRuntime::Update(float deltaTime, Scene* scene)
     }
 
     g_editorSceneContext = scene;
+    g_editorRendererContext = nullptr;
+    g_editorRendererContext = renderer;
 
     if (m_impl->editorLoaded && m_impl->editorOnUpdate)
     {
@@ -996,6 +1604,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene)
     if (!scene || !m_impl->scriptLoaded || !m_impl->image)
     {
         g_editorSceneContext = nullptr;
+        g_editorRendererContext = nullptr;
         return;
     }
 
@@ -1078,6 +1687,8 @@ void MonoRuntime::Update(float deltaTime, Scene* scene)
     }
 
     g_editorSceneContext = nullptr;
+    g_editorRendererContext = nullptr;
+    g_editorRendererContext = nullptr;
 #endif
 }
 

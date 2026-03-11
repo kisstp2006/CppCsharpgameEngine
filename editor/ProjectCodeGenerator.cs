@@ -5,6 +5,8 @@ namespace EngineEditor
 {
     internal static class ProjectCodeGenerator
     {
+        private const string GeneratedScriptTargetFramework = "net48";
+
         private sealed class ProjectGenerationResult
         {
             public string ScriptProjectFile = string.Empty;
@@ -60,7 +62,7 @@ namespace EngineEditor
             {
                 ScriptProjectFile = csprojFileName,
                 ScriptSolutionFile = slnFileName,
-                AssemblyPath = ("bin/Debug/net472/" + assemblyName + ".dll").Replace("\\", "/"),
+                AssemblyPath = ("bin/Debug/" + GeneratedScriptTargetFramework + "/" + assemblyName + ".dll").Replace("\\", "/"),
             };
         }
 
@@ -77,7 +79,7 @@ namespace EngineEditor
                    "  \"scriptProject\": \"" + StringUtilities.EscapeJson(generation.ScriptProjectFile) + "\",\n" +
                    "  \"scriptSolution\": \"" + StringUtilities.EscapeJson(generation.ScriptSolutionFile) + "\",\n" +
                    "  \"assemblyPath\": \"" + StringUtilities.EscapeJson(generation.AssemblyPath) + "\",\n" +
-                   "  \"targetFramework\": \"net472\"\n" +
+                   "  \"targetFramework\": \"" + GeneratedScriptTargetFramework + "\"\n" +
                    "}\n";
         }
 
@@ -85,7 +87,7 @@ namespace EngineEditor
         {
             return "<Project Sdk=\"Microsoft.NET.Sdk\">\n" +
                    "  <PropertyGroup>\n" +
-                   "    <TargetFramework>net472</TargetFramework>\n" +
+                   "    <TargetFramework>" + GeneratedScriptTargetFramework + "</TargetFramework>\n" +
                    "    <LangVersion>8.0</LangVersion>\n" +
                    "    <AssemblyName>" + StringUtilities.EscapeXml(assemblyName) + "</AssemblyName>\n" +
                    "    <RootNamespace>GameScripts</RootNamespace>\n" +

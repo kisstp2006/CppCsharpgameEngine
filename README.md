@@ -62,6 +62,70 @@ After building, run the executable from the build folder:
 .\App.exe
 ```
 
+## Debug Drawing (C++)
+
+You can draw simple debug primitives from native C++ code each frame via:
+
+- `DebugDraw::Line(...)`
+- `DebugDraw::Circle(...)`
+- `DebugDraw::Rect(...)`
+- `DebugDraw::Box(...)`
+- `DebugDraw::FilledCircle(...)`
+- `DebugDraw::FilledRect(...)`
+
+Include:
+
+```cpp
+#include "engine/Render/DebugDraw.h"
+```
+
+Example:
+
+```cpp
+DebugDraw::Line(100.0f, 100.0f, 300.0f, 180.0f, DebugDraw::Color(1.0f, 0.2f, 0.2f), 2.0f);
+DebugDraw::Circle(400.0f, 220.0f, 40.0f, DebugDraw::Color(0.2f, 1.0f, 0.2f), 2.0f);
+DebugDraw::Box(500.0f, 120.0f, 140.0f, 80.0f, DebugDraw::Color(0.2f, 0.7f, 1.0f), 2.0f, 3.0f);
+DebugDraw::FilledRect(700.0f, 140.0f, 120.0f, 70.0f, DebugDraw::Color(1.0f, 0.8f, 0.1f, 0.35f), 2.0f);
+```
+
+Notes:
+
+- Coordinates match the renderer world-space (`(0, 0)` at bottom-left).
+- `durationSeconds = 0` means draw once for the current frame.
+- `durationSeconds > 0` keeps the primitive alive across multiple frames.
+
+The same API is exposed to C# through `Engine.DebugDraw` in both editor and script assemblies:
+
+```csharp
+Engine.DebugDraw.Line(100f, 100f, 240f, 180f, 1f, 0f, 0f, 1f, 2f);
+Engine.DebugDraw.FilledCircle(360f, 200f, 24f, 0.2f, 0.8f, 1f, 0.5f, 24, 0.5f);
+```
+
+## ECS World API (C++)
+
+`Scene` now provides a direct world-style API for entity/component operations:
+
+- `CreateEntity()`, `DestroyEntity(entity)`, `IsValid(entity)`
+- `AddComponent<T>()`, `HasComponent<T>()`, `TryGetComponent<T>()`, `RemoveComponent<T>()`
+- Typed helpers for built-in components:
+	`AddTransform`, `AddSprite`, `AddScript`, `TryGetTransform`, `TryGetSprite`, `TryGetScript`
+
+Quick example:
+
+```cpp
+Scene* world = engine.GetScene();
+if (world)
+{
+		const Scene::Entity e = world->CreateEntity();
+
+		world->AddTransform(e, TransformComponent{ 100.0f, 120.0f, 64.0f, 64.0f });
+		world->AddScript(e, ScriptComponent{ "GameScripts", "SpinnerScript", true });
+
+		if (TransformComponent* tr = world->TryGetTransform(e))
+				tr->x += 16.0f;
+}
+```
+
 ## C# Script Component (Entity level)
 
 The engine now supports an ECS `ScriptComponent` that can be attached to entities.

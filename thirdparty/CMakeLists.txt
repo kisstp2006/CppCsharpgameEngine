@@ -33,6 +33,9 @@ if(NOT EXISTS "${_TP_DIR}/imgui/imgui.cpp")
 endif()
 set(imgui_SOURCE_DIR "${_TP_DIR}/imgui")
 
+# ImGuizmo (vendored: thirdparty/ImGuizmo)
+set(imguizmo_SOURCE_DIR "${_TP_DIR}/ImGuizmo")
+
 # ──────────────────────────────────────────────────────────
 # EnTT (submodule: thirdparty/entt, header-only)
 # ──────────────────────────────────────────────────────────
@@ -107,9 +110,16 @@ if(NOT TARGET imgui)
     "${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp"
   )
 
+  if(EXISTS "${imguizmo_SOURCE_DIR}/ImGuizmo.cpp")
+    list(APPEND IMGUI_SOURCES "${imguizmo_SOURCE_DIR}/ImGuizmo.cpp")
+  endif()
+
   add_library(imgui STATIC ${IMGUI_SOURCES})
   target_include_directories(imgui PUBLIC "${imgui_SOURCE_DIR}")
   target_include_directories(imgui PUBLIC "${imgui_SOURCE_DIR}/backends")
+  if(EXISTS "${imguizmo_SOURCE_DIR}/ImGuizmo.h")
+    target_include_directories(imgui PUBLIC "${imguizmo_SOURCE_DIR}")
+  endif()
 
   # ImGui SDL2 backend needs SDL2 headers
   if(TARGET SDL2)

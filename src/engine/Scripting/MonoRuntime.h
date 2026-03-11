@@ -4,6 +4,7 @@
 #include <string>
 
 class Scene;
+class Renderer;
 
 class MonoRuntime
 {
@@ -13,7 +14,8 @@ public:
 
     bool Initialize();
     void SetPreferredScriptAssemblyPath(const std::string& assemblyPath);
-    void Update(float deltaTime, Scene* scene);
+    void SetPreferredScriptProjectPath(const std::string& projectPath);
+    void Update(float deltaTime, Scene* scene, Renderer* renderer);
     void Shutdown(Scene* scene = nullptr);
 
     bool IsScriptLoaded() const;

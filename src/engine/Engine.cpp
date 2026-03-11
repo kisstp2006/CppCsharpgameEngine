@@ -4,7 +4,9 @@
 #include "Assets/ProjectContext.h"
 #include "ECS/Components.h"
 #include "ECS/Scene.h"
+#include "Platform/SDLInputState.h"
 #include "Platform/SDLWindow.h"
+#include "Render/DebugDraw.h"
 #include "Render/Renderer.h"
 #include "Scripting/MonoRuntime.h"
 
@@ -96,6 +98,10 @@ bool Engine::Initialize(const std::string& title, int width, int height)
         const std::filesystem::path assemblyPath = m_projectContext->ScriptAssemblyAbsolutePath();
         if (!assemblyPath.empty())
             m_mono->SetPreferredScriptAssemblyPath(assemblyPath.string());
+
+        const std::filesystem::path scriptProjectPath = m_projectContext->ScriptProjectPath();
+        if (!scriptProjectPath.empty())
+            m_mono->SetPreferredScriptProjectPath(scriptProjectPath.string());
     }
 
     if (!m_mono->Initialize())
@@ -120,9 +126,12 @@ void Engine::Run()
         const float deltaTime = static_cast<float>(currentCounter - previousCounter) / static_cast<float>(perfFrequency);
         previousCounter = currentCounter;
 
+        SDLInputState::BeginFrame();
+
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
+            SDLInputState::ProcessEvent(event);
             ImGui_ImplSDL2_ProcessEvent(&event);
             if (event.type == SDL_QUIT)
                 m_running = false;
@@ -130,6 +139,8 @@ void Engine::Run()
             if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
                 m_running = false;
         }
+
+        SDLInputState::EndFrame();
 
         m_renderer->BeginFrame();
 
@@ -169,11 +180,30 @@ void Engine::Run()
 
 #ifndef ENGINE_MONO_DISABLED
         if (m_mono)
-            m_mono->Update(deltaTime, m_scene.get());
+            m_mono->Update(deltaTime, m_scene.get(), m_renderer.get());
 #endif
 
-        if (m_scene)
+        if (m_scene && m_renderer)
         {
+            float cameraX = 0.0f;
+            float cameraY = 0.0f;
+            float cameraZoom = 1.0f;
+
+            const Scene::Entity cameraEntity = m_scene->FindFirstCamera();
+            if (m_scene->IsValid(cameraEntity))
+            {
+                const CameraComponent* activeCamera = m_scene->TryGetCamera(cameraEntity);
+                if (activeCamera)
+                {
+                    cameraX = activeCamera->x;
+                    cameraY = activeCamera->y;
+                    cameraZoom = activeCamera->zoom;
+                }
+            }
+
+            m_renderer->BeginGameView();
+            m_renderer->SetCameraProjection(cameraX, cameraY, cameraZoom);
+
             auto view = m_scene->Registry().view<const TransformComponent, const SpriteComponent>();
             for (const auto entity : view)
             {
@@ -185,7 +215,12 @@ void Engine::Run()
                     m_renderer->DrawSprite(*sprite.texture, transform.x, transform.y, transform.width, transform.height);
                 }
             }
+
+            m_renderer->EndGameView();
         }
+
+        if (m_renderer)
+            DebugDraw::Render(deltaTime, m_renderer->GetViewHeight());
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -210,6 +245,8 @@ void Engine::Shutdown()
 
     if (m_renderer)
         m_renderer->Shutdown();
+
+    DebugDraw::Clear();
 
     if (m_window)
         m_window->Shutdown();

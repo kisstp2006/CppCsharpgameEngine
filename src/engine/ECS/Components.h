@@ -12,6 +12,13 @@ struct TransformComponent
     float height = 1.0f;
 };
 
+struct CameraComponent
+{
+    float x = 0.0f;
+    float y = 0.0f;
+    float zoom = 1.0f;
+};
+
 struct SpriteComponent
 {
     Texture* texture = nullptr;

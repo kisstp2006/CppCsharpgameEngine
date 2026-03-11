@@ -122,6 +122,34 @@ namespace EngineEditor
                 ProjectOperations.OpenLastProject();
 
             ImGui.SameLine();
+            if (ImGui.Button("Browse Project"))
+            {
+                string selectedFilePath = Explorer.PickFile("Select project solution (.sln)", _projectsRoot);
+                if (!string.IsNullOrWhiteSpace(selectedFilePath))
+                {
+                    string extension = Path.GetExtension(selectedFilePath);
+                    if (!string.Equals(extension, ".sln", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ProjectOperations.SetStatusMessage("Open failed: please select a .sln file.");
+                    }
+                    else
+                    {
+                        string projectDirectory = Path.GetDirectoryName(selectedFilePath);
+                        if (string.IsNullOrWhiteSpace(projectDirectory) || !Directory.Exists(projectDirectory))
+                        {
+                            ProjectOperations.SetStatusMessage("Open failed: solution folder is invalid.");
+                        }
+                        else
+                        {
+                            ProjectOperations.OpenProject(projectDirectory);
+                            RefreshProjectList();
+                            TrySelectProjectByPath(projectDirectory);
+                        }
+                    }
+                }
+            }
+
+            ImGui.SameLine();
             if (ImGui.Button("New Project"))
             {
                 PopupDialogs.OpenCreateProjectPopup(_projectsRoot);
@@ -140,6 +168,8 @@ namespace EngineEditor
 
         private static void DrawProjectListPane()
         {
+            DrawRecentProjectsSection();
+
             ImGui.Text("All Projects");
             ImGui.Separator();
 
@@ -163,6 +193,51 @@ namespace EngineEditor
 
             if (!anyVisible)
                 ImGui.Text("No projects match the current search.");
+        }
+
+        private static void DrawRecentProjectsSection()
+        {
+            string[] recentProjectPaths = ProjectOperations.GetRecentProjects();
+
+            ImGui.Text("Recent Projects");
+            ImGui.Separator();
+
+            if (recentProjectPaths.Length == 0)
+            {
+                ImGui.Text("No recently opened projects.");
+                ImGui.Separator();
+                return;
+            }
+
+            for (int i = 0; i < recentProjectPaths.Length; ++i)
+            {
+                string projectPath = recentProjectPaths[i];
+                string projectName = Path.GetFileName(projectPath);
+                bool selected = string.Equals(ProjectOperations.ActiveProjectPath, projectPath, StringComparison.OrdinalIgnoreCase);
+
+                if (ImGui.Selectable(projectName + "##RecentProject" + i, selected))
+                {
+                    ProjectOperations.OpenProject(projectPath);
+                    RefreshProjectList();
+                    TrySelectProjectByPath(projectPath);
+                }
+
+                ImGui.Text(projectPath);
+            }
+
+            ImGui.Separator();
+        }
+
+        private static void TrySelectProjectByPath(string projectPath)
+        {
+            for (int i = 0; i < _projectPaths.Length; ++i)
+            {
+                if (string.Equals(_projectPaths[i], projectPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    SelectProject(i, Path.GetFileName(projectPath));
+                    return;
+                }
+            }
         }
 
         private static void DrawProjectDetailsPane()
