@@ -20,6 +20,15 @@ public:
     unsigned long long GetGameViewTextureHandle() const;
     void SetCameraProjection(float cameraX, float cameraY, float cameraZoom);
     void DrawSprite(Texture& texture, float x, float y, float width, float height);
+    void DrawSprite(Texture& texture,
+                    float x,
+                    float y,
+                    float width,
+                    float height,
+                    float uvMinX,
+                    float uvMinY,
+                    float uvMaxX,
+                    float uvMaxY);
 
     int GetViewWidth() const;
     int GetViewHeight() const;

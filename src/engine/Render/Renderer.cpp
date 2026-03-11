@@ -279,8 +279,32 @@ void Renderer::SetCameraProjection(float cameraX, float cameraY, float cameraZoo
 
 void Renderer::DrawSprite(Texture& texture, float x, float y, float width, float height)
 {
+    DrawSprite(texture, x, y, width, height, 0.0f, 0.0f, 1.0f, 1.0f);
+}
+
+void Renderer::DrawSprite(Texture& texture,
+                          float x,
+                          float y,
+                          float width,
+                          float height,
+                          float uvMinX,
+                          float uvMinY,
+                          float uvMaxX,
+                          float uvMaxY)
+{
     if (!m_impl)
         return;
+
+    float vertices[] = {
+        // pos    // uv
+        0.0f, 1.0f, uvMinX, uvMaxY,
+        1.0f, 0.0f, uvMaxX, uvMinY,
+        0.0f, 0.0f, uvMinX, uvMinY,
+
+        0.0f, 1.0f, uvMinX, uvMaxY,
+        1.0f, 1.0f, uvMaxX, uvMaxY,
+        1.0f, 0.0f, uvMaxX, uvMinY,
+    };
 
     m_impl->shader.Bind();
 
@@ -288,6 +312,10 @@ void Renderer::DrawSprite(Texture& texture, float x, float y, float width, float
     glUniformMatrix4fv(m_impl->modelLocation, 1, GL_FALSE, model.data());
 
     texture.Bind(0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, m_impl->vbo);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     glBindVertexArray(m_impl->vao);
     glDrawArrays(GL_TRIANGLES, 0, 6);

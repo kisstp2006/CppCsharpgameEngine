@@ -118,6 +118,44 @@ namespace Engine
         public static extern void RemoveSprite(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern string GetSpriteTexturePath(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetSpriteTexturePath(uint entityId, string texturePath);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool GetSpriteSettings(uint entityId,
+                                out bool centered,
+                                out float offsetX,
+                                out float offsetY,
+                                out bool flipH,
+                                out bool flipV,
+                                out uint hframes,
+                                out uint vframes,
+                                out uint frame,
+                                out bool regionEnabled,
+                                out float regionX,
+                                out float regionY,
+                                out float regionWidth,
+                                out float regionHeight);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetSpriteSettings(uint entityId,
+                                bool centered,
+                                float offsetX,
+                                float offsetY,
+                                bool flipH,
+                                bool flipV,
+                                uint hframes,
+                                uint vframes,
+                                uint frame,
+                                bool regionEnabled,
+                                float regionX,
+                                float regionY,
+                                float regionWidth,
+                                float regionHeight);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool HasScript(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]

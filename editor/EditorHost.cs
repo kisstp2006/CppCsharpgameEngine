@@ -79,7 +79,7 @@ namespace EngineEditor
                 activeProjectName = "<none>";
 
             ImGui.Text("CppCSharp Editor");
-            ImGui.SameLine();
+            EditorUIHelpers.DrawInlineDivider();
             if (ImGui.Button("Project Manager"))
                 _showProjectManagerView = true;
 
@@ -87,7 +87,7 @@ namespace EngineEditor
             if (ImGui.Button("Scene Workspace"))
                 _showProjectManagerView = false;
 
-            ImGui.SameLine();
+            EditorUIHelpers.DrawInlineDivider();
             if (ImGui.Button("Editor Options"))
                 EditorOptionsWindow.Toggle();
 
@@ -97,7 +97,7 @@ namespace EngineEditor
 
             if (!_showProjectManagerView)
             {
-                ImGui.SameLine();
+                EditorUIHelpers.DrawInlineDivider();
                 if (ImGui.Button("Save Scene"))
                     SceneEditor.SaveScene();
 
@@ -105,14 +105,14 @@ namespace EngineEditor
                 if (ImGui.Button("Create Entity"))
                     SceneEditor.CreateEntityAndSelect();
 
-                ImGui.SameLine();
+                EditorUIHelpers.DrawInlineDivider();
                 int selectedEntityId = SceneEditor.SelectedEntityId;
                 if (selectedEntityId >= 0)
                     ImGui.Text("Selected: Entity " + selectedEntityId);
                 else
                     ImGui.Text("Selected: <none>");
 
-                ImGui.SameLine();
+                EditorUIHelpers.DrawInlineDivider();
                 string activeScenePath = SceneEditor.ActiveScenePath;
                 if (string.IsNullOrEmpty(activeScenePath))
                     ImGui.Text("Scene: <unsaved>");
@@ -120,10 +120,10 @@ namespace EngineEditor
                     ImGui.Text("Scene: " + Path.GetFileName(activeScenePath));
             }
 
-            ImGui.SameLine();
+            EditorUIHelpers.DrawInlineDivider();
             ImGui.Text("Project: " + activeProjectName);
 
-            ImGui.SameLine();
+            EditorUIHelpers.DrawInlineDivider();
             ImGui.Text("Status: " + ProjectOperations.StatusMessage);
 
             ImGui.EndTopBar();

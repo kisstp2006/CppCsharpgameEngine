@@ -25,6 +25,19 @@ struct SpriteComponent
     Texture* texture = nullptr;
     std::uint64_t textureAssetHandle = 0;
     std::string textureAssetPath;
+    bool centered = true;
+    float offsetX = 0.0f;
+    float offsetY = 0.0f;
+    bool flipH = false;
+    bool flipV = false;
+    std::uint32_t hframes = 1;
+    std::uint32_t vframes = 1;
+    std::uint32_t frame = 0;
+    bool regionEnabled = false;
+    float regionX = 0.0f;
+    float regionY = 0.0f;
+    float regionWidth = 0.0f;
+    float regionHeight = 0.0f;
 };
 
 struct EntityMetadataComponent

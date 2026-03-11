@@ -607,7 +607,7 @@ namespace EngineEditor
             }
 
             ImGui.Separator();
-            string foldoutLabel = (expanded ? "v " : "> ") + entry.Name + "##ComponentFoldout" + foldoutKey;
+            string foldoutLabel = EditorUIHelpers.BuildFoldoutButtonLabel(entry.Name, expanded, "ComponentFoldout" + foldoutKey);
             if (ImGui.Button(foldoutLabel))
             {
                 expanded = !expanded;
@@ -860,8 +860,153 @@ namespace EngineEditor
 
         private static void DrawSpriteInspector(uint entityId)
         {
-            _ = entityId;
-            ImGui.Text("Sprite settings are not exposed yet.");
+            string texturePath = EditorBridge.GetSpriteTexturePath(entityId) ?? string.Empty;
+            if (InspectorInputs.String("Texture", ref texturePath))
+                EditorBridge.SetSpriteTexturePath(entityId, texturePath.Trim());
+
+            ImGui.SameLine();
+            if (ImGui.Button("Browse##SpriteTexture" + entityId))
+            {
+                string initialDirectory = ProjectOperations.ActiveProjectPath;
+                if (string.IsNullOrWhiteSpace(initialDirectory) || !Directory.Exists(initialDirectory))
+                    initialDirectory = Directory.GetCurrentDirectory();
+
+                string pickedPath = Explorer.PickFile("Select sprite texture (.bmp)", initialDirectory);
+                if (!string.IsNullOrWhiteSpace(pickedPath))
+                {
+                    string normalizedPath = pickedPath;
+                    string projectRoot = ProjectOperations.ActiveProjectPath;
+                    if (!string.IsNullOrWhiteSpace(projectRoot) && Directory.Exists(projectRoot))
+                    {
+                        string relativePath = StringUtilities.MakeRelativePath(projectRoot, pickedPath);
+                        if (!relativePath.StartsWith("..", StringComparison.Ordinal))
+                            normalizedPath = relativePath;
+                    }
+
+                    normalizedPath = normalizedPath.Replace('\\', '/');
+                    EditorBridge.SetSpriteTexturePath(entityId, normalizedPath);
+                }
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Clear##SpriteTexture" + entityId))
+                EditorBridge.SetSpriteTexturePath(entityId, string.Empty);
+
+            bool centered;
+            float offsetX;
+            float offsetY;
+            bool flipH;
+            bool flipV;
+            uint hframes;
+            uint vframes;
+            uint frame;
+            bool regionEnabled;
+            float regionX;
+            float regionY;
+            float regionWidth;
+            float regionHeight;
+
+            if (!EditorBridge.GetSpriteSettings(entityId,
+                                                out centered,
+                                                out offsetX,
+                                                out offsetY,
+                                                out flipH,
+                                                out flipV,
+                                                out hframes,
+                                                out vframes,
+                                                out frame,
+                                                out regionEnabled,
+                                                out regionX,
+                                                out regionY,
+                                                out regionWidth,
+                                                out regionHeight))
+            {
+                ImGui.Text("Sprite data unavailable.");
+                return;
+            }
+
+            bool changed = false;
+
+            EditorUIHelpers.DrawSectionHeader("Offset");
+            changed |= InspectorInputs.Bool("Centered", ref centered);
+            changed |= InspectorInputs.Vector2("Offset", ref offsetX, ref offsetY, 0.1f);
+            changed |= InspectorInputs.Bool("Flip H", ref flipH);
+            changed |= InspectorInputs.Bool("Flip V", ref flipV);
+
+            EditorUIHelpers.DrawSectionHeader("Animation");
+            changed |= InspectorInputs.UInt("Hframes", ref hframes);
+            changed |= InspectorInputs.UInt("Vframes", ref vframes);
+            changed |= InspectorInputs.UInt("Frame", ref frame);
+
+            if (hframes < 1)
+                hframes = 1;
+            if (vframes < 1)
+                vframes = 1;
+
+            uint frameX = frame % hframes;
+            uint frameY = frame / hframes;
+            bool frameCoordsChanged = false;
+            frameCoordsChanged |= InspectorInputs.UInt("Frame X", ref frameX);
+            frameCoordsChanged |= InspectorInputs.UInt("Frame Y", ref frameY);
+            if (frameCoordsChanged)
+            {
+                ulong frameCount = (ulong)hframes * (ulong)vframes;
+                if (frameCount == 0)
+                    frameCount = 1;
+
+                ulong resolvedFrame = (ulong)frameY * (ulong)hframes + (ulong)frameX;
+                if (resolvedFrame >= frameCount)
+                    resolvedFrame = frameCount - 1;
+
+                frame = (uint)resolvedFrame;
+                changed = true;
+            }
+
+            ulong maxFrames = (ulong)hframes * (ulong)vframes;
+            if (maxFrames == 0)
+                maxFrames = 1;
+            if (frame >= maxFrames)
+            {
+                frame = (uint)(maxFrames - 1);
+                changed = true;
+            }
+
+            EditorUIHelpers.DrawSectionHeader("Region");
+            changed |= InspectorInputs.Bool("Region Enabled", ref regionEnabled);
+            if (regionEnabled)
+            {
+                changed |= InspectorInputs.Vector2("Region Pos", ref regionX, ref regionY, 1.0f);
+                changed |= InspectorInputs.Vector2("Region Size", ref regionWidth, ref regionHeight, 1.0f);
+                if (regionWidth < 0.0f)
+                {
+                    regionWidth = 0.0f;
+                    changed = true;
+                }
+
+                if (regionHeight < 0.0f)
+                {
+                    regionHeight = 0.0f;
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
+                EditorBridge.SetSpriteSettings(entityId,
+                                               centered,
+                                               offsetX,
+                                               offsetY,
+                                               flipH,
+                                               flipV,
+                                               hframes,
+                                               vframes,
+                                               frame,
+                                               regionEnabled,
+                                               regionX,
+                                               regionY,
+                                               regionWidth,
+                                               regionHeight);
+            }
         }
 
         private static void DrawCameraInspector(uint entityId)

@@ -301,6 +301,10 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::HasSprite", (const void*)&EditorBridge_HasSprite);
         mono_add_internal_call("Engine.EditorBridge::AddSprite", (const void*)&EditorBridge_AddSprite);
         mono_add_internal_call("Engine.EditorBridge::RemoveSprite", (const void*)&EditorBridge_RemoveSprite);
+        mono_add_internal_call("Engine.EditorBridge::GetSpriteTexturePath", (const void*)&EditorBridge_GetSpriteTexturePath);
+        mono_add_internal_call("Engine.EditorBridge::SetSpriteTexturePath", (const void*)&EditorBridge_SetSpriteTexturePath);
+        mono_add_internal_call("Engine.EditorBridge::GetSpriteSettings", (const void*)&EditorBridge_GetSpriteSettings);
+        mono_add_internal_call("Engine.EditorBridge::SetSpriteSettings", (const void*)&EditorBridge_SetSpriteSettings);
         mono_add_internal_call("Engine.EditorBridge::HasScript", (const void*)&EditorBridge_HasScript);
         mono_add_internal_call("Engine.EditorBridge::AddScript", (const void*)&EditorBridge_AddScript);
         mono_add_internal_call("Engine.EditorBridge::RemoveScript", (const void*)&EditorBridge_RemoveScript);

@@ -85,21 +85,21 @@ namespace EngineEditor
             DrawToolbar(projectPath);
             ImGui.Separator();
 
-            float bodyHeight = ImGui.GetContentRegionAvailY() - 30.0f;
-            if (bodyHeight < 120.0f)
-                bodyHeight = 120.0f;
+            float bodyHeight = ImGui.GetContentRegionAvailY() - EditorUIHelpers.AssetBrowserReservedStatusHeight;
+            if (bodyHeight < EditorUIHelpers.AssetBrowserMinBodyHeight)
+                bodyHeight = EditorUIHelpers.AssetBrowserMinBodyHeight;
 
             if (ImGui.BeginChild("##AssetBrowserBody", 0.0f, bodyHeight, false))
             {
                 float totalWidth = ImGui.GetContentRegionAvailX();
-                if (totalWidth < 320.0f)
-                    totalWidth = 320.0f;
+                if (totalWidth < EditorUIHelpers.AssetBrowserMinWidth)
+                    totalWidth = EditorUIHelpers.AssetBrowserMinWidth;
 
                 float treeWidth = totalWidth * 0.28f;
-                if (treeWidth < 220.0f)
-                    treeWidth = 220.0f;
-                if (treeWidth > totalWidth - 120.0f)
-                    treeWidth = totalWidth - 120.0f;
+                if (treeWidth < EditorUIHelpers.AssetTreeMinWidth)
+                    treeWidth = EditorUIHelpers.AssetTreeMinWidth;
+                if (treeWidth > totalWidth - EditorUIHelpers.AssetTreeReservedGridWidth)
+                    treeWidth = totalWidth - EditorUIHelpers.AssetTreeReservedGridWidth;
 
                 if (ImGui.BeginChild("##AssetFolderTree", treeWidth, 0.0f, true))
                 {
@@ -201,10 +201,7 @@ namespace EngineEditor
             }
 
             ImGui.SameLine();
-            ImGui.SetNextItemWidth(260.0f);
-            string updatedSearch = ImGui.InputText("Search##AssetPanelSearch", _searchText);
-            if (updatedSearch != null)
-                _searchText = updatedSearch;
+            EditorUIHelpers.InputTextWithWidth("Search##AssetPanelSearch", ref _searchText, EditorUIHelpers.CompactSearchWidth);
         }
 
         private static void DrawFolderTree(string projectPath)
@@ -231,11 +228,10 @@ namespace EngineEditor
             if (string.IsNullOrEmpty(labelName))
                 labelName = folderPath;
 
-            string indent = new string(' ', depth * 2);
-            string marker = hasChildren ? (expanded ? "[-]" : "[+]") : "[ ]";
             bool selected = PathEquals(_currentFolderPath, folderPath);
 
-            bool clicked = ImGui.Selectable(indent + marker + " " + labelName + "##FolderNode" + folderPath, selected);
+            string folderLabel = EditorUIHelpers.BuildTreeNodeLabel(depth, hasChildren, expanded, labelName, "FolderNode" + folderPath);
+            bool clicked = ImGui.Selectable(folderLabel, selected);
             if (clicked)
             {
                 if (selected && hasChildren)
@@ -285,9 +281,7 @@ namespace EngineEditor
 
                 running = Path.Combine(running, segment);
 
-                ImGui.SameLine();
-                ImGui.Text(">");
-                ImGui.SameLine();
+                EditorUIHelpers.DrawBreadcrumbSeparator();
                 if (ImGui.Button(segment + "##AssetBreadcrumb" + i))
                     NavigateToFolder(running, true);
             }
@@ -295,7 +289,7 @@ namespace EngineEditor
 
         private static void DrawAssetGrid(string projectPath)
         {
-            int columns = (int)(ImGui.GetContentRegionAvailX() / 190.0f);
+            int columns = (int)(ImGui.GetContentRegionAvailX() / EditorUIHelpers.AssetGridItemWidth);
             if (columns < 1)
                 columns = 1;
 
@@ -453,7 +447,7 @@ namespace EngineEditor
             if (!ImGui.BeginPopupModal(AssetContextPopupId))
                 return;
 
-            ImGui.Text("Asset Menu");
+            EditorUIHelpers.DrawPopupHeader("Asset Menu");
 
             string contextPath = ResolveContextPath(projectPath);
             string contextLabel = ToDisplayPath(projectPath, contextPath);
@@ -1097,13 +1091,9 @@ namespace EngineEditor
             if (!ImGui.BeginPopupModal(CreateScenePopupId))
                 return;
 
-            ImGui.Text("Create Scene");
-            ImGui.Separator();
+            EditorUIHelpers.DrawPopupHeader("Create Scene");
 
-            ImGui.SetNextItemWidth(280.0f);
-            string updatedName = ImGui.InputText("Scene Name", _newSceneName);
-            if (updatedName != null)
-                _newSceneName = updatedName;
+            EditorUIHelpers.InputTextWithWidth("Scene Name", ref _newSceneName, EditorUIHelpers.CompactPopupFieldWidth);
 
             ImGui.Text("Format");
             if (ImGui.SelectableNoClose("JSON (.scene.json)", _newSceneFormat == 0))
@@ -1134,13 +1124,9 @@ namespace EngineEditor
             if (!ImGui.BeginPopupModal(CreateScriptPopupId))
                 return;
 
-            ImGui.Text("Create C# Script");
-            ImGui.Separator();
+            EditorUIHelpers.DrawPopupHeader("Create C# Script");
 
-            ImGui.SetNextItemWidth(280.0f);
-            string updatedName = ImGui.InputText("Script Name", _newScriptName);
-            if (updatedName != null)
-                _newScriptName = updatedName;
+            EditorUIHelpers.InputTextWithWidth("Script Name", ref _newScriptName, EditorUIHelpers.CompactPopupFieldWidth);
 
             ImGui.Separator();
             if (ImGui.Button("Create"))
@@ -1165,13 +1151,9 @@ namespace EngineEditor
             if (!ImGui.BeginPopupModal(CreateFolderPopupId))
                 return;
 
-            ImGui.Text("Create Folder");
-            ImGui.Separator();
+            EditorUIHelpers.DrawPopupHeader("Create Folder");
 
-            ImGui.SetNextItemWidth(280.0f);
-            string updatedName = ImGui.InputText("Folder Name", _newFolderName);
-            if (updatedName != null)
-                _newFolderName = updatedName;
+            EditorUIHelpers.InputTextWithWidth("Folder Name", ref _newFolderName, EditorUIHelpers.CompactPopupFieldWidth);
 
             ImGui.Separator();
             if (ImGui.Button("Create"))
@@ -1232,14 +1214,10 @@ namespace EngineEditor
             if (!ImGui.BeginPopupModal(RenamePopupId))
                 return;
 
-            ImGui.Text("Rename Asset");
-            ImGui.Separator();
+            EditorUIHelpers.DrawPopupHeader("Rename Asset");
             ImGui.Text("Target: " + Path.GetFileName(_renameTargetPath));
 
-            ImGui.SetNextItemWidth(300.0f);
-            string updatedValue = ImGui.InputText("New Name", _renameValue);
-            if (updatedValue != null)
-                _renameValue = updatedValue;
+            EditorUIHelpers.InputTextWithWidth("New Name", ref _renameValue, EditorUIHelpers.MediumPopupFieldWidth);
 
             ImGui.Separator();
             if (ImGui.Button("Rename"))
@@ -1260,8 +1238,7 @@ namespace EngineEditor
             if (!ImGui.BeginPopupModal(DeletePopupId))
                 return;
 
-            ImGui.Text("Delete Asset");
-            ImGui.Separator();
+            EditorUIHelpers.DrawPopupHeader("Delete Asset");
             ImGui.Text("Are you sure you want to delete:");
             ImGui.Text(Path.GetFileName(_deleteTargetPath));
             ImGui.Text("This cannot be undone.");

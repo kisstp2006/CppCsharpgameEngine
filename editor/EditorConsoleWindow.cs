@@ -58,10 +58,7 @@ namespace EngineEditor
                 _showErrors = showErrors;
 
             ImGui.SameLine();
-            ImGui.SetNextItemWidth(260.0f);
-            string updatedFilter = ImGui.InputText("Search##Console", _filterText);
-            if (updatedFilter != null)
-                _filterText = updatedFilter;
+            EditorUIHelpers.InputTextWithWidth("Search##Console", ref _filterText, EditorUIHelpers.CompactSearchWidth);
 
             ImGui.Separator();
 
@@ -97,7 +94,7 @@ namespace EngineEditor
                     string selectedLine = Debug.GetLogMessage(_selectedIndex) ?? string.Empty;
                     if (!string.IsNullOrEmpty(selectedLine))
                     {
-                        ImGui.Separator();
+                        EditorUIHelpers.DrawSectionHeader("Selected Log");
                         ImGui.Text(selectedLine);
                     }
                 }

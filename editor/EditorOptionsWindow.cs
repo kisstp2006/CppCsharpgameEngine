@@ -28,10 +28,7 @@ namespace EngineEditor
                 return;
             }
 
-            ImGui.SetNextItemWidth(320.0f);
-            string updatedFilter = ImGui.InputText("Filter", _filterText);
-            if (updatedFilter != null)
-                _filterText = updatedFilter;
+            EditorUIHelpers.InputTextWithWidth("Filter", ref _filterText, EditorUIHelpers.StandardSearchWidth);
 
             ImGui.Separator();
 
@@ -74,6 +71,8 @@ namespace EngineEditor
 
         private static void DrawEntryList()
         {
+            EditorUIHelpers.DrawPopupHeader("Options");
+
             EditorOptionsRegistry.OptionEntry[] entries = EditorOptionsRegistry.GetEntriesSnapshot();
             bool hasVisibleEntries = false;
             string normalizedFilter = (_filterText ?? string.Empty).Trim();
@@ -128,8 +127,7 @@ namespace EngineEditor
                 return;
             }
 
-            ImGui.Text(selected.Category + " / " + selected.Title);
-            ImGui.Separator();
+            EditorUIHelpers.DrawPopupHeader(selected.Category + " / " + selected.Title);
 
             try
             {

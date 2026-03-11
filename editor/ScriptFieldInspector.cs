@@ -98,8 +98,7 @@ namespace EngineEditor
                 return;
             }
 
-            ImGui.Separator();
-            ImGui.Text("Script fields");
+            EditorUIHelpers.DrawSectionHeader("Script Fields");
 
             for (int i = 0; i < fields.Length; ++i)
                 DrawField(entityId, fields[i]);
@@ -119,9 +118,8 @@ namespace EngineEditor
                 case ScriptFieldKind.Int:
                     {
                         long current = ParseInt64(rawValue, 0L);
-                        string currentText = current.ToString(CultureInfo.InvariantCulture);
-                        string updatedText = ImGui.InputText(fieldName, currentText);
-                        if (!string.Equals(updatedText, currentText, StringComparison.Ordinal))
+                        string updatedText = current.ToString(CultureInfo.InvariantCulture);
+                        if (EditorUIHelpers.InputTextWithWidth(fieldName, ref updatedText, EditorUIHelpers.InspectorFieldWidth))
                         {
                             if (long.TryParse(updatedText, NumberStyles.Integer, CultureInfo.InvariantCulture, out long parsed))
                             {
@@ -159,8 +157,8 @@ namespace EngineEditor
                     }
                 case ScriptFieldKind.String:
                     {
-                        string updated = ImGui.InputText(fieldName, rawValue);
-                        if (!string.Equals(updated, rawValue, StringComparison.Ordinal))
+                        string updated = rawValue;
+                        if (EditorUIHelpers.InputTextWithWidth(fieldName, ref updated, EditorUIHelpers.InspectorFieldWidth))
                         {
                             newRawValue = updated;
                             changed = true;
@@ -251,7 +249,7 @@ namespace EngineEditor
             }
 
             if (FieldErrors.TryGetValue(fieldKey, out string error) && !string.IsNullOrEmpty(error))
-                ImGui.Text("Field error: " + error);
+                ImGui.Text("Field error (" + fieldName + "): " + error);
         }
 
         private static bool DrawEnumField(uint entityId, FieldInfo field, string rawValue, out string enumRawValue)
@@ -287,6 +285,8 @@ namespace EngineEditor
 
             if (!ImGui.BeginPopupModal(popupId))
                 return false;
+
+            EditorUIHelpers.DrawPopupHeader("Select " + field.Name);
 
             bool changed = false;
             string[] enumNames = Enum.GetNames(enumType);

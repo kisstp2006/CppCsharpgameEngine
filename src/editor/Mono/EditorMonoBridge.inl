@@ -1705,6 +1705,148 @@ static void EditorBridge_RemoveSprite(std::uint32_t entityId)
     g_editorSceneContext->RemoveSprite(entity);
 }
 
+static MonoString* EditorBridge_GetSpriteTexturePath(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return nullptr;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const SpriteComponent* sprite = g_editorSceneContext->TryGetSprite(entity);
+    if (!sprite)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, sprite->textureAssetPath.c_str()) : nullptr;
+}
+
+static void EditorBridge_SetSpriteTexturePath(std::uint32_t entityId, MonoString* texturePath)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    SpriteComponent* sprite = g_editorSceneContext->TryGetSprite(entity);
+    if (!sprite)
+        return;
+
+    sprite->textureAssetPath = TrimWhitespace(MonoStringToUtf8(texturePath));
+    sprite->textureAssetHandle = 0;
+    sprite->texture = nullptr;
+}
+
+static bool EditorBridge_GetSpriteSettings(std::uint32_t entityId,
+                                           bool* centered,
+                                           float* offsetX,
+                                           float* offsetY,
+                                           bool* flipH,
+                                           bool* flipV,
+                                           std::uint32_t* hframes,
+                                           std::uint32_t* vframes,
+                                           std::uint32_t* frame,
+                                           bool* regionEnabled,
+                                           float* regionX,
+                                           float* regionY,
+                                           float* regionWidth,
+                                           float* regionHeight)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const SpriteComponent* sprite = g_editorSceneContext->TryGetSprite(entity);
+    if (!sprite)
+        return false;
+
+    if (centered)
+        *centered = sprite->centered;
+    if (offsetX)
+        *offsetX = sprite->offsetX;
+    if (offsetY)
+        *offsetY = sprite->offsetY;
+    if (flipH)
+        *flipH = sprite->flipH;
+    if (flipV)
+        *flipV = sprite->flipV;
+    if (hframes)
+        *hframes = sprite->hframes;
+    if (vframes)
+        *vframes = sprite->vframes;
+    if (frame)
+        *frame = sprite->frame;
+    if (regionEnabled)
+        *regionEnabled = sprite->regionEnabled;
+    if (regionX)
+        *regionX = sprite->regionX;
+    if (regionY)
+        *regionY = sprite->regionY;
+    if (regionWidth)
+        *regionWidth = sprite->regionWidth;
+    if (regionHeight)
+        *regionHeight = sprite->regionHeight;
+
+    return true;
+}
+
+static void EditorBridge_SetSpriteSettings(std::uint32_t entityId,
+                                           bool centered,
+                                           float offsetX,
+                                           float offsetY,
+                                           bool flipH,
+                                           bool flipV,
+                                           std::uint32_t hframes,
+                                           std::uint32_t vframes,
+                                           std::uint32_t frame,
+                                           bool regionEnabled,
+                                           float regionX,
+                                           float regionY,
+                                           float regionWidth,
+                                           float regionHeight)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    SpriteComponent* sprite = g_editorSceneContext->TryGetSprite(entity);
+    if (!sprite)
+        return;
+
+    if (hframes < 1)
+        hframes = 1;
+    if (vframes < 1)
+        vframes = 1;
+
+    std::uint64_t frameCount = static_cast<std::uint64_t>(hframes) * static_cast<std::uint64_t>(vframes);
+    if (frameCount == 0)
+    {
+        hframes = 1;
+        vframes = 1;
+        frame = 0;
+    }
+    else if (frame >= frameCount)
+    {
+        frame = static_cast<std::uint32_t>(frameCount - 1);
+    }
+
+    if (regionWidth < 0.0f)
+        regionWidth = 0.0f;
+    if (regionHeight < 0.0f)
+        regionHeight = 0.0f;
+
+    sprite->centered = centered;
+    sprite->offsetX = offsetX;
+    sprite->offsetY = offsetY;
+    sprite->flipH = flipH;
+    sprite->flipV = flipV;
+    sprite->hframes = hframes;
+    sprite->vframes = vframes;
+    sprite->frame = frame;
+    sprite->regionEnabled = regionEnabled;
+    sprite->regionX = regionX;
+    sprite->regionY = regionY;
+    sprite->regionWidth = regionWidth;
+    sprite->regionHeight = regionHeight;
+}
+
 static bool EditorBridge_HasScript(std::uint32_t entityId)
 {
     if (!g_editorSceneContext)

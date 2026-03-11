@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 class SDLWindow;
 class Renderer;
@@ -10,6 +11,7 @@ class Scene;
 class MonoRuntime;
 class ProjectContext;
 class AssetDatabase;
+class Texture;
 
 class Engine
 {
@@ -48,6 +50,7 @@ private:
     std::unique_ptr<MonoRuntime> m_mono;
     std::unique_ptr<ProjectContext> m_projectContext;
     std::unique_ptr<AssetDatabase> m_assetDatabase;
+    std::unordered_map<std::string, std::unique_ptr<Texture>> m_spriteTextureCache;
 
     bool m_editorMode = false;
     bool m_running = false;

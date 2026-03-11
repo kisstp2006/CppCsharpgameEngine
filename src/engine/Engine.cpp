@@ -8,6 +8,7 @@
 #include "Platform/SDLWindow.h"
 #include "Render/DebugDraw.h"
 #include "Render/Renderer.h"
+#include "Render/Texture.h"
 #include "Scripting/MonoRuntime.h"
 
 #include <imgui.h>
@@ -42,6 +43,67 @@ namespace
         }
 
         return resolved.lexically_normal();
+    }
+
+    static std::filesystem::path ResolveSpriteTexturePath(const std::string& texturePath,
+                                                          const ProjectContext* projectContext)
+    {
+        if (texturePath.empty())
+            return {};
+
+        std::filesystem::path candidate(texturePath);
+        if (candidate.is_absolute())
+            return candidate.lexically_normal();
+
+        if (projectContext && projectContext->IsOpen())
+            return (projectContext->ProjectRoot() / candidate).lexically_normal();
+
+        return (std::filesystem::current_path() / candidate).lexically_normal();
+    }
+
+    static Texture* ResolveSpriteTexture(SpriteComponent& sprite,
+                                         std::unordered_map<std::string, std::unique_ptr<Texture>>& cache,
+                                         const ProjectContext* projectContext)
+    {
+        if (sprite.texture)
+            return sprite.texture;
+
+        if (sprite.textureAssetPath.empty())
+            return nullptr;
+
+        const std::filesystem::path resolvedPath = ResolveSpriteTexturePath(sprite.textureAssetPath, projectContext);
+        if (resolvedPath.empty())
+            return nullptr;
+
+        std::error_code existsError;
+        if (!std::filesystem::exists(resolvedPath, existsError) || existsError)
+            return nullptr;
+
+        const std::string cacheKey = resolvedPath.string();
+        auto found = cache.find(cacheKey);
+        if (found != cache.end())
+        {
+            sprite.texture = found->second.get();
+            return sprite.texture;
+        }
+
+        auto texture = std::make_unique<Texture>();
+        if (!texture->CreateFromFile(cacheKey))
+            return nullptr;
+
+        Texture* texturePtr = texture.get();
+        cache.emplace(cacheKey, std::move(texture));
+        sprite.texture = texturePtr;
+        return texturePtr;
+    }
+
+    static float Clamp01(float value)
+    {
+        if (value < 0.0f)
+            return 0.0f;
+        if (value > 1.0f)
+            return 1.0f;
+        return value;
     }
 }
 
@@ -296,12 +358,88 @@ void Engine::Run()
             for (const auto entity : view)
             {
                 const auto& transform = view.get<const TransformComponent>(entity);
-                const auto& sprite = view.get<const SpriteComponent>(entity);
+                auto& sprite = m_scene->Registry().get<SpriteComponent>(entity);
 
-                if (sprite.texture)
+                Texture* texture = ResolveSpriteTexture(sprite, m_spriteTextureCache, m_projectContext.get());
+                if (!texture)
+                    continue;
+
+                float drawX = transform.x + sprite.offsetX;
+                float drawY = transform.y + sprite.offsetY;
+                if (sprite.centered)
                 {
-                    m_renderer->DrawSprite(*sprite.texture, transform.x, transform.y, transform.width, transform.height);
+                    drawX -= transform.width * 0.5f;
+                    drawY -= transform.height * 0.5f;
                 }
+
+                const int textureWidth = texture->GetWidth();
+                const int textureHeight = texture->GetHeight();
+                if (textureWidth <= 0 || textureHeight <= 0)
+                    continue;
+
+                float sourceX = 0.0f;
+                float sourceY = 0.0f;
+                float sourceWidth = static_cast<float>(textureWidth);
+                float sourceHeight = static_cast<float>(textureHeight);
+
+                if (sprite.regionEnabled)
+                {
+                    sourceX = sprite.regionX;
+                    sourceY = sprite.regionY;
+                    sourceWidth = sprite.regionWidth > 0.0f ? sprite.regionWidth : sourceWidth;
+                    sourceHeight = sprite.regionHeight > 0.0f ? sprite.regionHeight : sourceHeight;
+                }
+                else
+                {
+                    const std::uint32_t hframes = sprite.hframes < 1 ? 1 : sprite.hframes;
+                    const std::uint32_t vframes = sprite.vframes < 1 ? 1 : sprite.vframes;
+                    const std::uint64_t frameCount = static_cast<std::uint64_t>(hframes) * static_cast<std::uint64_t>(vframes);
+                    std::uint32_t frame = sprite.frame;
+                    if (frameCount == 0)
+                        frame = 0;
+                    else if (frame >= frameCount)
+                        frame = static_cast<std::uint32_t>(frameCount - 1);
+
+                    sourceWidth = static_cast<float>(textureWidth) / static_cast<float>(hframes);
+                    sourceHeight = static_cast<float>(textureHeight) / static_cast<float>(vframes);
+
+                    const std::uint32_t frameX = frame % hframes;
+                    const std::uint32_t frameY = frame / hframes;
+                    sourceX = static_cast<float>(frameX) * sourceWidth;
+                    sourceY = static_cast<float>(frameY) * sourceHeight;
+                }
+
+                if (sourceWidth <= 0.0f || sourceHeight <= 0.0f)
+                    continue;
+
+                float uvMinX = Clamp01(sourceX / static_cast<float>(textureWidth));
+                float uvMinY = Clamp01(sourceY / static_cast<float>(textureHeight));
+                float uvMaxX = Clamp01((sourceX + sourceWidth) / static_cast<float>(textureWidth));
+                float uvMaxY = Clamp01((sourceY + sourceHeight) / static_cast<float>(textureHeight));
+
+                if (sprite.flipH)
+                {
+                    const float swap = uvMinX;
+                    uvMinX = uvMaxX;
+                    uvMaxX = swap;
+                }
+
+                if (sprite.flipV)
+                {
+                    const float swap = uvMinY;
+                    uvMinY = uvMaxY;
+                    uvMaxY = swap;
+                }
+
+                m_renderer->DrawSprite(*texture,
+                                       drawX,
+                                       drawY,
+                                       transform.width,
+                                       transform.height,
+                                       uvMinX,
+                                       uvMinY,
+                                       uvMaxX,
+                                       uvMaxY);
             }
 
             m_renderer->EndGameView();
@@ -327,6 +465,7 @@ void Engine::Shutdown()
 #endif
 
     m_scene.reset();
+    m_spriteTextureCache.clear();
 
     if (m_assetDatabase)
         m_assetDatabase->Save();

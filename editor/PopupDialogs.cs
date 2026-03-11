@@ -40,18 +40,11 @@ namespace EngineEditor
             if (!ImGui.BeginPopupModal(CreateProjectPopupId))
                 return;
 
-            ImGui.Text("Create New Project");
-            ImGui.Separator();
+            EditorUIHelpers.DrawPopupHeader("Create New Project");
 
-            ImGui.SetNextItemWidth(360.0f);
-            string updatedName = ImGui.InputText("Project Name", _newProjectName);
-            if (updatedName != null)
-                _newProjectName = updatedName;
+            EditorUIHelpers.InputTextWithWidth("Project Name", ref _newProjectName, EditorUIHelpers.StandardFieldWidth);
 
-            ImGui.SetNextItemWidth(360.0f);
-            string updatedLocation = ImGui.InputText("Location", _newProjectLocation);
-            if (updatedLocation != null)
-                _newProjectLocation = updatedLocation;
+            EditorUIHelpers.InputTextWithWidth("Location", ref _newProjectLocation, EditorUIHelpers.StandardFieldWidth);
 
             ImGui.SameLine();
             if (ImGui.Button("Browse..."))
@@ -115,6 +108,8 @@ namespace EngineEditor
         {
             if (!ImGui.BeginPopupModal(DeleteProjectPopupId))
                 return;
+
+            EditorUIHelpers.DrawPopupHeader("Delete Project");
 
             if (string.IsNullOrEmpty(_pendingDeleteProjectPath))
             {

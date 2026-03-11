@@ -108,10 +108,7 @@ namespace EngineEditor
 
         private static void DrawProjectToolbar()
         {
-            ImGui.SetNextItemWidth(280.0f);
-            string updatedSearch = ImGui.InputText("Search Projects", _projectSearchText);
-            if (updatedSearch != null)
-                _projectSearchText = updatedSearch;
+            EditorUIHelpers.InputTextWithWidth("Search Projects", ref _projectSearchText, EditorUIHelpers.StandardSearchWidth);
 
             ImGui.SameLine();
             if (ImGui.Button("Refresh"))
@@ -170,8 +167,7 @@ namespace EngineEditor
         {
             DrawRecentProjectsSection();
 
-            ImGui.Text("All Projects");
-            ImGui.Separator();
+            EditorUIHelpers.DrawSectionHeader("All Projects");
 
             bool anyVisible = false;
 
@@ -199,13 +195,11 @@ namespace EngineEditor
         {
             string[] recentProjectPaths = ProjectOperations.GetRecentProjects();
 
-            ImGui.Text("Recent Projects");
-            ImGui.Separator();
+            EditorUIHelpers.DrawSectionHeader("Recent Projects");
 
             if (recentProjectPaths.Length == 0)
             {
                 ImGui.Text("No recently opened projects.");
-                ImGui.Separator();
                 return;
             }
 
@@ -224,8 +218,6 @@ namespace EngineEditor
 
                 ImGui.Text(projectPath);
             }
-
-            ImGui.Separator();
         }
 
         private static void TrySelectProjectByPath(string projectPath)
@@ -242,8 +234,7 @@ namespace EngineEditor
 
         private static void DrawProjectDetailsPane()
         {
-            ImGui.Text("Project Settings");
-            ImGui.Separator();
+            EditorUIHelpers.DrawSectionHeader("Project Settings");
 
             if (!TryGetSelectedProjectPath(out string selectedProjectPath))
             {
@@ -259,10 +250,7 @@ namespace EngineEditor
             }
 
             ImGui.Text("Project Name");
-            ImGui.SetNextItemWidth(320.0f);
-            string updatedRename = ImGui.InputText("##RenameProjectName", _renameProjectName);
-            if (updatedRename != null)
-                _renameProjectName = updatedRename;
+            EditorUIHelpers.InputTextWithWidth("##RenameProjectName", ref _renameProjectName, EditorUIHelpers.StandardFieldWidth);
 
             ImGui.Text("Location");
             string parentPath = Path.GetDirectoryName(selectedProjectPath);

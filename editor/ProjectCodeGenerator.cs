@@ -179,19 +179,13 @@ namespace EngineEditor
                              "{\n" +
                              "    public static class ScriptEntry\n" +
                              "    {\n" +
-                             "        private static float _timeAccumulator;\n\n" +
                              "        public static void OnEngineStart()\n" +
                              "        {\n" +
                              "            Debug.Log(\"[GameScripts] OnEngineStart called. Template: " + StringUtilities.EscapeCSharpString(templateName) + ".\");\n" +
                              "        }\n\n" +
                              "        public static void OnEngineUpdate(float deltaTime)\n" +
                              "        {\n" +
-                             "            _timeAccumulator += deltaTime;\n" +
-                             "            if (_timeAccumulator >= 1.0f)\n" +
-                             "            {\n" +
-                             "                _timeAccumulator = 0.0f;\n" +
-                             "                Debug.Log(\"[GameScripts] Tick from generated project script.\");\n" +
-                             "            }\n" +
+                             "            _ = deltaTime;\n" +
                              "        }\n\n" +
                              "        public static void OnEngineShutdown()\n" +
                              "        {\n" +

@@ -13,7 +13,7 @@
 
 namespace
 {
-    constexpr std::uint32_t kSceneFileVersion = 2;
+    constexpr std::uint32_t kSceneFileVersion = 3;
 
     enum ComponentFlags : std::uint8_t
     {
@@ -41,6 +41,19 @@ namespace
         bool hasSprite = false;
         std::uint64_t spriteTextureAssetHandle = 0;
         std::string spriteTexturePath;
+        bool spriteCentered = true;
+        float spriteOffsetX = 0.0f;
+        float spriteOffsetY = 0.0f;
+        bool spriteFlipH = false;
+        bool spriteFlipV = false;
+        std::uint32_t spriteHframes = 1;
+        std::uint32_t spriteVframes = 1;
+        std::uint32_t spriteFrame = 0;
+        bool spriteRegionEnabled = false;
+        float spriteRegionX = 0.0f;
+        float spriteRegionY = 0.0f;
+        float spriteRegionWidth = 0.0f;
+        float spriteRegionHeight = 0.0f;
 
         bool hasScript = false;
         ScriptComponent script;
@@ -163,6 +176,58 @@ namespace
         return true;
     }
 
+    static void NormalizeSpriteState(PersistedEntity& entity)
+    {
+        if (entity.spriteHframes < 1)
+            entity.spriteHframes = 1;
+        if (entity.spriteVframes < 1)
+            entity.spriteVframes = 1;
+
+        const std::uint64_t frameCount = static_cast<std::uint64_t>(entity.spriteHframes) *
+            static_cast<std::uint64_t>(entity.spriteVframes);
+        if (frameCount == 0)
+        {
+            entity.spriteHframes = 1;
+            entity.spriteVframes = 1;
+            entity.spriteFrame = 0;
+        }
+        else if (entity.spriteFrame >= frameCount)
+        {
+            entity.spriteFrame = static_cast<std::uint32_t>(frameCount - 1);
+        }
+
+        if (entity.spriteRegionWidth < 0.0f)
+            entity.spriteRegionWidth = 0.0f;
+        if (entity.spriteRegionHeight < 0.0f)
+            entity.spriteRegionHeight = 0.0f;
+    }
+
+    static void NormalizeSpriteComponent(SpriteComponent& sprite)
+    {
+        if (sprite.hframes < 1)
+            sprite.hframes = 1;
+        if (sprite.vframes < 1)
+            sprite.vframes = 1;
+
+        const std::uint64_t frameCount = static_cast<std::uint64_t>(sprite.hframes) *
+            static_cast<std::uint64_t>(sprite.vframes);
+        if (frameCount == 0)
+        {
+            sprite.hframes = 1;
+            sprite.vframes = 1;
+            sprite.frame = 0;
+        }
+        else if (sprite.frame >= frameCount)
+        {
+            sprite.frame = static_cast<std::uint32_t>(frameCount - 1);
+        }
+
+        if (sprite.regionWidth < 0.0f)
+            sprite.regionWidth = 0.0f;
+        if (sprite.regionHeight < 0.0f)
+            sprite.regionHeight = 0.0f;
+    }
+
     template<typename T>
     static void WriteBinary(std::ofstream& output, const T& value)
     {
@@ -246,6 +311,20 @@ namespace
                 persisted.hasSprite = true;
                 persisted.spriteTextureAssetHandle = sprite->textureAssetHandle;
                 persisted.spriteTexturePath = sprite->textureAssetPath;
+                persisted.spriteCentered = sprite->centered;
+                persisted.spriteOffsetX = sprite->offsetX;
+                persisted.spriteOffsetY = sprite->offsetY;
+                persisted.spriteFlipH = sprite->flipH;
+                persisted.spriteFlipV = sprite->flipV;
+                persisted.spriteHframes = sprite->hframes;
+                persisted.spriteVframes = sprite->vframes;
+                persisted.spriteFrame = sprite->frame;
+                persisted.spriteRegionEnabled = sprite->regionEnabled;
+                persisted.spriteRegionX = sprite->regionX;
+                persisted.spriteRegionY = sprite->regionY;
+                persisted.spriteRegionWidth = sprite->regionWidth;
+                persisted.spriteRegionHeight = sprite->regionHeight;
+                NormalizeSpriteState(persisted);
             }
 
             if (const ScriptComponent* script = scene.TryGetScript(entity))
@@ -362,7 +441,9 @@ CameraComponent& Scene::AddCamera(Entity entity, const CameraComponent& camera)
 SpriteComponent& Scene::AddSprite(Entity entity, Texture* texture)
 {
     auto& value = AddComponent<SpriteComponent>(entity);
+    value = SpriteComponent{};
     value.texture = texture;
+    NormalizeSpriteComponent(value);
     return value;
 }
 
@@ -581,6 +662,23 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             {
                 WriteBinary(output, entity.spriteTextureAssetHandle);
                 WriteStringBinary(output, entity.spriteTexturePath);
+                const std::uint8_t centered = entity.spriteCentered ? 1 : 0;
+                WriteBinary(output, centered);
+                WriteBinary(output, entity.spriteOffsetX);
+                WriteBinary(output, entity.spriteOffsetY);
+                const std::uint8_t flipH = entity.spriteFlipH ? 1 : 0;
+                const std::uint8_t flipV = entity.spriteFlipV ? 1 : 0;
+                WriteBinary(output, flipH);
+                WriteBinary(output, flipV);
+                WriteBinary(output, entity.spriteHframes);
+                WriteBinary(output, entity.spriteVframes);
+                WriteBinary(output, entity.spriteFrame);
+                const std::uint8_t regionEnabled = entity.spriteRegionEnabled ? 1 : 0;
+                WriteBinary(output, regionEnabled);
+                WriteBinary(output, entity.spriteRegionX);
+                WriteBinary(output, entity.spriteRegionY);
+                WriteBinary(output, entity.spriteRegionWidth);
+                WriteBinary(output, entity.spriteRegionHeight);
             }
 
             if (entity.hasScript)
@@ -655,6 +753,19 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             rapidjson::Value texturePathValue;
             texturePathValue.SetString(entity.spriteTexturePath.c_str(), static_cast<rapidjson::SizeType>(entity.spriteTexturePath.size()), allocator);
             spriteObject.AddMember("textureAssetPath", texturePathValue, allocator);
+            spriteObject.AddMember("centered", entity.spriteCentered, allocator);
+            spriteObject.AddMember("offsetX", entity.spriteOffsetX, allocator);
+            spriteObject.AddMember("offsetY", entity.spriteOffsetY, allocator);
+            spriteObject.AddMember("flipH", entity.spriteFlipH, allocator);
+            spriteObject.AddMember("flipV", entity.spriteFlipV, allocator);
+            spriteObject.AddMember("hframes", entity.spriteHframes, allocator);
+            spriteObject.AddMember("vframes", entity.spriteVframes, allocator);
+            spriteObject.AddMember("frame", entity.spriteFrame, allocator);
+            spriteObject.AddMember("regionEnabled", entity.spriteRegionEnabled, allocator);
+            spriteObject.AddMember("regionX", entity.spriteRegionX, allocator);
+            spriteObject.AddMember("regionY", entity.spriteRegionY, allocator);
+            spriteObject.AddMember("regionWidth", entity.spriteRegionWidth, allocator);
+            spriteObject.AddMember("regionHeight", entity.spriteRegionHeight, allocator);
             componentsObject.AddMember("sprite", spriteObject, allocator);
         }
 
@@ -830,6 +941,38 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                     m_lastIoError = "Failed to read binary sprite component.";
                     return false;
                 }
+
+                if (fileVersion >= 3)
+                {
+                    std::uint8_t centered = 0;
+                    std::uint8_t flipH = 0;
+                    std::uint8_t flipV = 0;
+                    std::uint8_t regionEnabled = 0;
+                    if (!ReadBinary(input, centered) ||
+                        !ReadBinary(input, entity.spriteOffsetX) ||
+                        !ReadBinary(input, entity.spriteOffsetY) ||
+                        !ReadBinary(input, flipH) ||
+                        !ReadBinary(input, flipV) ||
+                        !ReadBinary(input, entity.spriteHframes) ||
+                        !ReadBinary(input, entity.spriteVframes) ||
+                        !ReadBinary(input, entity.spriteFrame) ||
+                        !ReadBinary(input, regionEnabled) ||
+                        !ReadBinary(input, entity.spriteRegionX) ||
+                        !ReadBinary(input, entity.spriteRegionY) ||
+                        !ReadBinary(input, entity.spriteRegionWidth) ||
+                        !ReadBinary(input, entity.spriteRegionHeight))
+                    {
+                        m_lastIoError = "Failed to read binary sprite settings.";
+                        return false;
+                    }
+
+                    entity.spriteCentered = centered != 0;
+                    entity.spriteFlipH = flipH != 0;
+                    entity.spriteFlipV = flipV != 0;
+                    entity.spriteRegionEnabled = regionEnabled != 0;
+                }
+
+                NormalizeSpriteState(entity);
             }
 
             if (entity.hasScript)
@@ -995,11 +1138,26 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
 
                     entity.hasSprite = true;
                     if (!ReadOptionalUInt64(sprite, "textureAssetHandle", entity.spriteTextureAssetHandle, parseError) ||
-                        !ReadOptionalString(sprite, "textureAssetPath", entity.spriteTexturePath, parseError))
+                        !ReadOptionalString(sprite, "textureAssetPath", entity.spriteTexturePath, parseError) ||
+                        !ReadOptionalBool(sprite, "centered", entity.spriteCentered, parseError) ||
+                        !ReadOptionalFloat(sprite, "offsetX", entity.spriteOffsetX, parseError) ||
+                        !ReadOptionalFloat(sprite, "offsetY", entity.spriteOffsetY, parseError) ||
+                        !ReadOptionalBool(sprite, "flipH", entity.spriteFlipH, parseError) ||
+                        !ReadOptionalBool(sprite, "flipV", entity.spriteFlipV, parseError) ||
+                        !ReadOptionalUInt32(sprite, "hframes", entity.spriteHframes, parseError) ||
+                        !ReadOptionalUInt32(sprite, "vframes", entity.spriteVframes, parseError) ||
+                        !ReadOptionalUInt32(sprite, "frame", entity.spriteFrame, parseError) ||
+                        !ReadOptionalBool(sprite, "regionEnabled", entity.spriteRegionEnabled, parseError) ||
+                        !ReadOptionalFloat(sprite, "regionX", entity.spriteRegionX, parseError) ||
+                        !ReadOptionalFloat(sprite, "regionY", entity.spriteRegionY, parseError) ||
+                        !ReadOptionalFloat(sprite, "regionWidth", entity.spriteRegionWidth, parseError) ||
+                        !ReadOptionalFloat(sprite, "regionHeight", entity.spriteRegionHeight, parseError))
                     {
                         m_lastIoError = "Invalid JSON sprite component: " + parseError;
                         return false;
                     }
+
+                    NormalizeSpriteState(entity);
                 }
 
                 if (components.HasMember("script"))
@@ -1083,6 +1241,20 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             sprite.texture = nullptr;
             sprite.textureAssetHandle = persisted.spriteTextureAssetHandle;
             sprite.textureAssetPath = persisted.spriteTexturePath;
+            sprite.centered = persisted.spriteCentered;
+            sprite.offsetX = persisted.spriteOffsetX;
+            sprite.offsetY = persisted.spriteOffsetY;
+            sprite.flipH = persisted.spriteFlipH;
+            sprite.flipV = persisted.spriteFlipV;
+            sprite.hframes = persisted.spriteHframes;
+            sprite.vframes = persisted.spriteVframes;
+            sprite.frame = persisted.spriteFrame;
+            sprite.regionEnabled = persisted.spriteRegionEnabled;
+            sprite.regionX = persisted.spriteRegionX;
+            sprite.regionY = persisted.spriteRegionY;
+            sprite.regionWidth = persisted.spriteRegionWidth;
+            sprite.regionHeight = persisted.spriteRegionHeight;
+            NormalizeSpriteComponent(sprite);
         }
         else
         {

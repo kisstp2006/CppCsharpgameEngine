@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 
 using Engine;
 
@@ -152,6 +153,20 @@ namespace EngineEditor
         public static bool Bool(string label, ref bool value)
         {
             return ImGui.Checkbox(label, ref value);
+        }
+
+        public static bool UInt(string label, ref uint value)
+        {
+            string current = value.ToString(CultureInfo.InvariantCulture);
+            string updated = ImGui.InputText(label, current);
+            if (updated == null || updated == current)
+                return false;
+
+            if (!uint.TryParse(updated, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint parsed))
+                return false;
+
+            value = parsed;
+            return true;
         }
 
         public static bool ScriptType(string label, ref string value, string[] registeredTypes)
