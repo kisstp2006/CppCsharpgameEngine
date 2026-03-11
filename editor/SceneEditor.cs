@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 
 using Engine;
 
@@ -29,6 +30,9 @@ namespace EngineEditor
         private static float _gizmoSnapStep = 32.0f;
         private static bool _componentRegistryInitialized = false;
         private static readonly List<ComponentInspectorEntry> _componentEntries = new List<ComponentInspectorEntry>();
+        private static string[] _cachedRegisteredScriptTypes = new string[0];
+        private static string _cachedScriptAssemblyIdentity = string.Empty;
+        private static DateTime _scriptTypeCacheTimestampUtc = DateTime.MinValue;
 
         private sealed class ComponentInspectorEntry
         {
@@ -60,6 +64,9 @@ namespace EngineEditor
             _gameViewHeight = 1.0f;
             _gizmoSnapEnabled = false;
             _gizmoSnapStep = 32.0f;
+            _cachedRegisteredScriptTypes = new string[0];
+            _cachedScriptAssemblyIdentity = string.Empty;
+            _scriptTypeCacheTimestampUtc = DateTime.MinValue;
             DebugDraw.Clear();
         }
 
@@ -419,8 +426,12 @@ namespace EngineEditor
             if (scriptTypeName == null)
                 scriptTypeName = string.Empty;
 
-            if (InspectorInputs.ScriptType("Script Type", ref scriptTypeName))
+            string[] registeredScriptTypes = GetRegisteredScriptTypes();
+            if (InspectorInputs.ScriptType("Script Type", ref scriptTypeName, registeredScriptTypes))
                 EditorBridge.SetScriptTypeName(entityId, scriptTypeName);
+
+            if (registeredScriptTypes.Length == 0)
+                ImGui.Text("No registered C# script classes found in the loaded script assembly.");
 
             bool scriptEnabled = EditorBridge.GetScriptEnabled(entityId);
             ImGui.Text("Enabled: " + (scriptEnabled ? "yes" : "no"));
@@ -429,6 +440,120 @@ namespace EngineEditor
             if (InspectorInputs.Bool("Script Enabled", ref enabledValue) && enabledValue != scriptEnabled)
                 EditorBridge.SetScriptEnabled(entityId, enabledValue);
 
+        }
+
+        private static string[] GetRegisteredScriptTypes()
+        {
+            const double refreshIntervalSeconds = 0.75;
+            DateTime nowUtc = DateTime.UtcNow;
+
+            Assembly scriptAssembly = FindLoadedScriptAssembly();
+            string assemblyIdentity = BuildAssemblyIdentity(scriptAssembly);
+            bool assemblyChanged = !string.Equals(_cachedScriptAssemblyIdentity, assemblyIdentity, StringComparison.Ordinal);
+            bool refreshIntervalElapsed = (nowUtc - _scriptTypeCacheTimestampUtc).TotalSeconds >= refreshIntervalSeconds;
+
+            if (!assemblyChanged && !refreshIntervalElapsed)
+                return _cachedRegisteredScriptTypes;
+
+            _cachedScriptAssemblyIdentity = assemblyIdentity;
+            _scriptTypeCacheTimestampUtc = nowUtc;
+            _cachedRegisteredScriptTypes = CollectScriptTypeNames(scriptAssembly);
+            return _cachedRegisteredScriptTypes;
+        }
+
+        private static Assembly FindLoadedScriptAssembly()
+        {
+            Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            Assembly selectedAssembly = null;
+
+            for (int i = 0; i < assemblies.Length; ++i)
+            {
+                Assembly assembly = assemblies[i];
+                if (assembly == null || assembly.IsDynamic)
+                    continue;
+
+                Type scriptEntry = assembly.GetType("GameScripts.ScriptEntry", false);
+                if (scriptEntry != null)
+                    selectedAssembly = assembly;
+            }
+
+            return selectedAssembly;
+        }
+
+        private static string BuildAssemblyIdentity(Assembly assembly)
+        {
+            if (assembly == null)
+                return string.Empty;
+
+            string location;
+            try
+            {
+                location = assembly.Location;
+            }
+            catch
+            {
+                location = string.Empty;
+            }
+
+            return assembly.FullName + "|" + location;
+        }
+
+        private static string[] CollectScriptTypeNames(Assembly scriptAssembly)
+        {
+            if (scriptAssembly == null)
+                return new string[0];
+
+            Type[] types;
+            try
+            {
+                types = scriptAssembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                types = ex.Types;
+            }
+
+            Type scriptEntry = scriptAssembly.GetType("GameScripts.ScriptEntry", false);
+            var discoveredNames = new List<string>();
+            var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < types.Length; ++i)
+            {
+                Type type = types[i];
+                if (type == null || !type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
+                    continue;
+
+                if (scriptEntry != null && type == scriptEntry)
+                    continue;
+
+                if (!HasScriptLifecycleMethod(type))
+                    continue;
+
+                string fullName = type.FullName;
+                if (string.IsNullOrEmpty(fullName) || !seenNames.Add(fullName))
+                    continue;
+
+                discoveredNames.Add(fullName);
+            }
+
+            discoveredNames.Sort(StringComparer.OrdinalIgnoreCase);
+            return discoveredNames.ToArray();
+        }
+
+        private static bool HasScriptLifecycleMethod(Type type)
+        {
+            const BindingFlags instanceMethodFlags = BindingFlags.Instance | BindingFlags.Public;
+
+            MethodInfo onCreate = type.GetMethod("OnCreate", instanceMethodFlags, null, new Type[] { typeof(uint) }, null);
+            if (onCreate != null)
+                return true;
+
+            MethodInfo onUpdate = type.GetMethod("OnUpdate", instanceMethodFlags, null, new Type[] { typeof(uint), typeof(float) }, null);
+            if (onUpdate != null)
+                return true;
+
+            MethodInfo onDestroy = type.GetMethod("OnDestroy", instanceMethodFlags, null, new Type[] { typeof(uint) }, null);
+            return onDestroy != null;
         }
 
         private static float Clamp(float value, float minValue, float maxValue)

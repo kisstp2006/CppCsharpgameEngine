@@ -26,3 +26,6 @@ imgui.ini
 # Rider / VS
 .idea/
 *.DotSettings.user
+
+# Local/generated solution file
+CppCsharpgameEngine.sln

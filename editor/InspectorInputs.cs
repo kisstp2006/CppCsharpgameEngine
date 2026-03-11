@@ -1,3 +1,5 @@
+using System;
+
 using Engine;
 
 namespace EngineEditor
@@ -84,15 +86,61 @@ namespace EngineEditor
             return ImGui.Checkbox(label, ref value);
         }
 
-        public static bool ScriptType(string label, ref string value)
+        public static bool ScriptType(string label, ref string value, string[] registeredTypes)
         {
+            bool changed = false;
             string current = value ?? string.Empty;
             string updated = ImGui.InputText(label, current);
-            if (updated == current)
-                return false;
+            if (updated != current)
+            {
+                value = updated;
+                current = updated;
+                changed = true;
+            }
 
-            value = updated;
-            return true;
+            string popupId = "ScriptTypeSelector##" + label;
+
+            ImGui.SameLine();
+            if (ImGui.Button("Select##" + label))
+                ImGui.OpenPopup(popupId);
+
+            if (ImGui.BeginPopupModal(popupId))
+            {
+                ImGui.Text("Registered C# script classes");
+                ImGui.Separator();
+
+                if (registeredTypes == null || registeredTypes.Length == 0)
+                {
+                    ImGui.Text("No script classes found.");
+                }
+                else
+                {
+                    for (int i = 0; i < registeredTypes.Length; ++i)
+                    {
+                        string typeName = registeredTypes[i];
+                        bool selected = string.Equals(typeName, current, StringComparison.Ordinal);
+                        if (ImGui.Selectable(typeName + "##ScriptTypeOption" + i, selected))
+                        {
+                            if (!string.Equals(value, typeName, StringComparison.Ordinal))
+                            {
+                                value = typeName;
+                                changed = true;
+                            }
+
+                            ImGui.CloseCurrentPopup();
+                            break;
+                        }
+                    }
+                }
+
+                ImGui.Separator();
+                if (ImGui.Button("Close##" + popupId))
+                    ImGui.CloseCurrentPopup();
+
+                ImGui.EndPopup();
+            }
+
+            return changed;
         }
     }
 }
