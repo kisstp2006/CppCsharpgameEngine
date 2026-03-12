@@ -426,6 +426,14 @@ void Engine::Run()
             float cameraX = 0.0f;
             float cameraY = 0.0f;
             float cameraZoom = 1.0f;
+            float cameraViewportX = 0.0f;
+            float cameraViewportY = 0.0f;
+            float cameraViewportWidth = 1.0f;
+            float cameraViewportHeight = 1.0f;
+            std::uint32_t cameraCullingMask = 0xFFFFFFFFu;
+            std::uint32_t cameraBackgroundColor = 0x14141AFFu;
+            bool clearCameraViewport = false;
+            bool hasActiveSceneCamera = false;
             bool useEditorPreviewCamera = false;
 
             if (m_editorMode && m_editorPreviewCameraEnabled)
@@ -450,21 +458,56 @@ void Engine::Run()
                 if (m_scene->IsValid(cameraEntity))
                 {
                     const CameraComponent* activeCamera = m_scene->TryGetCamera(cameraEntity);
-                    if (activeCamera)
+                    if (activeCamera && activeCamera->enabled)
                     {
+                        hasActiveSceneCamera = true;
                         cameraX = activeCamera->x;
                         cameraY = activeCamera->y;
                         cameraZoom = activeCamera->zoom;
+                        cameraViewportX = activeCamera->viewportX;
+                        cameraViewportY = activeCamera->viewportY;
+                        cameraViewportWidth = activeCamera->viewportWidth;
+                        cameraViewportHeight = activeCamera->viewportHeight;
+                        cameraCullingMask = activeCamera->cullingMask;
+                        cameraBackgroundColor = activeCamera->backgroundColor;
+                        clearCameraViewport = activeCamera->clearColor;
                     }
                 }
             }
 
             m_renderer->BeginGameView();
+            m_renderer->SetCameraViewportNormalized(cameraViewportX,
+                                                   cameraViewportY,
+                                                   cameraViewportWidth,
+                                                   cameraViewportHeight);
+
+            if (clearCameraViewport)
+            {
+                float clearR = 0.0f;
+                float clearG = 0.0f;
+                float clearB = 0.0f;
+                float clearA = 1.0f;
+                UnpackColorRgba32(cameraBackgroundColor, clearR, clearG, clearB, clearA);
+                m_renderer->ClearCameraViewport(clearR, clearG, clearB, clearA);
+            }
+
             m_renderer->SetCameraProjection(cameraX, cameraY, cameraZoom);
 
             auto view = m_scene->Registry().view<const TransformComponent, const SpriteComponent>();
             for (const auto entity : view)
             {
+                if (hasActiveSceneCamera)
+                {
+                    std::uint32_t entityLayer = 0;
+                    const EntityMetadataComponent* metadata = m_scene->TryGetMetadata(entity);
+                    if (metadata)
+                        entityLayer = metadata->layer > 31 ? 31u : metadata->layer;
+
+                    const std::uint32_t entityLayerMask = (1u << entityLayer);
+                    if ((cameraCullingMask & entityLayerMask) == 0u)
+                        continue;
+                }
+
                 const auto& transform = view.get<const TransformComponent>(entity);
                 auto& sprite = m_scene->Registry().get<SpriteComponent>(entity);
 

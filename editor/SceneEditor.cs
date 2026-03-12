@@ -776,6 +776,75 @@ namespace EngineEditor
             return true;
         }
 
+        private static string FormatLayerMaskSummary(uint mask)
+        {
+            if (mask == 0u)
+                return "Nothing";
+
+            if (mask == 0xFFFFFFFFu)
+                return "Everything";
+
+            int selectedCount = 0;
+            for (int i = 0; i < 32; ++i)
+            {
+                if ((mask & (1u << i)) != 0u)
+                    ++selectedCount;
+            }
+
+            return selectedCount + " layer(s)";
+        }
+
+        private static bool DrawLayerMaskPopup(string label, string popupId, ref uint mask)
+        {
+            bool changed = false;
+
+            ImGui.Text(label + ": " + FormatLayerMaskSummary(mask));
+            ImGui.SameLine();
+            if (ImGui.Button("Edit##" + popupId))
+                ImGui.OpenPopup(popupId);
+
+            if (!ImGui.BeginPopup(popupId))
+                return changed;
+
+            if (ImGui.Button("Everything##" + popupId))
+            {
+                if (mask != 0xFFFFFFFFu)
+                {
+                    mask = 0xFFFFFFFFu;
+                    changed = true;
+                }
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Nothing##" + popupId))
+            {
+                if (mask != 0u)
+                {
+                    mask = 0u;
+                    changed = true;
+                }
+            }
+
+            ImGui.Separator();
+            for (int i = 0; i < 32; ++i)
+            {
+                uint bit = 1u << i;
+                bool selected = (mask & bit) != 0u;
+                if (ImGui.SelectableNoClose(_layerOptions[i] + "##" + popupId + "_" + i, selected))
+                {
+                    mask = selected ? (mask & ~bit) : (mask | bit);
+                    changed = true;
+                }
+            }
+
+            ImGui.Separator();
+            if (ImGui.Button("Close##" + popupId))
+                ImGui.CloseCurrentPopup();
+
+            ImGui.EndPopup();
+            return changed;
+        }
+
         private static void EnsureWorldInitialized()
         {
             if (_worldInitialized)
@@ -1088,16 +1157,110 @@ namespace EngineEditor
             float camX;
             float camY;
             float camZoom;
-            if (EntityManager.GetCamera(entityId, out camX, out camY, out camZoom))
-            {
-                bool cameraChanged = false;
-                cameraChanged |= InspectorInputs.Vector2("Cam Position", ref camX, ref camY, 1.0f);
-                cameraChanged |= ImGui.InputFloat("Cam Zoom", ref camZoom, 0.1f);
+            bool enabled;
+            bool primary;
+            bool clearColor;
+            uint backgroundColor;
+            uint cullingMask;
+            float viewportX;
+            float viewportY;
+            float viewportWidth;
+            float viewportHeight;
 
-                if (cameraChanged)
-                    EntityManager.SetCamera(entityId, camX, camY, Clamp(camZoom, MinZoom, MaxZoom));
+            if (!EntityManager.GetCameraSettings(entityId,
+                                                 out camX,
+                                                 out camY,
+                                                 out camZoom,
+                                                 out enabled,
+                                                 out primary,
+                                                 out clearColor,
+                                                 out backgroundColor,
+                                                 out cullingMask,
+                                                 out viewportX,
+                                                 out viewportY,
+                                                 out viewportWidth,
+                                                 out viewportHeight))
+            {
+                ImGui.Text("Camera data unavailable.");
+                return;
             }
 
+            bool cameraChanged = false;
+
+            EditorUIHelpers.DrawSectionHeader("General");
+            cameraChanged |= InspectorInputs.Bool("Enabled", ref enabled);
+            cameraChanged |= InspectorInputs.Bool("Main Camera", ref primary);
+
+            EditorUIHelpers.DrawSectionHeader("Transform");
+            cameraChanged |= InspectorInputs.Vector2("Cam Position", ref camX, ref camY, 1.0f);
+            cameraChanged |= ImGui.InputFloat("Cam Zoom", ref camZoom, 0.1f);
+
+            EditorUIHelpers.DrawSectionHeader("Render");
+            cameraChanged |= InspectorInputs.Bool("Clear Color", ref clearColor);
+            cameraChanged |= InspectorInputs.ColorRgba32("Background Color (RGBA 0-255)", ref backgroundColor);
+            cameraChanged |= DrawLayerMaskPopup("Culling Mask", "CameraCullingMask##" + entityId, ref cullingMask);
+
+            EditorUIHelpers.DrawSectionHeader("Viewport");
+            cameraChanged |= InspectorInputs.Vector2("Viewport Pos", ref viewportX, ref viewportY, 0.01f);
+            cameraChanged |= InspectorInputs.Vector2("Viewport Size", ref viewportWidth, ref viewportHeight, 0.01f);
+
+            float clampedZoom = Clamp(camZoom, MinZoom, MaxZoom);
+            if (Math.Abs(clampedZoom - camZoom) > 0.0001f)
+            {
+                camZoom = clampedZoom;
+                cameraChanged = true;
+            }
+
+            float clampedViewportX = Clamp(viewportX, 0.0f, 1.0f);
+            float clampedViewportY = Clamp(viewportY, 0.0f, 1.0f);
+            float clampedViewportWidth = Clamp(viewportWidth, 0.01f, 1.0f);
+            float clampedViewportHeight = Clamp(viewportHeight, 0.01f, 1.0f);
+
+            if (clampedViewportX + clampedViewportWidth > 1.0f)
+                clampedViewportWidth = Clamp(1.0f - clampedViewportX, 0.01f, 1.0f);
+            if (clampedViewportY + clampedViewportHeight > 1.0f)
+                clampedViewportHeight = Clamp(1.0f - clampedViewportY, 0.01f, 1.0f);
+
+            if (Math.Abs(clampedViewportX - viewportX) > 0.0001f)
+            {
+                viewportX = clampedViewportX;
+                cameraChanged = true;
+            }
+
+            if (Math.Abs(clampedViewportY - viewportY) > 0.0001f)
+            {
+                viewportY = clampedViewportY;
+                cameraChanged = true;
+            }
+
+            if (Math.Abs(clampedViewportWidth - viewportWidth) > 0.0001f)
+            {
+                viewportWidth = clampedViewportWidth;
+                cameraChanged = true;
+            }
+
+            if (Math.Abs(clampedViewportHeight - viewportHeight) > 0.0001f)
+            {
+                viewportHeight = clampedViewportHeight;
+                cameraChanged = true;
+            }
+
+            if (cameraChanged)
+            {
+                EntityManager.SetCameraSettings(entityId,
+                                                camX,
+                                                camY,
+                                                camZoom,
+                                                enabled,
+                                                primary,
+                                                clearColor,
+                                                backgroundColor,
+                                                cullingMask,
+                                                viewportX,
+                                                viewportY,
+                                                viewportWidth,
+                                                viewportHeight);
+            }
         }
 
         private static void DrawScriptInspector(uint entityId)

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <fstream>
 #include <vector>
 
@@ -13,7 +14,7 @@
 
 namespace
 {
-    constexpr std::uint32_t kSceneFileVersion = 4;
+    constexpr std::uint32_t kSceneFileVersion = 5;
 
     enum ComponentFlags : std::uint8_t
     {
@@ -203,6 +204,38 @@ namespace
             entity.spriteRegionHeight = 0.0f;
     }
 
+    static float ClampRange(float value, float minValue, float maxValue)
+    {
+        if (value < minValue)
+            return minValue;
+        if (value > maxValue)
+            return maxValue;
+        return value;
+    }
+
+    static void NormalizeCameraState(PersistedEntity& entity)
+    {
+        if (!std::isfinite(entity.camera.x))
+            entity.camera.x = 0.0f;
+        if (!std::isfinite(entity.camera.y))
+            entity.camera.y = 0.0f;
+        if (!std::isfinite(entity.camera.zoom))
+            entity.camera.zoom = 1.0f;
+
+        entity.camera.zoom = ClampRange(entity.camera.zoom, 0.01f, 100.0f);
+
+        entity.camera.viewportX = ClampRange(entity.camera.viewportX, 0.0f, 1.0f);
+        entity.camera.viewportY = ClampRange(entity.camera.viewportY, 0.0f, 1.0f);
+        entity.camera.viewportWidth = ClampRange(entity.camera.viewportWidth, 0.01f, 1.0f);
+        entity.camera.viewportHeight = ClampRange(entity.camera.viewportHeight, 0.01f, 1.0f);
+
+        if (entity.camera.viewportX + entity.camera.viewportWidth > 1.0f)
+            entity.camera.viewportWidth = ClampRange(1.0f - entity.camera.viewportX, 0.01f, 1.0f);
+
+        if (entity.camera.viewportY + entity.camera.viewportHeight > 1.0f)
+            entity.camera.viewportHeight = ClampRange(1.0f - entity.camera.viewportY, 0.01f, 1.0f);
+    }
+
     static void NormalizeSpriteComponent(SpriteComponent& sprite)
     {
         if (sprite.hframes < 1)
@@ -227,6 +260,14 @@ namespace
             sprite.regionWidth = 0.0f;
         if (sprite.regionHeight < 0.0f)
             sprite.regionHeight = 0.0f;
+    }
+
+    static void NormalizeCameraComponent(CameraComponent& camera)
+    {
+        PersistedEntity entity;
+        entity.camera = camera;
+        NormalizeCameraState(entity);
+        camera = entity.camera;
     }
 
     template<typename T>
@@ -305,6 +346,7 @@ namespace
             {
                 persisted.hasCamera = true;
                 persisted.camera = *camera;
+                NormalizeCameraState(persisted);
             }
 
             if (const SpriteComponent* sprite = scene.TryGetSprite(entity))
@@ -437,6 +479,7 @@ CameraComponent& Scene::AddCamera(Entity entity, const CameraComponent& camera)
 {
     auto& value = AddComponent<CameraComponent>(entity);
     value = camera;
+    NormalizeCameraComponent(value);
     return value;
 }
 
@@ -658,6 +701,18 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
                 WriteBinary(output, entity.camera.x);
                 WriteBinary(output, entity.camera.y);
                 WriteBinary(output, entity.camera.zoom);
+                const std::uint8_t enabled = entity.camera.enabled ? 1 : 0;
+                const std::uint8_t primary = entity.camera.primary ? 1 : 0;
+                const std::uint8_t clearColor = entity.camera.clearColor ? 1 : 0;
+                WriteBinary(output, enabled);
+                WriteBinary(output, primary);
+                WriteBinary(output, clearColor);
+                WriteBinary(output, entity.camera.backgroundColor);
+                WriteBinary(output, entity.camera.cullingMask);
+                WriteBinary(output, entity.camera.viewportX);
+                WriteBinary(output, entity.camera.viewportY);
+                WriteBinary(output, entity.camera.viewportWidth);
+                WriteBinary(output, entity.camera.viewportHeight);
             }
 
             if (entity.hasSprite)
@@ -745,6 +800,15 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             cameraObject.AddMember("x", entity.camera.x, allocator);
             cameraObject.AddMember("y", entity.camera.y, allocator);
             cameraObject.AddMember("zoom", entity.camera.zoom, allocator);
+            cameraObject.AddMember("enabled", entity.camera.enabled, allocator);
+            cameraObject.AddMember("primary", entity.camera.primary, allocator);
+            cameraObject.AddMember("clearColor", entity.camera.clearColor, allocator);
+            cameraObject.AddMember("backgroundColor", entity.camera.backgroundColor, allocator);
+            cameraObject.AddMember("cullingMask", entity.camera.cullingMask, allocator);
+            cameraObject.AddMember("viewportX", entity.camera.viewportX, allocator);
+            cameraObject.AddMember("viewportY", entity.camera.viewportY, allocator);
+            cameraObject.AddMember("viewportWidth", entity.camera.viewportWidth, allocator);
+            cameraObject.AddMember("viewportHeight", entity.camera.viewportHeight, allocator);
             componentsObject.AddMember("camera", cameraObject, allocator);
         }
 
@@ -935,6 +999,32 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                     m_lastIoError = "Failed to read binary camera component.";
                     return false;
                 }
+
+                if (fileVersion >= 5)
+                {
+                    std::uint8_t enabled = 0;
+                    std::uint8_t primary = 0;
+                    std::uint8_t clearColor = 0;
+                    if (!ReadBinary(input, enabled) ||
+                        !ReadBinary(input, primary) ||
+                        !ReadBinary(input, clearColor) ||
+                        !ReadBinary(input, entity.camera.backgroundColor) ||
+                        !ReadBinary(input, entity.camera.cullingMask) ||
+                        !ReadBinary(input, entity.camera.viewportX) ||
+                        !ReadBinary(input, entity.camera.viewportY) ||
+                        !ReadBinary(input, entity.camera.viewportWidth) ||
+                        !ReadBinary(input, entity.camera.viewportHeight))
+                    {
+                        m_lastIoError = "Failed to read binary camera extended settings.";
+                        return false;
+                    }
+
+                    entity.camera.enabled = enabled != 0;
+                    entity.camera.primary = primary != 0;
+                    entity.camera.clearColor = clearColor != 0;
+                }
+
+                NormalizeCameraState(entity);
             }
 
             if (entity.hasSprite)
@@ -1133,11 +1223,22 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                     entity.hasCamera = true;
                     if (!ReadOptionalFloat(camera, "x", entity.camera.x, parseError) ||
                         !ReadOptionalFloat(camera, "y", entity.camera.y, parseError) ||
-                        !ReadOptionalFloat(camera, "zoom", entity.camera.zoom, parseError))
+                        !ReadOptionalFloat(camera, "zoom", entity.camera.zoom, parseError) ||
+                        !ReadOptionalBool(camera, "enabled", entity.camera.enabled, parseError) ||
+                        !ReadOptionalBool(camera, "primary", entity.camera.primary, parseError) ||
+                        !ReadOptionalBool(camera, "clearColor", entity.camera.clearColor, parseError) ||
+                        !ReadOptionalUInt32(camera, "backgroundColor", entity.camera.backgroundColor, parseError) ||
+                        !ReadOptionalUInt32(camera, "cullingMask", entity.camera.cullingMask, parseError) ||
+                        !ReadOptionalFloat(camera, "viewportX", entity.camera.viewportX, parseError) ||
+                        !ReadOptionalFloat(camera, "viewportY", entity.camera.viewportY, parseError) ||
+                        !ReadOptionalFloat(camera, "viewportWidth", entity.camera.viewportWidth, parseError) ||
+                        !ReadOptionalFloat(camera, "viewportHeight", entity.camera.viewportHeight, parseError))
                     {
                         m_lastIoError = "Invalid JSON camera component: " + parseError;
                         return false;
                     }
+
+                    NormalizeCameraState(entity);
                 }
 
                 if (components.HasMember("sprite"))
@@ -1245,7 +1346,10 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
         }
 
         if (persisted.hasCamera)
-            AddCamera(entity, persisted.camera);
+        {
+            CameraComponent& camera = AddCamera(entity, persisted.camera);
+            NormalizeCameraComponent(camera);
+        }
         else
             RemoveCamera(entity);
 
@@ -1293,10 +1397,21 @@ const std::string& Scene::GetLastIoError() const
 Scene::Entity Scene::FindFirstCamera() const
 {
     auto view = m_registry.view<CameraComponent>();
+    Entity firstEnabled = entt::null;
     for (const auto entity : view)
-        return entity;
+    {
+        const auto& camera = view.get<CameraComponent>(entity);
+        if (!camera.enabled)
+            continue;
 
-    return entt::null;
+        if (camera.primary)
+            return entity;
+
+        if (firstEnabled == entt::null)
+            firstEnabled = entity;
+    }
+
+    return firstEnabled;
 }
 
 entt::registry& Scene::Registry()

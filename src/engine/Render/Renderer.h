@@ -18,6 +18,8 @@ public:
     void BeginGameView();
     void EndGameView();
     unsigned long long GetGameViewTextureHandle() const;
+    void SetCameraViewportNormalized(float viewportX, float viewportY, float viewportWidth, float viewportHeight);
+    void ClearCameraViewport(float r, float g, float b, float a);
     void SetCameraProjection(float cameraX, float cameraY, float cameraZoom);
     void DrawSprite(Texture& texture, float x, float y, float width, float height);
     void DrawSprite(Texture& texture,

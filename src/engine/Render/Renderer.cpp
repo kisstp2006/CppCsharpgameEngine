@@ -28,6 +28,10 @@ struct Renderer::Impl
     unsigned int gameViewColorTexture = 0;
     int gameViewWidth = 0;
     int gameViewHeight = 0;
+    int cameraViewportX = 0;
+    int cameraViewportY = 0;
+    int cameraViewportWidth = 0;
+    int cameraViewportHeight = 0;
 };
 
 static float ClampCameraZoom(float zoom)
@@ -39,6 +43,15 @@ static float ClampCameraZoom(float zoom)
     if (zoom > 100.0f)
         return 100.0f;
     return zoom;
+}
+
+static float Clamp01(float value)
+{
+    if (value < 0.0f)
+        return 0.0f;
+    if (value > 1.0f)
+        return 1.0f;
+    return value;
 }
 
 Renderer::Renderer() = default;
@@ -232,6 +245,10 @@ void Renderer::BeginGameView()
 
     glBindFramebuffer(GL_FRAMEBUFFER, m_impl->gameViewFbo);
     glViewport(0, 0, m_impl->gameViewWidth, m_impl->gameViewHeight);
+    m_impl->cameraViewportX = 0;
+    m_impl->cameraViewportY = 0;
+    m_impl->cameraViewportWidth = m_impl->gameViewWidth;
+    m_impl->cameraViewportHeight = m_impl->gameViewHeight;
     glClearColor(0.08f, 0.08f, 0.10f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -249,14 +266,116 @@ unsigned long long Renderer::GetGameViewTextureHandle() const
     return static_cast<unsigned long long>(m_impl->gameViewColorTexture);
 }
 
+void Renderer::SetCameraViewportNormalized(float viewportX,
+                                           float viewportY,
+                                           float viewportWidth,
+                                           float viewportHeight)
+{
+    if (!m_impl)
+        return;
+
+    const int baseWidth = (m_impl->gameViewWidth > 0) ? m_impl->gameViewWidth : m_viewWidth;
+    const int baseHeight = (m_impl->gameViewHeight > 0) ? m_impl->gameViewHeight : m_viewHeight;
+    if (baseWidth < 1 || baseHeight < 1)
+        return;
+
+    float x = Clamp01(viewportX);
+    float y = Clamp01(viewportY);
+    float width = viewportWidth;
+    float height = viewportHeight;
+
+    if (width < 0.01f)
+        width = 0.01f;
+    if (width > 1.0f)
+        width = 1.0f;
+    if (height < 0.01f)
+        height = 0.01f;
+    if (height > 1.0f)
+        height = 1.0f;
+
+    if (x + width > 1.0f)
+        width = 1.0f - x;
+    if (y + height > 1.0f)
+        height = 1.0f - y;
+
+    if (width < 0.01f)
+        width = 0.01f;
+    if (height < 0.01f)
+        height = 0.01f;
+
+    int pixelX = static_cast<int>(x * static_cast<float>(baseWidth));
+    int pixelY = static_cast<int>(y * static_cast<float>(baseHeight));
+    int pixelWidth = static_cast<int>(width * static_cast<float>(baseWidth));
+    int pixelHeight = static_cast<int>(height * static_cast<float>(baseHeight));
+
+    if (pixelWidth < 1)
+        pixelWidth = 1;
+    if (pixelHeight < 1)
+        pixelHeight = 1;
+
+    if (pixelX < 0)
+        pixelX = 0;
+    if (pixelY < 0)
+        pixelY = 0;
+
+    if (pixelX >= baseWidth)
+        pixelX = baseWidth - 1;
+    if (pixelY >= baseHeight)
+        pixelY = baseHeight - 1;
+
+    if (pixelX + pixelWidth > baseWidth)
+        pixelWidth = baseWidth - pixelX;
+    if (pixelY + pixelHeight > baseHeight)
+        pixelHeight = baseHeight - pixelY;
+
+    if (pixelWidth < 1)
+        pixelWidth = 1;
+    if (pixelHeight < 1)
+        pixelHeight = 1;
+
+    m_impl->cameraViewportX = pixelX;
+    m_impl->cameraViewportY = pixelY;
+    m_impl->cameraViewportWidth = pixelWidth;
+    m_impl->cameraViewportHeight = pixelHeight;
+
+    glViewport(pixelX, pixelY, pixelWidth, pixelHeight);
+}
+
+void Renderer::ClearCameraViewport(float r, float g, float b, float a)
+{
+    if (!m_impl)
+        return;
+
+    if (m_impl->cameraViewportWidth < 1 || m_impl->cameraViewportHeight < 1)
+        return;
+
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(m_impl->cameraViewportX,
+              m_impl->cameraViewportY,
+              m_impl->cameraViewportWidth,
+              m_impl->cameraViewportHeight);
+    glClearColor(Clamp01(r), Clamp01(g), Clamp01(b), Clamp01(a));
+    glClear(GL_COLOR_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST);
+    glViewport(m_impl->cameraViewportX,
+               m_impl->cameraViewportY,
+               m_impl->cameraViewportWidth,
+               m_impl->cameraViewportHeight);
+}
+
 void Renderer::SetCameraProjection(float cameraX, float cameraY, float cameraZoom)
 {
     if (!m_impl)
         return;
 
     const float zoom = ClampCameraZoom(cameraZoom);
-    const int projectionWidth = (m_impl->gameViewWidth > 0) ? m_impl->gameViewWidth : m_viewWidth;
-    const int projectionHeight = (m_impl->gameViewHeight > 0) ? m_impl->gameViewHeight : m_viewHeight;
+    int projectionWidth = m_impl->cameraViewportWidth;
+    int projectionHeight = m_impl->cameraViewportHeight;
+    if (projectionWidth < 1 || projectionHeight < 1)
+    {
+        projectionWidth = (m_impl->gameViewWidth > 0) ? m_impl->gameViewWidth : m_viewWidth;
+        projectionHeight = (m_impl->gameViewHeight > 0) ? m_impl->gameViewHeight : m_viewHeight;
+    }
     const float halfWorldWidth = (static_cast<float>(projectionWidth) * 0.5f) / zoom;
     const float halfWorldHeight = (static_cast<float>(projectionHeight) * 0.5f) / zoom;
 

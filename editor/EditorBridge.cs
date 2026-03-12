@@ -167,6 +167,36 @@ namespace Engine
         public static extern void SetCamera(uint entityId, float x, float y, float zoom);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool GetCameraSettings(uint entityId,
+                                out float x,
+                                out float y,
+                                out float zoom,
+                                out bool enabled,
+                                out bool primary,
+                                out bool clearColor,
+                                out uint backgroundColor,
+                                out uint cullingMask,
+                                out float viewportX,
+                                out float viewportY,
+                                out float viewportWidth,
+                                out float viewportHeight);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetCameraSettings(uint entityId,
+                                float x,
+                                float y,
+                                float zoom,
+                                bool enabled,
+                                bool primary,
+                                bool clearColor,
+                                uint backgroundColor,
+                                uint cullingMask,
+                                float viewportX,
+                                float viewportY,
+                                float viewportWidth,
+                                float viewportHeight);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void RemoveCamera(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]

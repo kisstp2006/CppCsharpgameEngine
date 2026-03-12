@@ -73,6 +73,36 @@ namespace Engine
         private static extern void SetCameraInternal(uint entityId, float x, float y, float zoom);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool GetCameraSettingsInternal(uint entityId,
+                                     out float x,
+                                     out float y,
+                                     out float zoom,
+                                     out bool enabled,
+                                     out bool primary,
+                                     out bool clearColor,
+                                     out uint backgroundColor,
+                                     out uint cullingMask,
+                                     out float viewportX,
+                                     out float viewportY,
+                                     out float viewportWidth,
+                                     out float viewportHeight);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetCameraSettingsInternal(uint entityId,
+                                     float x,
+                                     float y,
+                                     float zoom,
+                                     bool enabled,
+                                     bool primary,
+                                     bool clearColor,
+                                     uint backgroundColor,
+                                     uint cullingMask,
+                                     float viewportX,
+                                     float viewportY,
+                                     float viewportWidth,
+                                     float viewportHeight);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void RemoveCameraInternal(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -196,6 +226,64 @@ namespace Engine
         public static void SetCamera(uint entityId, float x, float y, float zoom)
         {
             SetCameraInternal(entityId, x, y, zoom);
+        }
+
+        public static bool GetCameraSettings(uint entityId,
+                                             out float x,
+                                             out float y,
+                                             out float zoom,
+                                             out bool enabled,
+                                             out bool primary,
+                                             out bool clearColor,
+                                             out uint backgroundColor,
+                                             out uint cullingMask,
+                                             out float viewportX,
+                                             out float viewportY,
+                                             out float viewportWidth,
+                                             out float viewportHeight)
+        {
+            return GetCameraSettingsInternal(entityId,
+                                             out x,
+                                             out y,
+                                             out zoom,
+                                             out enabled,
+                                             out primary,
+                                             out clearColor,
+                                             out backgroundColor,
+                                             out cullingMask,
+                                             out viewportX,
+                                             out viewportY,
+                                             out viewportWidth,
+                                             out viewportHeight);
+        }
+
+        public static void SetCameraSettings(uint entityId,
+                                             float x,
+                                             float y,
+                                             float zoom,
+                                             bool enabled,
+                                             bool primary,
+                                             bool clearColor,
+                                             uint backgroundColor,
+                                             uint cullingMask,
+                                             float viewportX,
+                                             float viewportY,
+                                             float viewportWidth,
+                                             float viewportHeight)
+        {
+            SetCameraSettingsInternal(entityId,
+                                      x,
+                                      y,
+                                      zoom,
+                                      enabled,
+                                      primary,
+                                      clearColor,
+                                      backgroundColor,
+                                      cullingMask,
+                                      viewportX,
+                                      viewportY,
+                                      viewportWidth,
+                                      viewportHeight);
         }
 
         public static void RemoveCamera(uint entityId)

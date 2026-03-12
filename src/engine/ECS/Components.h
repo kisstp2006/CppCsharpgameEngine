@@ -18,6 +18,15 @@ struct CameraComponent
     float x = 0.0f;
     float y = 0.0f;
     float zoom = 1.0f;
+    bool enabled = true;
+    bool primary = true;
+    bool clearColor = true;
+    std::uint32_t backgroundColor = 0x14141AFF;
+    std::uint32_t cullingMask = 0xFFFFFFFFu;
+    float viewportX = 0.0f;
+    float viewportY = 0.0f;
+    float viewportWidth = 1.0f;
+    float viewportHeight = 1.0f;
 };
 
 struct SpriteComponent
