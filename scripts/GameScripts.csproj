@@ -5,4 +5,18 @@
     <AssemblyName>GameScripts</AssemblyName>
     <RootNamespace>GameScripts</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="Camera2D.cs" />
+    <Compile Remove="CoreApi.cs" />
+    <Compile Remove="Debug.cs" />
+    <Compile Remove="DebugDraw.cs" />
+    <Compile Remove="EntityManager.cs" />
+    <Compile Remove="Glm.cs" />
+    <Compile Remove="ImGuizmo.cs" />
+    <Compile Remove="Input.cs" />
+    <Compile Remove="Sprite.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="EngineManagedApi.csproj" />
+  </ItemGroup>
 </Project>

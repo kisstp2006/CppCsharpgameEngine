@@ -260,6 +260,22 @@ namespace Engine
 
     public class MonoBehaviour : Component
     {
+        private void ReportLifecycleException(string lifecycleName, Exception ex)
+        {
+            string typeName;
+            try
+            {
+                typeName = GetType().FullName ?? GetType().Name;
+            }
+            catch
+            {
+                typeName = "UnknownScript";
+            }
+
+            string message = ex == null ? "Unknown exception" : ex.ToString();
+            Debug.LogError("[MonoBehaviour] Exception in " + typeName + "." + lifecycleName + ": " + message);
+        }
+
         public T GetComponent<T>() where T : Component, new()
         {
             return gameObject.GetComponent<T>();
@@ -273,32 +289,76 @@ namespace Engine
         public void OnCreate(uint entityId)
         {
             Attach(entityId);
-            Start();
+
+            try
+            {
+                Start();
+            }
+            catch (Exception ex)
+            {
+                ReportLifecycleException("Start", ex);
+            }
         }
 
         public void OnEnable(uint entityId)
         {
             Attach(entityId);
-            OnEnable();
+
+            try
+            {
+                OnEnable();
+            }
+            catch (Exception ex)
+            {
+                ReportLifecycleException("OnEnable", ex);
+            }
         }
 
         public void OnDisable(uint entityId)
         {
             Attach(entityId);
-            OnDisable();
+
+            try
+            {
+                OnDisable();
+            }
+            catch (Exception ex)
+            {
+                ReportLifecycleException("OnDisable", ex);
+            }
         }
 
         public void OnDestroy(uint entityId)
         {
             Attach(entityId);
-            OnDestroy();
+
+            try
+            {
+                OnDestroy();
+            }
+            catch (Exception ex)
+            {
+                ReportLifecycleException("OnDestroy", ex);
+            }
         }
 
         public void OnUpdate(uint entityId, float deltaTime)
         {
             Attach(entityId);
+
+            if (!EntityManager.IsEntityValid(entityId))
+                return;
+
             Time.SetDeltaTime(deltaTime);
-            Update();
+
+            try
+            {
+                Update();
+            }
+            catch (Exception ex)
+            {
+                ReportLifecycleException("Update", ex);
+            }
         }
 
         protected virtual void Start()

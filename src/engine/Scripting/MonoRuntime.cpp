@@ -33,10 +33,11 @@
 #include <imgui.h>
 #include <ImGuizmo.h>
 
-#if !defined(__INTELLISENSE__) && !defined(ENGINE_MONO_DISABLED) && __has_include(<mono/jit/jit.h>) && __has_include(<mono/metadata/assembly.h>) && __has_include(<mono/metadata/debug-helpers.h>) && __has_include(<mono/metadata/mono-config.h>) && __has_include(<mono/metadata/object.h>)
+#if !defined(__INTELLISENSE__) && !defined(ENGINE_MONO_DISABLED) && __has_include(<mono/jit/jit.h>) && __has_include(<mono/metadata/assembly.h>) && __has_include(<mono/metadata/class.h>) && __has_include(<mono/metadata/debug-helpers.h>) && __has_include(<mono/metadata/mono-config.h>) && __has_include(<mono/metadata/object.h>)
 #define ENGINE_MONO_RUNTIME_AVAILABLE 1
 #include <mono/jit/jit.h>
 #include <mono/metadata/assembly.h>
+#include <mono/metadata/class.h>
 #include <mono/metadata/debug-helpers.h>
 #include <mono/metadata/mono-config.h>
 #include <mono/metadata/object.h>
@@ -132,6 +133,21 @@ static void MonoRuntime_InvokeEntityLifecycle(MonoMethod* method, MonoObject* in
 
     void* args[1] = { (void*)&entityId };
     mono_runtime_invoke(method, instanceObject, args, nullptr);
+}
+
+static MonoMethod* MonoRuntime_FindMethodInHierarchy(MonoClass* klass, const char* methodName, int parameterCount)
+{
+    MonoClass* current = klass;
+    while (current)
+    {
+        MonoMethod* method = mono_class_get_method_from_name(current, methodName, parameterCount);
+        if (method)
+            return method;
+
+        current = mono_class_get_parent(current);
+    }
+
+    return nullptr;
 }
 
 static void MonoRuntime_TeardownScriptInstance(std::uint32_t entityId, MonoRuntime::Impl::ScriptInstance& instance)
@@ -964,11 +980,11 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
             }
 
             mono_runtime_object_init(instance.instance);
-            instance.onCreate = mono_class_get_method_from_name(klass, "OnCreate", 1);
-            instance.onUpdate = mono_class_get_method_from_name(klass, "OnUpdate", 2);
-            instance.onEnable = mono_class_get_method_from_name(klass, "OnEnable", 1);
-            instance.onDisable = mono_class_get_method_from_name(klass, "OnDisable", 1);
-            instance.onDestroy = mono_class_get_method_from_name(klass, "OnDestroy", 1);
+            instance.onCreate = MonoRuntime_FindMethodInHierarchy(klass, "OnCreate", 1);
+            instance.onUpdate = MonoRuntime_FindMethodInHierarchy(klass, "OnUpdate", 2);
+            instance.onEnable = MonoRuntime_FindMethodInHierarchy(klass, "OnEnable", 1);
+            instance.onDisable = MonoRuntime_FindMethodInHierarchy(klass, "OnDisable", 1);
+            instance.onDestroy = MonoRuntime_FindMethodInHierarchy(klass, "OnDestroy", 1);
             instance.classNamespace = script.classNamespace;
             instance.className = script.className;
 
