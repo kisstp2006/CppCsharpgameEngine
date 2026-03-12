@@ -45,6 +45,14 @@ endif()
 set(entt_SOURCE_DIR "${_TP_DIR}/entt")
 
 # ──────────────────────────────────────────────────────────
+# GLM (submodule: thirdparty/glm, header-only)
+# ──────────────────────────────────────────────────────────
+if(NOT EXISTS "${_TP_DIR}/glm/glm/glm.hpp")
+  message(FATAL_ERROR "glm submodule is missing. Run: git submodule update --init --recursive")
+endif()
+set(glm_SOURCE_DIR "${_TP_DIR}/glm")
+
+# ──────────────────────────────────────────────────────────
 # Assimp (submodule: thirdparty/assimp)
 # ──────────────────────────────────────────────────────────
 if(NOT EXISTS "${_TP_DIR}/assimp/CMakeLists.txt")
@@ -63,6 +71,7 @@ set(assimp_SOURCE_DIR "${_TP_DIR}/assimp")
 set(THIRDPARTY_IMGUI_INCLUDE_DIR "${imgui_SOURCE_DIR}" CACHE PATH "ImGui include directory")
 set(THIRDPARTY_GLAD_INCLUDE_DIR "${_TP_DIR}/glad-generated/include" CACHE PATH "glad include directory")
 set(THIRDPARTY_ENTT_INCLUDE_DIR "${entt_SOURCE_DIR}/src" CACHE PATH "EnTT include directory")
+set(THIRDPARTY_GLM_INCLUDE_DIR "${glm_SOURCE_DIR}" CACHE PATH "GLM include directory")
 set(THIRDPARTY_ASSIMP_INCLUDE_DIR "${assimp_SOURCE_DIR}/include" CACHE PATH "Assimp include directory")
 set(THIRDPARTY_RAPIDJSON_INCLUDE_DIR "${assimp_SOURCE_DIR}/contrib/rapidjson/include" CACHE PATH "RapidJSON include directory")
 
@@ -155,6 +164,14 @@ if(NOT TARGET entt::entt)
   add_library(entt::entt INTERFACE IMPORTED)
   set_target_properties(entt::entt PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${THIRDPARTY_ENTT_INCLUDE_DIR}"
+  )
+endif()
+
+# GLM (header-only)
+if(NOT TARGET glm::glm)
+  add_library(glm::glm INTERFACE IMPORTED)
+  set_target_properties(glm::glm PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${THIRDPARTY_GLM_INCLUDE_DIR}"
   )
 endif()
 

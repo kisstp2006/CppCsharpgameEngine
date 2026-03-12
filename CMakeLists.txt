@@ -47,6 +47,13 @@ if(USE_THIRDPARTY AND EXISTS "${CMAKE_SOURCE_DIR}/thirdparty/CMakeLists.txt")
     endif()
   endif()
 
+  if(NOT TARGET glm::glm)
+    add_library(glm::glm INTERFACE IMPORTED)
+    if(DEFINED THIRDPARTY_GLM_INCLUDE_DIR)
+      target_include_directories(glm::glm INTERFACE ${THIRDPARTY_GLM_INCLUDE_DIR})
+    endif()
+  endif()
+
   if(NOT TARGET assimp::assimp)
     add_library(assimp::assimp INTERFACE IMPORTED)
     if(DEFINED THIRDPARTY_ASSIMP_INCLUDE_DIR)
@@ -67,6 +74,7 @@ else()
   find_package(glad CONFIG REQUIRED)
   find_package(imgui CONFIG REQUIRED)
   find_package(EnTT CONFIG REQUIRED)
+  find_package(glm CONFIG QUIET)
   find_package(assimp CONFIG QUIET)
   find_package(RapidJSON CONFIG QUIET)
 
@@ -82,6 +90,13 @@ else()
   if(NOT TARGET assimp::assimp)
     add_library(assimp::assimp INTERFACE IMPORTED)
     add_compile_definitions(ENGINE_ASSIMP_DISABLED=1)
+  endif()
+
+  if(NOT TARGET glm::glm)
+    add_library(glm::glm INTERFACE IMPORTED)
+    if(EXISTS "${CMAKE_SOURCE_DIR}/thirdparty/glm")
+      target_include_directories(glm::glm INTERFACE "${CMAKE_SOURCE_DIR}/thirdparty/glm")
+    endif()
   endif()
 
   if(NOT TARGET RapidJSON::RapidJSON)
@@ -212,6 +227,7 @@ target_link_libraries(Engine PUBLIC
   glad::glad
   imgui::imgui
   entt::entt
+  glm::glm
   assimp::assimp
   RapidJSON::RapidJSON
   Mono::Mono

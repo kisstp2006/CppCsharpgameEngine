@@ -10,6 +10,7 @@
     <Compile Include="Camera2D.cs" />
     <Compile Include="Debug.cs" />
     <Compile Include="DebugDraw.cs" />
+    <Compile Include="Glm.cs" />
     <Compile Include="ImGuizmo.cs" />
     <Compile Include="Input.cs" />
     <Compile Include="Sprite.cs" />

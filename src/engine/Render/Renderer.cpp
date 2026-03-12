@@ -6,7 +6,10 @@
 #include <glad/glad.h>
 #include <SDL.h>
 
-#include <array>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 #include <cmath>
 #include <iostream>
 
@@ -24,30 +27,6 @@ struct Renderer::Impl
     int gameViewWidth = 0;
     int gameViewHeight = 0;
 };
-
-static std::array<float, 16> Ortho(float left, float right, float bottom, float top)
-{
-    // Column-major order for OpenGL
-    const float rl = 1.0f / (right - left);
-    const float tb = 1.0f / (top - bottom);
-
-    return {
-        2.0f * rl, 0.0f, 0.0f, 0.0f,
-        0.0f, 2.0f * tb, 0.0f, 0.0f,
-        0.0f, 0.0f, -1.0f, 0.0f,
-        -(right + left) * rl, -(top + bottom) * tb, 0.0f, 1.0f,
-    };
-}
-
-static std::array<float, 16> TranslateScale(float x, float y, float sx, float sy)
-{
-    return {
-        sx, 0.0f, 0.0f, 0.0f,
-        0.0f, sy, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f,
-        x, y, 0.0f, 1.0f,
-    };
-}
 
 static float ClampCameraZoom(float zoom)
 {
@@ -150,8 +129,11 @@ bool Renderer::Initialize(int width, int height)
 
     // Set projection once
     m_impl->shader.Bind();
-    const auto proj = Ortho(0.0f, (float)m_viewWidth, 0.0f, (float)m_viewHeight);
-    glUniformMatrix4fv(m_impl->projLocation, 1, GL_FALSE, proj.data());
+    const glm::mat4 projection = glm::ortho(0.0f,
+                                            static_cast<float>(m_viewWidth),
+                                            0.0f,
+                                            static_cast<float>(m_viewHeight));
+    glUniformMatrix4fv(m_impl->projLocation, 1, GL_FALSE, glm::value_ptr(projection));
     glUniform1i(m_impl->textureLocation, 0);
 
     return true;
@@ -273,8 +255,8 @@ void Renderer::SetCameraProjection(float cameraX, float cameraY, float cameraZoo
     const float top = cameraY + halfWorldHeight;
 
     m_impl->shader.Bind();
-    const auto projection = Ortho(left, right, bottom, top);
-    glUniformMatrix4fv(m_impl->projLocation, 1, GL_FALSE, projection.data());
+    const glm::mat4 projection = glm::ortho(left, right, bottom, top);
+    glUniformMatrix4fv(m_impl->projLocation, 1, GL_FALSE, glm::value_ptr(projection));
 }
 
 void Renderer::DrawSprite(Texture& texture, float x, float y, float width, float height)
@@ -308,8 +290,10 @@ void Renderer::DrawSprite(Texture& texture,
 
     m_impl->shader.Bind();
 
-    const auto model = TranslateScale(x, y, width, height);
-    glUniformMatrix4fv(m_impl->modelLocation, 1, GL_FALSE, model.data());
+    glm::mat4 model(1.0f);
+    model = glm::translate(model, glm::vec3(x, y, 0.0f));
+    model = glm::scale(model, glm::vec3(width, height, 1.0f));
+    glUniformMatrix4fv(m_impl->modelLocation, 1, GL_FALSE, glm::value_ptr(model));
 
     texture.Bind(0);
 

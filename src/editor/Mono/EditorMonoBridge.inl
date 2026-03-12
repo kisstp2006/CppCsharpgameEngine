@@ -321,6 +321,129 @@ static void RuntimeSprite_SetSettings(std::uint32_t entityId,
     sprite->regionHeight = regionHeight;
 }
 
+static void RuntimeGlm_Vec2Add(float ax, float ay, float bx, float by, float* rx, float* ry)
+{
+    const glm::vec2 result = glm::vec2(ax, ay) + glm::vec2(bx, by);
+    if (rx)
+        *rx = result.x;
+    if (ry)
+        *ry = result.y;
+}
+
+static void RuntimeGlm_Vec2Sub(float ax, float ay, float bx, float by, float* rx, float* ry)
+{
+    const glm::vec2 result = glm::vec2(ax, ay) - glm::vec2(bx, by);
+    if (rx)
+        *rx = result.x;
+    if (ry)
+        *ry = result.y;
+}
+
+static void RuntimeGlm_Vec2Scale(float x, float y, float scale, float* rx, float* ry)
+{
+    const glm::vec2 result = glm::vec2(x, y) * scale;
+    if (rx)
+        *rx = result.x;
+    if (ry)
+        *ry = result.y;
+}
+
+static float RuntimeGlm_Vec2Length(float x, float y)
+{
+    return glm::length(glm::vec2(x, y));
+}
+
+static float RuntimeGlm_Vec2Dot(float ax, float ay, float bx, float by)
+{
+    return glm::dot(glm::vec2(ax, ay), glm::vec2(bx, by));
+}
+
+static void RuntimeGlm_Vec2Normalize(float x, float y, float* rx, float* ry)
+{
+    const glm::vec2 input(x, y);
+    const float len = glm::length(input);
+    const glm::vec2 result = (len > 0.0f) ? (input / len) : glm::vec2(0.0f, 0.0f);
+    if (rx)
+        *rx = result.x;
+    if (ry)
+        *ry = result.y;
+}
+
+static void RuntimeGlm_Vec3Add(float ax, float ay, float az,
+                               float bx, float by, float bz,
+                               float* rx, float* ry, float* rz)
+{
+    const glm::vec3 result = glm::vec3(ax, ay, az) + glm::vec3(bx, by, bz);
+    if (rx)
+        *rx = result.x;
+    if (ry)
+        *ry = result.y;
+    if (rz)
+        *rz = result.z;
+}
+
+static void RuntimeGlm_Vec3Sub(float ax, float ay, float az,
+                               float bx, float by, float bz,
+                               float* rx, float* ry, float* rz)
+{
+    const glm::vec3 result = glm::vec3(ax, ay, az) - glm::vec3(bx, by, bz);
+    if (rx)
+        *rx = result.x;
+    if (ry)
+        *ry = result.y;
+    if (rz)
+        *rz = result.z;
+}
+
+static void RuntimeGlm_Vec3Scale(float x, float y, float z, float scale,
+                                 float* rx, float* ry, float* rz)
+{
+    const glm::vec3 result = glm::vec3(x, y, z) * scale;
+    if (rx)
+        *rx = result.x;
+    if (ry)
+        *ry = result.y;
+    if (rz)
+        *rz = result.z;
+}
+
+static float RuntimeGlm_Vec3Length(float x, float y, float z)
+{
+    return glm::length(glm::vec3(x, y, z));
+}
+
+static float RuntimeGlm_Vec3Dot(float ax, float ay, float az,
+                                float bx, float by, float bz)
+{
+    return glm::dot(glm::vec3(ax, ay, az), glm::vec3(bx, by, bz));
+}
+
+static void RuntimeGlm_Vec3Cross(float ax, float ay, float az,
+                                 float bx, float by, float bz,
+                                 float* rx, float* ry, float* rz)
+{
+    const glm::vec3 result = glm::cross(glm::vec3(ax, ay, az), glm::vec3(bx, by, bz));
+    if (rx)
+        *rx = result.x;
+    if (ry)
+        *ry = result.y;
+    if (rz)
+        *rz = result.z;
+}
+
+static void RuntimeGlm_Vec3Normalize(float x, float y, float z, float* rx, float* ry, float* rz)
+{
+    const glm::vec3 input(x, y, z);
+    const float len = glm::length(input);
+    const glm::vec3 result = (len > 0.0f) ? (input / len) : glm::vec3(0.0f, 0.0f, 0.0f);
+    if (rx)
+        *rx = result.x;
+    if (ry)
+        *ry = result.y;
+    if (rz)
+        *rz = result.z;
+}
+
 static int EditorBridge_GetEntityCount()
 {
     if (!g_editorSceneContext)

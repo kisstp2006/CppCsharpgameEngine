@@ -29,6 +29,7 @@
 #include <vector>
 
 #include <entt/entt.hpp>
+#include <glm/glm.hpp>
 #include <imgui.h>
 #include <ImGuizmo.h>
 
@@ -581,6 +582,19 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.Sprite::SetTexturePath", (const void*)&RuntimeSprite_SetTexturePath);
     mono_add_internal_call("Engine.Sprite::GetSettings", (const void*)&RuntimeSprite_GetSettings);
     mono_add_internal_call("Engine.Sprite::SetSettings", (const void*)&RuntimeSprite_SetSettings);
+    mono_add_internal_call("Engine.Glm::Vec2AddInternal", (const void*)&RuntimeGlm_Vec2Add);
+    mono_add_internal_call("Engine.Glm::Vec2SubInternal", (const void*)&RuntimeGlm_Vec2Sub);
+    mono_add_internal_call("Engine.Glm::Vec2ScaleInternal", (const void*)&RuntimeGlm_Vec2Scale);
+    mono_add_internal_call("Engine.Glm::Vec2LengthInternal", (const void*)&RuntimeGlm_Vec2Length);
+    mono_add_internal_call("Engine.Glm::Vec2DotInternal", (const void*)&RuntimeGlm_Vec2Dot);
+    mono_add_internal_call("Engine.Glm::Vec2NormalizeInternal", (const void*)&RuntimeGlm_Vec2Normalize);
+    mono_add_internal_call("Engine.Glm::Vec3AddInternal", (const void*)&RuntimeGlm_Vec3Add);
+    mono_add_internal_call("Engine.Glm::Vec3SubInternal", (const void*)&RuntimeGlm_Vec3Sub);
+    mono_add_internal_call("Engine.Glm::Vec3ScaleInternal", (const void*)&RuntimeGlm_Vec3Scale);
+    mono_add_internal_call("Engine.Glm::Vec3LengthInternal", (const void*)&RuntimeGlm_Vec3Length);
+    mono_add_internal_call("Engine.Glm::Vec3DotInternal", (const void*)&RuntimeGlm_Vec3Dot);
+    mono_add_internal_call("Engine.Glm::Vec3CrossInternal", (const void*)&RuntimeGlm_Vec3Cross);
+    mono_add_internal_call("Engine.Glm::Vec3NormalizeInternal", (const void*)&RuntimeGlm_Vec3Normalize);
 
     if (m_impl->editorMode)
     {

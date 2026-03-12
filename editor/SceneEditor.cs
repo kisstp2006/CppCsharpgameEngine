@@ -1483,7 +1483,7 @@ namespace EngineEditor
 
                 ImGui.DrawRect(drawX, drawY, sw, sh, r, g, b, a, selected ? 2.0f : 1.0f);
 
-                if (selected && _gameViewFocusedByClick)
+                if (selected)
                 {
                     float gizmoX = x;
                     float gizmoY = y;
