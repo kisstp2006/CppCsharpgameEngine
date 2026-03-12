@@ -9,6 +9,22 @@ namespace EngineEditor
     internal static class InspectorInputs
     {
         private static readonly Dictionary<string, string> _colorHexInputState = new Dictionary<string, string>();
+        private static readonly uint[] _defaultColorSwatches = new uint[]
+        {
+            0xFFFFFFFF,
+            0x000000FF,
+            0xFF0000FF,
+            0x00FF00FF,
+            0x0000FFFF,
+            0xFFFF00FF,
+            0x00FFFFFF,
+            0xFF00FFFF,
+            0xFFA500FF,
+            0x800080FF,
+            0x808080FF,
+            0x8B4513FF,
+        };
+        private static readonly List<uint> _colorSwatches = new List<uint>(_defaultColorSwatches);
 
         public static bool String(string label, ref string value)
         {
@@ -293,6 +309,41 @@ namespace EngineEditor
                 changed = true;
             }
 
+            ImGui.Separator();
+            ImGui.Text("Swatches");
+
+            if (ImGui.Button("Add Preset##" + popupId))
+            {
+                AddColorSwatch(PackColorRgba32(r, g, b, showAlpha ? a : 1.0f), showAlpha);
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Reset Presets##" + popupId))
+                ResetColorSwatches();
+
+            for (int i = 0; i < _colorSwatches.Count; ++i)
+            {
+                UnpackColorRgba32(_colorSwatches[i], out float swatchR, out float swatchG, out float swatchB, out float swatchA);
+                if (!showAlpha)
+                    swatchA = 1.0f;
+
+                if (ImGui.ColorButton("##" + popupId + "_swatch_" + i.ToString(CultureInfo.InvariantCulture),
+                                      swatchR,
+                                      swatchG,
+                                      swatchB,
+                                      swatchA))
+                {
+                    r = swatchR;
+                    g = swatchG;
+                    b = swatchB;
+                    a = showAlpha ? swatchA : 1.0f;
+                    changed = true;
+                }
+
+                if ((i + 1) % 8 != 0)
+                    ImGui.SameLine();
+            }
+
             string hexKey = popupId;
             if (!_colorHexInputState.TryGetValue(hexKey, out string hexInput))
                 hexInput = FormatHexColor(r, g, b, a, showAlpha);
@@ -333,6 +384,42 @@ namespace EngineEditor
         {
             float clamped = Clamp01(value);
             return (uint)Math.Round(clamped * 255.0f, MidpointRounding.AwayFromZero);
+        }
+
+        private static uint PackColorRgba32(float r, float g, float b, float a)
+        {
+            return (UnitToByte(r) << 24) | (UnitToByte(g) << 16) | (UnitToByte(b) << 8) | UnitToByte(a);
+        }
+
+        private static void UnpackColorRgba32(uint packed,
+                                              out float r,
+                                              out float g,
+                                              out float b,
+                                              out float a)
+        {
+            r = ByteToUnit((packed >> 24) & 0xFFu);
+            g = ByteToUnit((packed >> 16) & 0xFFu);
+            b = ByteToUnit((packed >> 8) & 0xFFu);
+            a = ByteToUnit(packed & 0xFFu);
+        }
+
+        private static void AddColorSwatch(uint rgba, bool showAlpha)
+        {
+            if (!showAlpha)
+                rgba = (rgba & 0xFFFFFF00u) | 0xFFu;
+
+            _colorSwatches.RemoveAll(value => value == rgba);
+            _colorSwatches.Insert(0, rgba);
+
+            const int maxSwatches = 32;
+            if (_colorSwatches.Count > maxSwatches)
+                _colorSwatches.RemoveRange(maxSwatches, _colorSwatches.Count - maxSwatches);
+        }
+
+        private static void ResetColorSwatches()
+        {
+            _colorSwatches.Clear();
+            _colorSwatches.AddRange(_defaultColorSwatches);
         }
 
         private static float ByteToUnit(uint value)
