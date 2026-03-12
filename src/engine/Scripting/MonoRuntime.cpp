@@ -65,6 +65,7 @@ struct MonoRuntime::Impl
 
     struct ScriptInstance
     {
+        uint32_t gcHandle = 0;
         MonoObject* instance = nullptr;
         MonoMethod* onCreate = nullptr;
         MonoMethod* onUpdate = nullptr;
@@ -152,17 +153,23 @@ static MonoMethod* MonoRuntime_FindMethodInHierarchy(MonoClass* klass, const cha
 
 static void MonoRuntime_TeardownScriptInstance(std::uint32_t entityId, MonoRuntime::Impl::ScriptInstance& instance)
 {
-    if (!instance.created)
-        return;
-
-    if (instance.active)
+    if (instance.created)
     {
-        MonoRuntime_InvokeEntityLifecycle(instance.onDisable, instance.instance, entityId);
-        instance.active = false;
+        if (instance.active)
+        {
+            MonoRuntime_InvokeEntityLifecycle(instance.onDisable, instance.instance, entityId);
+            instance.active = false;
+        }
+
+        MonoRuntime_InvokeEntityLifecycle(instance.onDestroy, instance.instance, entityId);
+        instance.created = false;
     }
 
-    MonoRuntime_InvokeEntityLifecycle(instance.onDestroy, instance.instance, entityId);
-    instance.created = false;
+    if (instance.gcHandle != 0)
+    {
+        mono_gchandle_free(instance.gcHandle);
+        instance.gcHandle = 0;
+    }
 }
 
 static void MonoRuntime_StopActiveScriptInstances(MonoRuntime::Impl* impl, Scene* scene)
@@ -172,6 +179,14 @@ static void MonoRuntime_StopActiveScriptInstances(MonoRuntime::Impl* impl, Scene
 
     if (!scene)
     {
+        for (auto& pair : impl->entityScripts)
+        {
+            if (pair.second.gcHandle != 0)
+            {
+                mono_gchandle_free(pair.second.gcHandle);
+                pair.second.gcHandle = 0;
+            }
+        }
         impl->entityScripts.clear();
         return;
     }
@@ -179,9 +194,7 @@ static void MonoRuntime_StopActiveScriptInstances(MonoRuntime::Impl* impl, Scene
     auto& registry = scene->Registry();
     for (auto& [entityId, instance] : impl->entityScripts)
     {
-        const auto entity = static_cast<entt::entity>(entityId);
-        if (instance.created && registry.valid(entity))
-            MonoRuntime_TeardownScriptInstance(entityId, instance);
+        MonoRuntime_TeardownScriptInstance(entityId, instance);
     }
 
     impl->entityScripts.clear();
@@ -980,6 +993,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
             }
 
             mono_runtime_object_init(instance.instance);
+            instance.gcHandle = mono_gchandle_new(instance.instance, true);
             instance.onCreate = MonoRuntime_FindMethodInHierarchy(klass, "OnCreate", 1);
             instance.onUpdate = MonoRuntime_FindMethodInHierarchy(klass, "OnUpdate", 2);
             instance.onEnable = MonoRuntime_FindMethodInHierarchy(klass, "OnEnable", 1);

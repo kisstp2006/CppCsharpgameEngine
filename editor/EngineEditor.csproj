@@ -5,4 +5,7 @@
     <AssemblyName>EngineEditor</AssemblyName>
     <RootNamespace>EngineEditor</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\scripts\EngineManagedApi.csproj" />
+  </ItemGroup>
 </Project>

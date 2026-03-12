@@ -233,35 +233,10 @@ namespace EngineEditor
                 return result;
             }
 
-            bool hasOnCreateName = HasMethodNamed(scriptType, "OnCreate");
-            bool hasOnUpdateName = HasMethodNamed(scriptType, "OnUpdate");
-            bool hasOnDestroyName = HasMethodNamed(scriptType, "OnDestroy");
-
-            bool validOnCreate = HasMethodWithSignature(scriptType, "OnCreate", new Type[] { typeof(uint) });
-            bool validOnUpdate = HasMethodWithSignature(scriptType, "OnUpdate", new Type[] { typeof(uint), typeof(float) });
-            bool validOnDestroy = HasMethodWithSignature(scriptType, "OnDestroy", new Type[] { typeof(uint) });
-
-            if (hasOnCreateName && !validOnCreate)
+            Type monoBehaviourType = typeof(Engine.MonoBehaviour);
+            if (!monoBehaviourType.IsAssignableFrom(scriptType))
             {
-                result.Message = "OnCreate must be: public void OnCreate(uint entityId), or inherit MonoBehaviour and override Start().";
-                return result;
-            }
-
-            if (hasOnUpdateName && !validOnUpdate)
-            {
-                result.Message = "OnUpdate must be: public void OnUpdate(uint entityId, float deltaTime), or inherit MonoBehaviour and override Update().";
-                return result;
-            }
-
-            if (hasOnDestroyName && !validOnDestroy)
-            {
-                result.Message = "OnDestroy must be: public void OnDestroy(uint entityId), or inherit MonoBehaviour and override OnDestroy().";
-                return result;
-            }
-
-            if (!validOnCreate && !validOnUpdate && !validOnDestroy)
-            {
-                result.Message = "Script class must implement a valid lifecycle (OnCreate/OnUpdate/OnDestroy) or inherit MonoBehaviour and override Start/Update/OnDestroy.";
+                result.Message = "Script must inherit from Engine.MonoBehaviour.";
                 return result;
             }
 
@@ -896,7 +871,8 @@ namespace EngineEditor
                 if (scriptEntry != null && type == scriptEntry)
                     continue;
 
-                if (!HasAnyValidLifecycleMethod(type))
+                Type monoBehaviourType = typeof(Engine.MonoBehaviour);
+                if (!monoBehaviourType.IsAssignableFrom(type))
                     continue;
 
                 string fullName = type.FullName;
@@ -994,38 +970,6 @@ namespace EngineEditor
             {
                 return new Type[0];
             }
-        }
-
-        private static bool HasAnyValidLifecycleMethod(Type type)
-        {
-            return HasMethodWithSignature(type, "OnCreate", new Type[] { typeof(uint) }) ||
-                   HasMethodWithSignature(type, "OnUpdate", new Type[] { typeof(uint), typeof(float) }) ||
-                   HasMethodWithSignature(type, "OnDestroy", new Type[] { typeof(uint) });
-        }
-
-        private static bool HasMethodNamed(Type type, string methodName)
-        {
-            MethodInfo[] methods = type.GetMethods(BindingFlags.Instance | BindingFlags.Public);
-            for (int i = 0; i < methods.Length; ++i)
-            {
-                if (string.Equals(methods[i].Name, methodName, StringComparison.Ordinal))
-                    return true;
-            }
-
-            return false;
-        }
-
-        private static bool HasMethodWithSignature(Type type, string methodName, Type[] parameterTypes)
-        {
-            MethodInfo method = type.GetMethod(methodName,
-                                               BindingFlags.Instance | BindingFlags.Public,
-                                               null,
-                                               parameterTypes,
-                                               null);
-            if (method == null)
-                return false;
-
-            return method.ReturnType == typeof(void);
         }
     }
 }
