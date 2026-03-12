@@ -133,8 +133,8 @@ namespace EngineEditor
 
         public static void CreateEntityAndSelect()
         {
-            uint created = EditorBridge.CreateEntity();
-            if (EditorBridge.IsEntityValid(created))
+            uint created = EntityManager.CreateEntity();
+            if (EntityManager.IsEntityValid(created))
                 _selectedEntityId = (int)created;
         }
 
@@ -432,7 +432,7 @@ namespace EngineEditor
 
             _tickAccumulator = 0.0f;
 
-            int totalEntitiesLog = EditorBridge.GetEntityCount();
+            int totalEntitiesLog = EntityManager.GetEntityCount();
             int scriptedEntitiesLog = EditorBridge.GetScriptedEntityCount();
 
             Console.WriteLine("[Editor] Entities=" + totalEntitiesLog + ", Scripted=" + scriptedEntitiesLog);
@@ -555,17 +555,17 @@ namespace EngineEditor
 
                 if (ImGui.Button("Create Entity"))
                 {
-                    uint created = EditorBridge.CreateEntity();
+                    uint created = EntityManager.CreateEntity();
                     _selectedEntityId = (int)created;
                 }
 
                 ImGui.Separator();
 
-                int entityCount = EditorBridge.GetEntityCount();
+                int entityCount = EntityManager.GetEntityCount();
                 for (int i = 0; i < entityCount; ++i)
                 {
-                    uint entityId = EditorBridge.GetEntityIdAtIndex(i);
-                    string entityName = EditorBridge.GetEntityName(entityId);
+                    uint entityId = EntityManager.GetEntityIdAtIndex(i);
+                    string entityName = EntityManager.GetEntityName(entityId);
                     if (string.IsNullOrWhiteSpace(entityName))
                         entityName = "Entity " + entityId;
 
@@ -589,7 +589,7 @@ namespace EngineEditor
                 else
                 {
                     uint entityId = (uint)_selectedEntityId;
-                    bool valid = EditorBridge.IsEntityValid(entityId);
+                    bool valid = EntityManager.IsEntityValid(entityId);
                     if (!valid)
                     {
                         _selectedEntityId = -1;
@@ -609,7 +609,7 @@ namespace EngineEditor
                         for (int i = 0; i < _componentEntries.Count; ++i)
                         {
                             ComponentInspectorEntry entry = _componentEntries[i];
-                            if (!EditorBridge.HasComponent(entityId, entry.ComponentType))
+                            if (!EntityManager.HasComponent(entityId, entry.ComponentType))
                                 continue;
 
                             DrawComponentCard(entityId, entry);
@@ -627,17 +627,17 @@ namespace EngineEditor
 
             if (ImGui.Button("Delete Entity"))
             {
-                EditorBridge.DestroyEntity(entityId);
+                EntityManager.DestroyEntity(entityId);
                 _selectedEntityId = -1;
                 return false;
             }
 
-            string entityName = EditorBridge.GetEntityName(entityId);
+            string entityName = EntityManager.GetEntityName(entityId);
             if (string.IsNullOrWhiteSpace(entityName))
                 entityName = "Entity " + entityId;
 
             if (InspectorInputs.String("Name", ref entityName))
-                EditorBridge.SetEntityName(entityId, entityName);
+                EntityManager.SetEntityName(entityId, entityName);
 
             string tag = EditorBridge.GetEntityTag(entityId);
             if (string.IsNullOrWhiteSpace(tag))
@@ -658,9 +658,9 @@ namespace EngineEditor
             if (InspectorInputs.Bool("Static", ref isStatic))
                 EditorBridge.SetEntityStatic(entityId, isStatic);
 
-            bool active = EditorBridge.GetEntityActive(entityId);
+            bool active = EntityManager.GetEntityActive(entityId);
             if (InspectorInputs.Bool("Active", ref active))
-                EditorBridge.SetEntityActive(entityId, active);
+                EntityManager.SetEntityActive(entityId, active);
 
             return true;
         }
@@ -688,7 +688,7 @@ namespace EngineEditor
                 ImGui.SameLine();
                 if (ImGui.Button("Remove##" + foldoutKey))
                 {
-                    EditorBridge.RemoveComponent(entityId, entry.ComponentType);
+                    EntityManager.RemoveComponent(entityId, entry.ComponentType);
                     _componentFoldoutStates.Remove(foldoutKey);
                     return;
                 }
@@ -709,11 +709,11 @@ namespace EngineEditor
                     tags.Add(tag);
             }
 
-            int entityCount = EditorBridge.GetEntityCount();
+            int entityCount = EntityManager.GetEntityCount();
             for (int i = 0; i < entityCount; ++i)
             {
-                uint entityId = EditorBridge.GetEntityIdAtIndex(i);
-                if (entityId == 0 || !EditorBridge.IsEntityValid(entityId))
+                uint entityId = EntityManager.GetEntityIdAtIndex(i);
+                if (entityId == 0 || !EntityManager.IsEntityValid(entityId))
                     continue;
 
                 string tag = EditorBridge.GetEntityTag(entityId);
@@ -786,7 +786,7 @@ namespace EngineEditor
             _editorCamera.MaxZoom = MaxZoom;
             _editorCamera.Reset();
             InitializeComponentRegistry();
-            if (_selectedEntityId >= 0 && !EditorBridge.IsEntityValid((uint)_selectedEntityId))
+            if (_selectedEntityId >= 0 && !EntityManager.IsEntityValid((uint)_selectedEntityId))
                 _selectedEntityId = -1;
         }
 
@@ -854,7 +854,7 @@ namespace EngineEditor
             for (int i = 0; i < _componentEntries.Count; ++i)
             {
                 ComponentInspectorEntry entry = _componentEntries[i];
-                if (EditorBridge.HasComponent(entityId, entry.ComponentType))
+                if (EntityManager.HasComponent(entityId, entry.ComponentType))
                     continue;
 
                 hasAnyAddable = true;
@@ -886,12 +886,12 @@ namespace EngineEditor
                     for (int i = 0; i < _componentEntries.Count; ++i)
                     {
                         ComponentInspectorEntry entry = _componentEntries[i];
-                        if (entry.Category != category || EditorBridge.HasComponent(entityId, entry.ComponentType))
+                        if (entry.Category != category || EntityManager.HasComponent(entityId, entry.ComponentType))
                             continue;
 
                         if (ImGui.Selectable("  + " + entry.Name + "##AddComponent" + entry.Name, false))
                         {
-                            EditorBridge.AddComponent(entityId, entry.ComponentType);
+                            EntityManager.AddComponent(entityId, entry.ComponentType);
                             ImGui.CloseCurrentPopup();
                             ImGui.EndPopup();
                             return;
@@ -916,7 +916,7 @@ namespace EngineEditor
             float y;
             float width;
             float height;
-            if (!EditorBridge.GetTransform(entityId, out x, out y, out width, out height))
+            if (!EntityManager.GetTransform(entityId, out x, out y, out width, out height))
                 return;
 
             bool changed = false;
@@ -924,7 +924,7 @@ namespace EngineEditor
             changed |= InspectorInputs.Vector2("Size", ref width, ref height, 1.0f);
 
             if (changed)
-                EditorBridge.SetTransform(entityId, x, y, width, height);
+                EntityManager.SetTransform(entityId, x, y, width, height);
         }
 
         private static void DrawSpriteInspector(uint entityId)
@@ -1083,14 +1083,14 @@ namespace EngineEditor
             float camX;
             float camY;
             float camZoom;
-            if (EditorBridge.GetCamera(entityId, out camX, out camY, out camZoom))
+                if (EntityManager.GetCamera(entityId, out camX, out camY, out camZoom))
             {
                 bool cameraChanged = false;
                 cameraChanged |= InspectorInputs.Vector2("Cam Position", ref camX, ref camY, 1.0f);
                 cameraChanged |= ImGui.InputFloat("Cam Zoom", ref camZoom, 0.1f);
 
                 if (cameraChanged)
-                    EditorBridge.SetCamera(entityId, camX, camY, Clamp(camZoom, MinZoom, MaxZoom));
+                    EntityManager.SetCamera(entityId, camX, camY, Clamp(camZoom, MinZoom, MaxZoom));
             }
 
         }
@@ -1238,7 +1238,7 @@ namespace EngineEditor
             rectX = transformX;
             rectY = transformY;
 
-            if (!EditorBridge.HasSprite(entityId))
+            if (!EntityManager.HasSprite(entityId))
                 return;
 
             bool centered;
@@ -1318,18 +1318,18 @@ namespace EngineEditor
                 int hitEntityId = -1;
                 float bestArea = float.MaxValue;
 
-                int entityCount = EditorBridge.GetEntityCount();
+                int entityCount = EntityManager.GetEntityCount();
                 for (int i = 0; i < entityCount; ++i)
                 {
-                    uint entityId = EditorBridge.GetEntityIdAtIndex(i);
-                    if (!EditorBridge.HasTransform(entityId))
+                    uint entityId = EntityManager.GetEntityIdAtIndex(i);
+                    if (!EntityManager.HasTransform(entityId))
                         continue;
 
                     float x;
                     float y;
                     float width;
                     float height;
-                    if (!EditorBridge.GetTransform(entityId, out x, out y, out width, out height))
+                    if (!EntityManager.GetTransform(entityId, out x, out y, out width, out height))
                         continue;
 
                     float rectX;
@@ -1357,7 +1357,7 @@ namespace EngineEditor
                     float ty;
                     float tw;
                     float th;
-                    if (EditorBridge.GetTransform(selectedEntity, out tx, out ty, out tw, out th))
+                    if (EntityManager.GetTransform(selectedEntity, out tx, out ty, out tw, out th))
                     {
                         _isDraggingEntity = true;
                         _dragEntityId = _selectedEntityId;
@@ -1372,17 +1372,17 @@ namespace EngineEditor
                 if (_dragEntityId >= 0)
                 {
                     uint dragEntity = (uint)_dragEntityId;
-                    if (EditorBridge.IsEntityValid(dragEntity) && EditorBridge.HasTransform(dragEntity))
+                    if (EntityManager.IsEntityValid(dragEntity) && EntityManager.HasTransform(dragEntity))
                     {
                         float x;
                         float y;
                         float width;
                         float height;
-                        if (EditorBridge.GetTransform(dragEntity, out x, out y, out width, out height))
+                        if (EntityManager.GetTransform(dragEntity, out x, out y, out width, out height))
                         {
                             float targetX = mouseWorldX - _dragOffsetWorldX;
                             float targetY = mouseWorldY - _dragOffsetWorldY;
-                            EditorBridge.SetTransform(dragEntity, targetX, targetY, width, height);
+                            EntityManager.SetTransform(dragEntity, targetX, targetY, width, height);
                         }
                     }
                 }
@@ -1447,18 +1447,18 @@ namespace EngineEditor
             ImGui.DrawLine(axisX, _gameViewPosY, axisX, _gameViewPosY + _gameViewHeight, 0.95f, 0.2f, 0.2f, 0.95f, 2.0f);
             ImGui.DrawLine(_gameViewPosX, axisYTop, _gameViewPosX + _gameViewWidth, axisYTop, 0.2f, 0.95f, 0.2f, 0.95f, 2.0f);
 
-            int entityCount = EditorBridge.GetEntityCount();
+            int entityCount = EntityManager.GetEntityCount();
             for (int i = 0; i < entityCount; ++i)
             {
-                uint entityId = EditorBridge.GetEntityIdAtIndex(i);
-                if (!EditorBridge.HasTransform(entityId))
+                uint entityId = EntityManager.GetEntityIdAtIndex(i);
+                if (!EntityManager.HasTransform(entityId))
                     continue;
 
                 float x;
                 float y;
                 float width;
                 float height;
-                if (!EditorBridge.GetTransform(entityId, out x, out y, out width, out height))
+                if (!EntityManager.GetTransform(entityId, out x, out y, out width, out height))
                     continue;
 
                 float rectX;
@@ -1506,7 +1506,7 @@ namespace EngineEditor
                             gizmoY = SnapValue(gizmoY, _gizmoSnapStep);
                         }
 
-                        EditorBridge.SetTransform(entityId, gizmoX, gizmoY, width, height);
+                        EntityManager.SetTransform(entityId, gizmoX, gizmoY, width, height);
                         x = gizmoX;
                         y = gizmoY;
                         sx = _editorCamera.WorldToScreenX(x, centerX);

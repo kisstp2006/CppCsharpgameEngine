@@ -142,6 +142,375 @@ static Scene* GetSceneContextForSpriteApi()
     return g_runtimeSceneForScriptApi;
 }
 
+static Scene* GetSceneContextForEntityApi()
+{
+    if (g_editorSceneContext)
+        return g_editorSceneContext;
+
+    return g_runtimeSceneForScriptApi;
+}
+
+static std::uint32_t EntityManager_CreateEntityInternal()
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return static_cast<std::uint32_t>(entt::null);
+
+    const auto entity = scene->CreateEntity();
+    return static_cast<std::uint32_t>(entt::to_integral(entity));
+}
+
+static void EntityManager_DestroyEntityInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    if (!scene->IsValid(entity))
+        return;
+
+    scene->DestroyEntity(entity);
+}
+
+static bool EntityManager_IsEntityValidInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    return scene->IsValid(scene->FromEntityId(entityId));
+}
+
+static int EntityManager_GetEntityCountInternal()
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    return scene ? static_cast<int>(scene->EntityCount()) : 0;
+}
+
+static std::uint32_t EntityManager_GetEntityIdAtIndexInternal(int index)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene || index < 0)
+        return static_cast<std::uint32_t>(entt::null);
+
+    auto& registry = scene->Registry();
+    auto entities = registry.view<entt::entity>();
+    int current = 0;
+    for (const auto entity : entities)
+    {
+        if (current == index)
+            return scene->ToEntityId(entity);
+        ++current;
+    }
+
+    return static_cast<std::uint32_t>(entt::null);
+}
+
+static MonoString* EntityManager_GetEntityNameInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return nullptr;
+
+    const auto entity = scene->FromEntityId(entityId);
+    if (!scene->IsValid(entity))
+        return nullptr;
+
+    const EntityMetadataComponent* metadata = scene->TryGetMetadata(entity);
+    if (!metadata)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, metadata->name.c_str()) : nullptr;
+}
+
+static void EntityManager_SetEntityNameInternal(std::uint32_t entityId, MonoString* value)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    if (!scene->IsValid(entity))
+        return;
+
+    EntityMetadataComponent* metadata = scene->TryGetMetadata(entity);
+    if (!metadata)
+        metadata = &scene->AddMetadata(entity);
+
+    std::string name = MonoStringToUtf8(value);
+    if (name.empty())
+        name = "Entity " + std::to_string(scene->ToEntityId(entity));
+
+    metadata->name = name;
+}
+
+static bool EntityManager_GetEntityActiveInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const EntityMetadataComponent* metadata = scene->TryGetMetadata(entity);
+    return metadata ? metadata->active : false;
+}
+
+static void EntityManager_SetEntityActiveInternal(std::uint32_t entityId, bool value)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    if (!scene->IsValid(entity))
+        return;
+
+    EntityMetadataComponent* metadata = scene->TryGetMetadata(entity);
+    if (!metadata)
+        metadata = &scene->AddMetadata(entity);
+
+    metadata->active = value;
+}
+
+static bool EntityManager_HasComponentInternal(std::uint32_t entityId, int componentType)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    if (!scene->IsValid(entity))
+        return false;
+
+    switch (static_cast<EditorComponentType>(componentType))
+    {
+    case EditorComponentType::Transform:
+        return scene->HasTransform(entity);
+    case EditorComponentType::Camera:
+        return scene->HasCamera(entity);
+    case EditorComponentType::Sprite:
+        return scene->HasSprite(entity);
+    case EditorComponentType::Script:
+        return scene->HasScript(entity);
+    default:
+        return false;
+    }
+}
+
+static void EntityManager_AddComponentInternal(std::uint32_t entityId, int componentType)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    if (!scene->IsValid(entity))
+        return;
+
+    switch (static_cast<EditorComponentType>(componentType))
+    {
+    case EditorComponentType::Transform:
+        if (scene->HasTransform(entity))
+            return;
+        {
+            auto& transform = scene->AddTransform(entity);
+            transform.x = 0.0f;
+            transform.y = 0.0f;
+            transform.width = 100.0f;
+            transform.height = 100.0f;
+        }
+        return;
+    case EditorComponentType::Camera:
+        if (scene->HasCamera(entity))
+            return;
+        {
+            auto& camera = scene->AddCamera(entity);
+            camera.x = 0.0f;
+            camera.y = 0.0f;
+            camera.zoom = 1.0f;
+        }
+        return;
+    case EditorComponentType::Sprite:
+        if (scene->HasSprite(entity))
+            return;
+        scene->AddSprite(entity);
+        return;
+    case EditorComponentType::Script:
+        if (scene->HasScript(entity))
+            return;
+        scene->AddScript(entity);
+        return;
+    default:
+        return;
+    }
+}
+
+static void EntityManager_RemoveComponentInternal(std::uint32_t entityId, int componentType)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    if (!scene->IsValid(entity))
+        return;
+
+    switch (static_cast<EditorComponentType>(componentType))
+    {
+    case EditorComponentType::Transform:
+        scene->RemoveTransform(entity);
+        return;
+    case EditorComponentType::Camera:
+        scene->RemoveCamera(entity);
+        return;
+    case EditorComponentType::Sprite:
+        scene->RemoveSprite(entity);
+        return;
+    case EditorComponentType::Script:
+        scene->RemoveScript(entity);
+        return;
+    default:
+        return;
+    }
+}
+
+static bool EntityManager_HasTransformInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    return scene->HasTransform(entity);
+}
+
+static void EntityManager_AddTransformInternal(std::uint32_t entityId)
+{
+    EntityManager_AddComponentInternal(entityId, static_cast<int>(EditorComponentType::Transform));
+}
+
+static bool EntityManager_GetTransformInternal(std::uint32_t entityId, float* x, float* y, float* width, float* height)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const TransformComponent* transform = scene->TryGetTransform(entity);
+    if (!transform)
+        return false;
+
+    if (x)
+        *x = transform->x;
+    if (y)
+        *y = transform->y;
+    if (width)
+        *width = transform->width;
+    if (height)
+        *height = transform->height;
+    return true;
+}
+
+static void EntityManager_SetTransformInternal(std::uint32_t entityId, float x, float y, float width, float height)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    TransformComponent* transform = scene->TryGetTransform(entity);
+    if (!transform)
+        return;
+
+    transform->x = x;
+    transform->y = y;
+    transform->width = width;
+    transform->height = height;
+}
+
+static bool EntityManager_HasCameraInternal(std::uint32_t entityId)
+{
+    return EntityManager_HasComponentInternal(entityId, static_cast<int>(EditorComponentType::Camera));
+}
+
+static void EntityManager_AddCameraInternal(std::uint32_t entityId)
+{
+    EntityManager_AddComponentInternal(entityId, static_cast<int>(EditorComponentType::Camera));
+}
+
+static bool EntityManager_GetCameraInternal(std::uint32_t entityId, float* x, float* y, float* zoom)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const CameraComponent* camera = scene->TryGetCamera(entity);
+    if (!camera)
+        return false;
+
+    if (x)
+        *x = camera->x;
+    if (y)
+        *y = camera->y;
+    if (zoom)
+        *zoom = camera->zoom;
+    return true;
+}
+
+static void EntityManager_SetCameraInternal(std::uint32_t entityId, float x, float y, float zoom)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    CameraComponent* camera = scene->TryGetCamera(entity);
+    if (!camera)
+        return;
+
+    camera->x = x;
+    camera->y = y;
+    camera->zoom = zoom;
+}
+
+static void EntityManager_RemoveCameraInternal(std::uint32_t entityId)
+{
+    EntityManager_RemoveComponentInternal(entityId, static_cast<int>(EditorComponentType::Camera));
+}
+
+static bool EntityManager_HasSpriteInternal(std::uint32_t entityId)
+{
+    return EntityManager_HasComponentInternal(entityId, static_cast<int>(EditorComponentType::Sprite));
+}
+
+static void EntityManager_AddSpriteInternal(std::uint32_t entityId)
+{
+    EntityManager_AddComponentInternal(entityId, static_cast<int>(EditorComponentType::Sprite));
+}
+
+static void EntityManager_RemoveSpriteInternal(std::uint32_t entityId)
+{
+    EntityManager_RemoveComponentInternal(entityId, static_cast<int>(EditorComponentType::Sprite));
+}
+
+static bool EntityManager_HasScriptInternal(std::uint32_t entityId)
+{
+    return EntityManager_HasComponentInternal(entityId, static_cast<int>(EditorComponentType::Script));
+}
+
+static void EntityManager_AddScriptInternal(std::uint32_t entityId)
+{
+    EntityManager_AddComponentInternal(entityId, static_cast<int>(EditorComponentType::Script));
+}
+
+static void EntityManager_RemoveScriptInternal(std::uint32_t entityId)
+{
+    EntityManager_RemoveComponentInternal(entityId, static_cast<int>(EditorComponentType::Script));
+}
+
 static bool RuntimeSprite_Has(std::uint32_t entityId)
 {
     Scene* scene = GetSceneContextForSpriteApi();
