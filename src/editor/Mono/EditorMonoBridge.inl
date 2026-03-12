@@ -1160,6 +1160,28 @@ static void EditorBridge_RequestScriptAssemblyReload()
     g_editorSceneIoStatus = "Script assembly reload requested.";
 }
 
+static void EditorBridge_SetScriptAutoReloadEnabled(bool enabled)
+{
+    if (!g_monoRuntimeImplForEditorBridge)
+    {
+        g_editorSceneIoStatus = "Set script auto-reload ignored: runtime context unavailable.";
+        return;
+    }
+
+    g_monoRuntimeImplForEditorBridge->autoScriptReloadEnabled = enabled;
+
+    if (!enabled)
+        g_monoRuntimeImplForEditorBridge->scriptReloadRequested = false;
+    else if (g_monoRuntimeImplForEditorBridge->scriptReloadDeferredUntilEdit
+             && (!g_monoRuntimeImplForEditorBridge->editorMode
+                 || g_monoRuntimeImplForEditorBridge->simulationState == MonoRuntime::SimulationState::Edit))
+        g_monoRuntimeImplForEditorBridge->scriptReloadRequested = true;
+
+    g_editorSceneIoStatus = enabled
+        ? "Enabled automatic script reload."
+        : "Disabled automatic script reload.";
+}
+
 static void EditorBridge_SetPreferredScriptAssemblyPath(MonoString* assemblyPath)
 {
     if (!g_monoRuntimeImplForEditorBridge)

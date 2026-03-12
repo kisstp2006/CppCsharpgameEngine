@@ -27,6 +27,8 @@ namespace EngineEditor
 
     internal static class ScriptComponentValidation
     {
+        private const string AutomationSettingsFileName = "script_automation.settings";
+
         private sealed class ScriptProjectInfo
         {
             public string ProjectRoot = string.Empty;
@@ -50,11 +52,54 @@ namespace EngineEditor
         private static bool _hasAttemptedBuild;
         private static bool _isBuildRunning;
         private static bool _hasCompileErrors;
+        private static bool _optionsRegistered;
+        private static bool _autoCompileEnabled = true;
+        private static bool _autoReloadEnabled = true;
         private static bool _immediateBuildRequested;
         private static bool _pendingRuntimeReloadRequest;
+        private static bool _pendingManualRuntimeReloadRequest;
         private static readonly List<string> _pendingCompileErrorConsoleLines = new List<string>();
+        private static string _automationSettingsPath = string.Empty;
         private static string _compileSummary = "Script compilation has not run yet.";
         private static string[] _compileErrorLines = new string[0];
+
+        public static void Initialize(string editorConfigDir)
+        {
+            string settingsPath = string.Empty;
+            if (!string.IsNullOrWhiteSpace(editorConfigDir))
+                settingsPath = Path.Combine(editorConfigDir, AutomationSettingsFileName);
+
+            lock (SyncRoot)
+            {
+                _automationSettingsPath = settingsPath;
+            }
+
+            LoadAutomationSettings();
+            ApplyAutoReloadSettingToRuntime();
+        }
+
+        public static void RegisterEditorOptions()
+        {
+            if (_optionsRegistered)
+                return;
+
+            _optionsRegistered = true;
+            EditorOptionsRegistry.Register("scripting.automation",
+                                           "Scripting",
+                                           "Automation",
+                                           DrawScriptAutomationOptions,
+                                           10);
+        }
+
+        public static void RequestImmediateRuntimeReload()
+        {
+            lock (SyncRoot)
+            {
+                _pendingManualRuntimeReloadRequest = true;
+            }
+
+            DispatchPendingRuntimeReloadRequest();
+        }
 
         public static void RequestImmediateBuildForActiveProject()
         {
@@ -79,6 +124,7 @@ namespace EngineEditor
                     _isBuildRunning = false;
                     _hasCompileErrors = false;
                     _pendingRuntimeReloadRequest = false;
+                    _pendingManualRuntimeReloadRequest = false;
                     _compileSummary = "Script compilation has not run yet.";
                     _compileErrorLines = new string[0];
                 }
@@ -149,6 +195,7 @@ namespace EngineEditor
                     _isBuildRunning = false;
                     _hasCompileErrors = false;
                     _pendingRuntimeReloadRequest = false;
+                    _pendingManualRuntimeReloadRequest = false;
                     _compileSummary = "Script compilation has not run yet.";
                     _compileErrorLines = new string[0];
                 }
@@ -174,6 +221,12 @@ namespace EngineEditor
                 bool needsBuild = !_hasAttemptedBuild || _lastSourceChangeUtc > _lastBuildStartUtc;
                 if (needsBuild)
                 {
+                    if (!_autoCompileEnabled)
+                    {
+                        statusMessage = "Play blocked: auto compile is disabled. Use Compile Now in Editor Options.";
+                        return false;
+                    }
+
                     shouldStartBuild = true;
                     _isBuildRunning = true;
                     _hasAttemptedBuild = true;
@@ -310,6 +363,7 @@ namespace EngineEditor
                     _isBuildRunning = false;
                     _hasCompileErrors = false;
                     _pendingRuntimeReloadRequest = false;
+                    _pendingManualRuntimeReloadRequest = false;
                     _compileSummary = "Script compilation has not run yet.";
                     _compileErrorLines = new string[0];
                 }
@@ -352,7 +406,7 @@ namespace EngineEditor
                         _compileErrorLines = new string[0];
                     }
 
-                    if (!shouldStartBuild)
+                    if (!shouldStartBuild && _autoCompileEnabled)
                     {
                         bool firstBuildNeeded = !_hasAttemptedBuild;
                         bool debounceElapsed = (nowUtc - _lastSourceChangeUtc).TotalSeconds >= buildDebounceSeconds;
@@ -438,7 +492,7 @@ namespace EngineEditor
                 _hasCompileErrors = hasErrors;
                 if (!hasErrors)
                 {
-                    _pendingRuntimeReloadRequest = true;
+                    _pendingRuntimeReloadRequest = _autoReloadEnabled;
                     _cachedScriptAssembly = null;
                     _cachedScriptAssemblyIdentity = string.Empty;
                     _cachedRegisteredScriptTypes = new string[0];
@@ -460,11 +514,22 @@ namespace EngineEditor
         private static void DispatchPendingRuntimeReloadRequest()
         {
             bool shouldRequest;
+            bool usedManualRequest;
+            bool usedAutoRequest;
             lock (SyncRoot)
             {
-                shouldRequest = _pendingRuntimeReloadRequest;
-                if (shouldRequest)
+                usedManualRequest = _pendingManualRuntimeReloadRequest;
+                usedAutoRequest = _pendingRuntimeReloadRequest && _autoReloadEnabled;
+                shouldRequest = usedManualRequest || usedAutoRequest;
+
+                if (_pendingRuntimeReloadRequest && !_autoReloadEnabled)
                     _pendingRuntimeReloadRequest = false;
+
+                if (shouldRequest)
+                {
+                    _pendingManualRuntimeReloadRequest = false;
+                    _pendingRuntimeReloadRequest = false;
+                }
             }
 
             if (!shouldRequest)
@@ -478,8 +543,156 @@ namespace EngineEditor
             {
                 lock (SyncRoot)
                 {
-                    _pendingRuntimeReloadRequest = true;
+                    if (usedManualRequest)
+                        _pendingManualRuntimeReloadRequest = true;
+                    if (usedAutoRequest)
+                        _pendingRuntimeReloadRequest = true;
                 }
+            }
+        }
+
+        private static void DrawScriptAutomationOptions()
+        {
+            bool autoCompile = _autoCompileEnabled;
+            if (ImGui.Checkbox("Auto compile scripts", ref autoCompile))
+            {
+                _autoCompileEnabled = autoCompile;
+                SaveAutomationSettings();
+            }
+
+            bool autoReload = _autoReloadEnabled;
+            if (ImGui.Checkbox("Auto reload runtime assembly", ref autoReload))
+            {
+                _autoReloadEnabled = autoReload;
+                SaveAutomationSettings();
+                ApplyAutoReloadSettingToRuntime();
+            }
+
+            ImGui.Text("When auto compile is off, Play is blocked until manual compile succeeds.");
+
+            if (ImGui.Button("Compile Now"))
+                RequestImmediateBuildForActiveProject();
+
+            ImGui.SameLine();
+            if (ImGui.Button("Reload Now"))
+                RequestImmediateRuntimeReload();
+        }
+
+        private static void LoadAutomationSettings()
+        {
+            string settingsPath;
+            lock (SyncRoot)
+            {
+                settingsPath = _automationSettingsPath;
+            }
+
+            if (string.IsNullOrWhiteSpace(settingsPath) || !File.Exists(settingsPath))
+                return;
+
+            bool autoCompile = true;
+            bool autoReload = true;
+
+            try
+            {
+                string[] lines = File.ReadAllLines(settingsPath);
+                for (int i = 0; i < lines.Length; ++i)
+                {
+                    string trimmed = (lines[i] ?? string.Empty).Trim();
+                    if (trimmed.Length == 0 || trimmed.StartsWith("#", StringComparison.Ordinal))
+                        continue;
+
+                    int separator = trimmed.IndexOf('=');
+                    if (separator <= 0 || separator >= trimmed.Length - 1)
+                        continue;
+
+                    string key = trimmed.Substring(0, separator).Trim();
+                    string value = trimmed.Substring(separator + 1).Trim();
+
+                    if (string.Equals(key, "autoCompile", StringComparison.OrdinalIgnoreCase))
+                        autoCompile = ParseBoolSetting(value, true);
+                    else if (string.Equals(key, "autoReload", StringComparison.OrdinalIgnoreCase))
+                        autoReload = ParseBoolSetting(value, true);
+                }
+            }
+            catch
+            {
+                return;
+            }
+
+            lock (SyncRoot)
+            {
+                _autoCompileEnabled = autoCompile;
+                _autoReloadEnabled = autoReload;
+            }
+        }
+
+        private static void SaveAutomationSettings()
+        {
+            string settingsPath;
+            bool autoCompile;
+            bool autoReload;
+
+            lock (SyncRoot)
+            {
+                settingsPath = _automationSettingsPath;
+                autoCompile = _autoCompileEnabled;
+                autoReload = _autoReloadEnabled;
+            }
+
+            if (string.IsNullOrWhiteSpace(settingsPath))
+                return;
+
+            try
+            {
+                string directory = Path.GetDirectoryName(settingsPath);
+                if (!string.IsNullOrEmpty(directory))
+                    Directory.CreateDirectory(directory);
+
+                File.WriteAllLines(settingsPath,
+                                   new[]
+                                   {
+                                       "autoCompile=" + (autoCompile ? "true" : "false"),
+                                       "autoReload=" + (autoReload ? "true" : "false"),
+                                   });
+            }
+            catch
+            {
+                // Keep the editor responsive if option persistence fails.
+            }
+        }
+
+        private static bool ParseBoolSetting(string value, bool fallback)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return fallback;
+
+            if (bool.TryParse(value, out bool parsedBool))
+                return parsedBool;
+
+            if (string.Equals(value, "1", StringComparison.Ordinal))
+                return true;
+
+            if (string.Equals(value, "0", StringComparison.Ordinal))
+                return false;
+
+            return fallback;
+        }
+
+        private static void ApplyAutoReloadSettingToRuntime()
+        {
+            bool autoReloadEnabled;
+            lock (SyncRoot)
+            {
+                autoReloadEnabled = _autoReloadEnabled;
+            }
+
+            try
+            {
+                EditorBridge.SetScriptAutoReloadEnabled(autoReloadEnabled);
+            }
+            catch
+            {
+                // Runtime bridge may be unavailable briefly during startup/reload.
             }
         }
 

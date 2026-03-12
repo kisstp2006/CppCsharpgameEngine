@@ -95,6 +95,9 @@ namespace Engine
         public static extern void SetPreferredScriptProjectPath(string projectPath);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetScriptAutoReloadEnabled(bool enabled);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern uint CreateAuxiliaryWindow(string title,
                                 int width,
                                 int height,

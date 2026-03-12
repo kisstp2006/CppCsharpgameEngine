@@ -90,7 +90,9 @@ struct MonoRuntime::Impl
     bool hasScriptAssemblyWriteTime = false;
     bool hasEditorAssemblyWriteTime = false;
     bool hasScriptAssemblyFileSize = false;
+    bool autoScriptReloadEnabled = true;
     bool scriptReloadRequested = false;
+    bool scriptReloadDeferredUntilEdit = false;
 
     float hotReloadPollAccumulator = 0.0f;
 #endif
@@ -225,6 +227,8 @@ static void MonoRuntime_InvalidateScriptRuntimeState(MonoRuntime::Impl* impl, Sc
     impl->scriptAssemblyFileSize = 0;
     impl->hasScriptAssemblyWriteTime = false;
     impl->hasScriptAssemblyFileSize = false;
+    impl->scriptReloadRequested = false;
+    impl->scriptReloadDeferredUntilEdit = false;
 }
 
 static void MonoRuntime_StartPlaySession(MonoRuntime::Impl* impl, Scene* scene)
@@ -397,10 +401,21 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
                                    impl->hasScriptAssemblyFileSize &&
                                    (scriptFileSize != impl->scriptAssemblyFileSize);
     const bool scriptNeedsLoad = !impl->scriptLoaded;
-    const bool scriptForceReload = forceReload || impl->scriptReloadRequested;
+    const bool scriptChangedOnDisk = scriptNeedsLoad || scriptPathChanged || scriptTimeChanged || scriptSizeChanged;
+    const bool scriptDeferredReload = impl->scriptReloadDeferredUntilEdit;
+    const bool scriptForceReload = forceReload || impl->scriptReloadRequested || scriptDeferredReload;
+    const bool autoReloadTriggered = impl->autoScriptReloadEnabled && scriptChangedOnDisk;
 
-    if (!(scriptNeedsLoad || scriptPathChanged || scriptTimeChanged || scriptSizeChanged || scriptForceReload))
+    if (!(autoReloadTriggered || scriptForceReload))
         return false;
+
+    const bool inPlayOrPause = impl->editorMode && impl->simulationState != MonoRuntime::SimulationState::Edit;
+    if (!forceReload && inPlayOrPause)
+    {
+        impl->scriptReloadDeferredUntilEdit = true;
+        impl->scriptReloadRequested = false;
+        return false;
+    }
 
     if (scriptForceReload)
     {
@@ -434,6 +449,7 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
     if (hasScriptFileSize)
         impl->scriptAssemblyFileSize = scriptFileSize;
     impl->scriptReloadRequested = false;
+    impl->scriptReloadDeferredUntilEdit = false;
 
     if (wasGameplaySessionActive)
     {
@@ -448,6 +464,8 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
 
     if (scriptNeedsLoad)
         std::cout << "[Mono] Script assembly became available: " << scriptPath << std::endl;
+    else if (scriptDeferredReload)
+        std::cout << "[Mono] Applied deferred script assembly reload: " << scriptPath << std::endl;
     else if (scriptForceReload)
         std::cout << "[Mono] Reloaded script assembly from explicit request: " << scriptPath << std::endl;
     else
@@ -548,6 +566,7 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::RequestScriptAssemblyReload", (const void*)&EditorBridge_RequestScriptAssemblyReload);
         mono_add_internal_call("Engine.EditorBridge::SetPreferredScriptAssemblyPath", (const void*)&EditorBridge_SetPreferredScriptAssemblyPath);
         mono_add_internal_call("Engine.EditorBridge::SetPreferredScriptProjectPath", (const void*)&EditorBridge_SetPreferredScriptProjectPath);
+        mono_add_internal_call("Engine.EditorBridge::SetScriptAutoReloadEnabled", (const void*)&EditorBridge_SetScriptAutoReloadEnabled);
         mono_add_internal_call("Engine.EditorBridge::CreateAuxiliaryWindow", (const void*)&EditorBridge_CreateAuxiliaryWindow);
         mono_add_internal_call("Engine.EditorBridge::DestroyAuxiliaryWindow", (const void*)&EditorBridge_DestroyAuxiliaryWindow);
         mono_add_internal_call("Engine.EditorBridge::DestroyAllAuxiliaryWindows", (const void*)&EditorBridge_DestroyAllAuxiliaryWindows);

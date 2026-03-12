@@ -27,12 +27,14 @@ namespace EngineEditor
 
             ProjectManager.Initialize(_editorConfigDir);
             ProjectOperations.Initialize(_editorConfigDir);
+            ScriptComponentValidation.Initialize(_editorConfigDir);
             ProjectOperations.OpenLastProjectSilently();
 
             AssetPanel.RegisterEditorOptions();
             AssetPanel.RegisterAssetContextMenu();
             SceneEditor.RegisterEditorOptions();
             SceneEditor.RegisterAssetContextMenu();
+            ScriptComponentValidation.RegisterEditorOptions();
             ScriptFieldInspector.RegisterEditorOptions();
             ScriptFieldInspector.RegisterAssetContextMenu();
 
