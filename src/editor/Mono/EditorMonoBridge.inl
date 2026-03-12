@@ -2,6 +2,7 @@
 static Scene* g_editorSceneContext = nullptr;
 static Renderer* g_editorRendererContext = nullptr;
 static Engine* g_editorEngineContext = nullptr;
+static Scene* g_runtimeSceneForScriptApi = nullptr;
 static bool g_editorTopBarStylePushed = false;
 static std::string g_editorSceneIoStatus = "Ready.";
 
@@ -131,6 +132,193 @@ static int EngineDebug_GetLogLevel(int index)
 static void EngineDebug_ClearLogs()
 {
     g_engineLogEntries.clear();
+}
+
+static Scene* GetSceneContextForSpriteApi()
+{
+    if (g_editorSceneContext)
+        return g_editorSceneContext;
+
+    return g_runtimeSceneForScriptApi;
+}
+
+static bool RuntimeSprite_Has(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForSpriteApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    return scene->HasSprite(entity);
+}
+
+static void RuntimeSprite_Add(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForSpriteApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    if (!scene->IsValid(entity) || scene->HasSprite(entity))
+        return;
+
+    scene->AddSprite(entity);
+}
+
+static void RuntimeSprite_Remove(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForSpriteApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    scene->RemoveSprite(entity);
+}
+
+static MonoString* RuntimeSprite_GetTexturePath(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForSpriteApi();
+    if (!scene)
+        return nullptr;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const SpriteComponent* sprite = scene->TryGetSprite(entity);
+    if (!sprite)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, sprite->textureAssetPath.c_str()) : nullptr;
+}
+
+static void RuntimeSprite_SetTexturePath(std::uint32_t entityId, MonoString* texturePath)
+{
+    Scene* scene = GetSceneContextForSpriteApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    SpriteComponent* sprite = scene->TryGetSprite(entity);
+    if (!sprite)
+        return;
+
+    sprite->textureAssetPath = MonoStringToUtf8(texturePath);
+    sprite->textureAssetHandle = 0;
+    sprite->texture = nullptr;
+}
+
+static bool RuntimeSprite_GetSettings(std::uint32_t entityId,
+                                      bool* centered,
+                                      float* offsetX,
+                                      float* offsetY,
+                                      bool* flipH,
+                                      bool* flipV,
+                                      std::uint32_t* hframes,
+                                      std::uint32_t* vframes,
+                                      std::uint32_t* frame,
+                                      bool* regionEnabled,
+                                      float* regionX,
+                                      float* regionY,
+                                      float* regionWidth,
+                                      float* regionHeight)
+{
+    Scene* scene = GetSceneContextForSpriteApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const SpriteComponent* sprite = scene->TryGetSprite(entity);
+    if (!sprite)
+        return false;
+
+    if (centered)
+        *centered = sprite->centered;
+    if (offsetX)
+        *offsetX = sprite->offsetX;
+    if (offsetY)
+        *offsetY = sprite->offsetY;
+    if (flipH)
+        *flipH = sprite->flipH;
+    if (flipV)
+        *flipV = sprite->flipV;
+    if (hframes)
+        *hframes = sprite->hframes;
+    if (vframes)
+        *vframes = sprite->vframes;
+    if (frame)
+        *frame = sprite->frame;
+    if (regionEnabled)
+        *regionEnabled = sprite->regionEnabled;
+    if (regionX)
+        *regionX = sprite->regionX;
+    if (regionY)
+        *regionY = sprite->regionY;
+    if (regionWidth)
+        *regionWidth = sprite->regionWidth;
+    if (regionHeight)
+        *regionHeight = sprite->regionHeight;
+
+    return true;
+}
+
+static void RuntimeSprite_SetSettings(std::uint32_t entityId,
+                                      bool centered,
+                                      float offsetX,
+                                      float offsetY,
+                                      bool flipH,
+                                      bool flipV,
+                                      std::uint32_t hframes,
+                                      std::uint32_t vframes,
+                                      std::uint32_t frame,
+                                      bool regionEnabled,
+                                      float regionX,
+                                      float regionY,
+                                      float regionWidth,
+                                      float regionHeight)
+{
+    Scene* scene = GetSceneContextForSpriteApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    SpriteComponent* sprite = scene->TryGetSprite(entity);
+    if (!sprite)
+        return;
+
+    if (hframes < 1)
+        hframes = 1;
+    if (vframes < 1)
+        vframes = 1;
+
+    std::uint64_t frameCount = static_cast<std::uint64_t>(hframes) * static_cast<std::uint64_t>(vframes);
+    if (frameCount == 0)
+    {
+        hframes = 1;
+        vframes = 1;
+        frame = 0;
+    }
+    else if (frame >= frameCount)
+    {
+        frame = static_cast<std::uint32_t>(frameCount - 1);
+    }
+
+    if (regionWidth < 0.0f)
+        regionWidth = 0.0f;
+    if (regionHeight < 0.0f)
+        regionHeight = 0.0f;
+
+    sprite->centered = centered;
+    sprite->offsetX = offsetX;
+    sprite->offsetY = offsetY;
+    sprite->flipH = flipH;
+    sprite->flipV = flipV;
+    sprite->hframes = hframes;
+    sprite->vframes = vframes;
+    sprite->frame = frame;
+    sprite->regionEnabled = regionEnabled;
+    sprite->regionX = regionX;
+    sprite->regionY = regionY;
+    sprite->regionWidth = regionWidth;
+    sprite->regionHeight = regionHeight;
 }
 
 static int EditorBridge_GetEntityCount()
@@ -478,6 +666,41 @@ static void EditorBridge_RequestScriptAssemblyReload()
 
     g_monoRuntimeImplForEditorBridge->scriptReloadRequested = true;
     g_editorSceneIoStatus = "Script assembly reload requested.";
+}
+
+static void EditorBridge_SetPreferredScriptAssemblyPath(MonoString* assemblyPath)
+{
+    if (!g_monoRuntimeImplForEditorBridge)
+    {
+        g_editorSceneIoStatus = "Set script assembly path ignored: runtime context unavailable.";
+        return;
+    }
+
+    std::string path = TrimWhitespace(MonoStringToUtf8(assemblyPath));
+    if (path.empty())
+        g_monoRuntimeImplForEditorBridge->preferredScriptAssemblyPath.clear();
+    else
+        g_monoRuntimeImplForEditorBridge->preferredScriptAssemblyPath = std::filesystem::path(path).lexically_normal();
+
+    g_monoRuntimeImplForEditorBridge->scriptReloadRequested = true;
+    g_editorSceneIoStatus = "Updated preferred script assembly path.";
+}
+
+static void EditorBridge_SetPreferredScriptProjectPath(MonoString* projectPath)
+{
+    if (!g_monoRuntimeImplForEditorBridge)
+    {
+        g_editorSceneIoStatus = "Set script project path ignored: runtime context unavailable.";
+        return;
+    }
+
+    std::string path = TrimWhitespace(MonoStringToUtf8(projectPath));
+    if (path.empty())
+        g_monoRuntimeImplForEditorBridge->preferredScriptProjectPath.clear();
+    else
+        g_monoRuntimeImplForEditorBridge->preferredScriptProjectPath = std::filesystem::path(path).lexically_normal();
+
+    g_editorSceneIoStatus = "Updated preferred script project path.";
 }
 
 static std::uint32_t EditorBridge_CreateAuxiliaryWindow(MonoString* title,

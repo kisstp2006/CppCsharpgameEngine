@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 
+using Engine;
+
 namespace EngineEditor
 {
     internal static class ProjectOperations
@@ -63,6 +65,7 @@ namespace EngineEditor
                 _statusMessage = "Opened project: " + Path.GetFileName(normalizedProjectPath);
                 SaveLastProjectPath(normalizedProjectPath);
                 AddRecentProjectPath(normalizedProjectPath);
+                SyncRuntimeScriptPaths(normalizedProjectPath);
                 ScriptComponentValidation.RequestImmediateBuildForActiveProject();
             }
             catch (Exception ex)
@@ -358,6 +361,166 @@ namespace EngineEditor
             {
                 _statusMessage = "Warning: could not save last project path: " + ex.Message;
             }
+        }
+
+        private static void SyncRuntimeScriptPaths(string projectRoot)
+        {
+            if (string.IsNullOrWhiteSpace(projectRoot) || !Directory.Exists(projectRoot))
+                return;
+
+            try
+            {
+                string scriptProjectPath = ResolveScriptProjectPath(projectRoot);
+                string scriptAssemblyPath = ResolveScriptAssemblyPath(projectRoot, scriptProjectPath);
+
+                EditorBridge.SetPreferredScriptProjectPath(scriptProjectPath ?? string.Empty);
+                EditorBridge.SetPreferredScriptAssemblyPath(scriptAssemblyPath ?? string.Empty);
+                EditorBridge.RequestScriptAssemblyReload();
+            }
+            catch
+            {
+                // Keep project open flow resilient even if runtime path sync fails.
+            }
+        }
+
+        private static string ResolveScriptProjectPath(string projectRoot)
+        {
+            string projectJsonPath = Path.Combine(projectRoot, "project.json");
+            string json = string.Empty;
+
+            if (File.Exists(projectJsonPath))
+            {
+                try
+                {
+                    json = File.ReadAllText(projectJsonPath);
+                }
+                catch
+                {
+                    json = string.Empty;
+                }
+            }
+
+            string scriptProjectRelative = ExtractJsonString(json, "scriptProject");
+            if (!string.IsNullOrEmpty(scriptProjectRelative))
+            {
+                string candidate = Path.Combine(projectRoot, scriptProjectRelative);
+                if (File.Exists(candidate))
+                    return Path.GetFullPath(candidate);
+            }
+
+            string[] candidates = new string[0];
+            try
+            {
+                candidates = Directory.GetFiles(projectRoot, "*.csproj", SearchOption.TopDirectoryOnly);
+            }
+            catch
+            {
+                candidates = new string[0];
+            }
+
+            if (candidates.Length > 0)
+                return Path.GetFullPath(candidates[0]);
+
+            return string.Empty;
+        }
+
+        private static string ResolveScriptAssemblyPath(string projectRoot, string scriptProjectPath)
+        {
+            string projectJsonPath = Path.Combine(projectRoot, "project.json");
+            string json = string.Empty;
+
+            if (File.Exists(projectJsonPath))
+            {
+                try
+                {
+                    json = File.ReadAllText(projectJsonPath);
+                }
+                catch
+                {
+                    json = string.Empty;
+                }
+            }
+
+            string assemblyRelative = ExtractJsonString(json, "assemblyPath");
+            if (!string.IsNullOrEmpty(assemblyRelative))
+            {
+                string candidate = Path.Combine(projectRoot, assemblyRelative);
+                return Path.GetFullPath(candidate);
+            }
+
+            string targetFramework = ExtractJsonString(json, "targetFramework");
+            if (string.IsNullOrWhiteSpace(targetFramework))
+                targetFramework = "net472";
+
+            string projectName = string.Empty;
+            if (!string.IsNullOrWhiteSpace(scriptProjectPath))
+                projectName = Path.GetFileNameWithoutExtension(scriptProjectPath);
+
+            if (string.IsNullOrWhiteSpace(projectName))
+                projectName = Path.GetFileName(projectRoot);
+
+            string fallback = Path.Combine(projectRoot, "bin", "Debug", targetFramework, projectName + ".dll");
+            return Path.GetFullPath(fallback);
+        }
+
+        private static string ExtractJsonString(string json, string key)
+        {
+            if (string.IsNullOrEmpty(json) || string.IsNullOrEmpty(key))
+                return string.Empty;
+
+            string needle = "\"" + key + "\"";
+            int keyPos = json.IndexOf(needle, StringComparison.Ordinal);
+            if (keyPos < 0)
+                return string.Empty;
+
+            int colonPos = json.IndexOf(':', keyPos + needle.Length);
+            if (colonPos < 0)
+                return string.Empty;
+
+            int firstQuotePos = json.IndexOf('"', colonPos + 1);
+            if (firstQuotePos < 0)
+                return string.Empty;
+
+            var valueChars = new List<char>();
+            bool escaped = false;
+            for (int i = firstQuotePos + 1; i < json.Length; ++i)
+            {
+                char c = json[i];
+                if (escaped)
+                {
+                    switch (c)
+                    {
+                        case 'n':
+                            valueChars.Add('\n');
+                            break;
+                        case 'r':
+                            valueChars.Add('\r');
+                            break;
+                        case 't':
+                            valueChars.Add('\t');
+                            break;
+                        default:
+                            valueChars.Add(c);
+                            break;
+                    }
+
+                    escaped = false;
+                    continue;
+                }
+
+                if (c == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (c == '"')
+                    return new string(valueChars.ToArray());
+
+                valueChars.Add(c);
+            }
+
+            return string.Empty;
         }
 
         private static string NormalizeProjectPath(string projectPath)

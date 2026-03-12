@@ -12,5 +12,6 @@
     <Compile Include="DebugDraw.cs" />
     <Compile Include="ImGuizmo.cs" />
     <Compile Include="Input.cs" />
+    <Compile Include="Sprite.cs" />
   </ItemGroup>
 </Project>

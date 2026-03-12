@@ -104,6 +104,7 @@ struct MonoRuntime::Impl
 static MonoRuntime::Impl* g_monoRuntimeImplForEditorBridge = nullptr;
 static bool MonoRuntime_ShouldRunGameplay(const MonoRuntime::Impl* impl);
 static void MonoRuntime_StopActiveScriptInstances(MonoRuntime::Impl* impl, Scene* scene);
+static void MonoRuntime_InvalidateScriptRuntimeState(MonoRuntime::Impl* impl, Scene* scene);
 static void MonoRuntime_StartPlaySession(MonoRuntime::Impl* impl, Scene* scene);
 static void MonoRuntime_StopPlaySession(MonoRuntime::Impl* impl, Scene* scene);
 static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Scene* scene, bool forceReload);
@@ -167,6 +168,33 @@ static void MonoRuntime_StopActiveScriptInstances(MonoRuntime::Impl* impl, Scene
     }
 
     impl->entityScripts.clear();
+}
+
+static void MonoRuntime_InvalidateScriptRuntimeState(MonoRuntime::Impl* impl, Scene* scene)
+{
+    if (!impl)
+        return;
+
+    MonoRuntime_StopActiveScriptInstances(impl, scene);
+
+    if (impl->gameplaySessionActive && impl->scriptLoaded && impl->onShutdown)
+        mono_runtime_invoke(impl->onShutdown, nullptr, nullptr, nullptr);
+
+    impl->gameplaySessionActive = false;
+
+    impl->assembly = nullptr;
+    impl->image = nullptr;
+    impl->scriptClass = nullptr;
+    impl->onStart = nullptr;
+    impl->onUpdate = nullptr;
+    impl->onShutdown = nullptr;
+    impl->scriptLoaded = false;
+
+    impl->resolvedScriptAssemblyPath.clear();
+    impl->scriptAssemblyWriteTime = {};
+    impl->scriptAssemblyFileSize = 0;
+    impl->hasScriptAssemblyWriteTime = false;
+    impl->hasScriptAssemblyFileSize = false;
 }
 
 static void MonoRuntime_StartPlaySession(MonoRuntime::Impl* impl, Scene* scene)
@@ -344,6 +372,12 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
     if (!(scriptNeedsLoad || scriptPathChanged || scriptTimeChanged || scriptSizeChanged || scriptForceReload))
         return false;
 
+    if (scriptForceReload)
+    {
+        MonoRuntime_InvalidateScriptRuntimeState(impl, scene);
+        std::cout << "[Mono] Cleared runtime script cache/state before forced reload." << std::endl;
+    }
+
     ScriptAssemblyBindings newScriptBindings;
     if (!TryLoadScriptAssemblyBindings(impl->domain, impl->shadowCopyDirectory, scriptPath, newScriptBindings))
         return false;
@@ -482,6 +516,8 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::StopPlayMode", (const void*)&EditorBridge_StopPlayMode);
         mono_add_internal_call("Engine.EditorBridge::SetSimulationPaused", (const void*)&EditorBridge_SetSimulationPaused);
         mono_add_internal_call("Engine.EditorBridge::RequestScriptAssemblyReload", (const void*)&EditorBridge_RequestScriptAssemblyReload);
+        mono_add_internal_call("Engine.EditorBridge::SetPreferredScriptAssemblyPath", (const void*)&EditorBridge_SetPreferredScriptAssemblyPath);
+        mono_add_internal_call("Engine.EditorBridge::SetPreferredScriptProjectPath", (const void*)&EditorBridge_SetPreferredScriptProjectPath);
         mono_add_internal_call("Engine.EditorBridge::CreateAuxiliaryWindow", (const void*)&EditorBridge_CreateAuxiliaryWindow);
         mono_add_internal_call("Engine.EditorBridge::DestroyAuxiliaryWindow", (const void*)&EditorBridge_DestroyAuxiliaryWindow);
         mono_add_internal_call("Engine.EditorBridge::DestroyAllAuxiliaryWindows", (const void*)&EditorBridge_DestroyAllAuxiliaryWindows);
@@ -538,6 +574,13 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.Debug::GetLogMessageInternal", (const void*)&EngineDebug_GetLogMessage);
     mono_add_internal_call("Engine.Debug::GetLogLevelInternal", (const void*)&EngineDebug_GetLogLevel);
     mono_add_internal_call("Engine.Debug::ClearLogsInternal", (const void*)&EngineDebug_ClearLogs);
+    mono_add_internal_call("Engine.Sprite::Has", (const void*)&RuntimeSprite_Has);
+    mono_add_internal_call("Engine.Sprite::Add", (const void*)&RuntimeSprite_Add);
+    mono_add_internal_call("Engine.Sprite::Remove", (const void*)&RuntimeSprite_Remove);
+    mono_add_internal_call("Engine.Sprite::GetTexturePath", (const void*)&RuntimeSprite_GetTexturePath);
+    mono_add_internal_call("Engine.Sprite::SetTexturePath", (const void*)&RuntimeSprite_SetTexturePath);
+    mono_add_internal_call("Engine.Sprite::GetSettings", (const void*)&RuntimeSprite_GetSettings);
+    mono_add_internal_call("Engine.Sprite::SetSettings", (const void*)&RuntimeSprite_SetSettings);
 
     if (m_impl->editorMode)
     {
@@ -717,7 +760,12 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
     (void)engineContext;
 #else
     if (!m_impl)
+    {
+        g_runtimeSceneForScriptApi = nullptr;
         return;
+    }
+
+    g_runtimeSceneForScriptApi = scene;
 
     m_impl->hotReloadPollAccumulator += deltaTime;
     if (m_impl->hotReloadPollAccumulator >= 0.5f)
@@ -807,6 +855,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
         g_editorSceneContext = nullptr;
         g_editorRendererContext = nullptr;
         g_editorEngineContext = nullptr;
+        g_runtimeSceneForScriptApi = nullptr;
         return;
     }
 
@@ -929,6 +978,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
     g_editorSceneContext = nullptr;
     g_editorRendererContext = nullptr;
     g_editorEngineContext = nullptr;
+    g_runtimeSceneForScriptApi = nullptr;
 #endif
 }
 

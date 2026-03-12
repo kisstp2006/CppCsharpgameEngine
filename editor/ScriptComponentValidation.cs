@@ -52,6 +52,7 @@ namespace EngineEditor
         private static bool _hasCompileErrors;
         private static bool _immediateBuildRequested;
         private static bool _pendingRuntimeReloadRequest;
+        private static readonly List<string> _pendingCompileErrorConsoleLines = new List<string>();
         private static string _compileSummary = "Script compilation has not run yet.";
         private static string[] _compileErrorLines = new string[0];
 
@@ -108,6 +109,7 @@ namespace EngineEditor
             ScriptProjectInfo projectInfo = ResolveScriptProjectInfo();
             UpdateCompilationState(projectInfo, nowUtc);
             DispatchPendingRuntimeReloadRequest();
+            DispatchPendingCompileErrorLogs();
 
             lock (SyncRoot)
             {
@@ -460,9 +462,23 @@ namespace EngineEditor
                 _isBuildRunning = false;
                 _hasCompileErrors = hasErrors;
                 if (!hasErrors)
+                {
                     _pendingRuntimeReloadRequest = true;
+                    _cachedScriptAssembly = null;
+                    _cachedScriptAssemblyIdentity = string.Empty;
+                    _cachedRegisteredScriptTypes = new string[0];
+                    _scriptTypeCacheTimestampUtc = DateTime.MinValue;
+                }
                 _compileSummary = summary;
                 _compileErrorLines = TrimErrorLines(errorLines, 6);
+
+                if (hasErrors)
+                {
+                    _pendingCompileErrorConsoleLines.Add("[ScriptCompile] " + summary);
+                    string[] linesToLog = TrimErrorLines(errorLines, 24);
+                    for (int i = 0; i < linesToLog.Length; ++i)
+                        _pendingCompileErrorConsoleLines.Add("[ScriptCompile] " + linesToLog[i]);
+                }
             }
         }
 
@@ -488,6 +504,40 @@ namespace EngineEditor
                 lock (SyncRoot)
                 {
                     _pendingRuntimeReloadRequest = true;
+                }
+            }
+        }
+
+        private static void DispatchPendingCompileErrorLogs()
+        {
+            string[] lines;
+            lock (SyncRoot)
+            {
+                if (_pendingCompileErrorConsoleLines.Count == 0)
+                    return;
+
+                lines = _pendingCompileErrorConsoleLines.ToArray();
+                _pendingCompileErrorConsoleLines.Clear();
+            }
+
+            for (int i = 0; i < lines.Length; ++i)
+            {
+                string line = lines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                    continue;
+
+                try
+                {
+                    Engine.Debug.LogError(line);
+                }
+                catch
+                {
+                    lock (SyncRoot)
+                    {
+                        _pendingCompileErrorConsoleLines.Add(line);
+                    }
+
+                    break;
                 }
             }
         }
