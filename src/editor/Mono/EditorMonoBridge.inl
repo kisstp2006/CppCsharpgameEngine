@@ -3446,6 +3446,18 @@ static void EditorImGui_Text(MonoString* text)
     ImGui::TextUnformatted(value.c_str());
 }
 
+static void EditorImGui_SetTooltip(MonoString* text)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    const std::string value = MonoStringToUtf8(text);
+    if (value.empty())
+        return;
+
+    ImGui::SetTooltip("%s", value.c_str());
+}
+
 static bool EditorImGui_Button(MonoString* label)
 {
     if (!ImGui::GetCurrentContext())

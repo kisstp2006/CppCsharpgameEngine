@@ -1194,10 +1194,13 @@ namespace EngineEditor
             cameraChanged |= InspectorInputs.Bool("Main Camera", ref primary);
 
             EditorUIHelpers.DrawSectionHeader("Transform");
-            ImGui.Text("Camera Position is controlled by the Transform component.");
             cameraChanged |= ImGui.InputFloat("Cam Zoom", ref camZoom, 0.1f);
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("Camera position comes from Transform. Zoom is used when Orthographic Size is 0.");
+
             cameraChanged |= ImGui.InputFloat("Orthographic Size", ref orthographicSize, 0.1f);
-            ImGui.Text("Orthographic Size > 0 overrides zoom (Unity-style). Set to 0 to use legacy zoom.");
+            if (ImGui.IsItemHovered())
+                ImGui.SetTooltip("If > 0, this overrides zoom (Unity-style). Set to 0 to use legacy zoom.");
 
             EditorUIHelpers.DrawSectionHeader("Render");
             cameraChanged |= InspectorInputs.Bool("Clear Color", ref clearColor);
@@ -1462,6 +1465,95 @@ namespace EngineEditor
             }
         }
 
+        private static void DrawCameraDebugBounds(float centerX, float centerY)
+        {
+            int entityCount = EntityManager.GetEntityCount();
+            for (int i = 0; i < entityCount; ++i)
+            {
+                uint entityId = EntityManager.GetEntityIdAtIndex(i);
+                if (!EntityManager.HasCamera(entityId))
+                    continue;
+
+                float camX;
+                float camY;
+                float camZoom;
+                bool enabled;
+                bool primary;
+                bool clearColor;
+                uint backgroundColor;
+                uint cullingMask;
+                float viewportX;
+                float viewportY;
+                float viewportWidth;
+                float viewportHeight;
+                float orthographicSize;
+                if (!EntityManager.GetCameraSettingsV2(entityId,
+                                                       out camX,
+                                                       out camY,
+                                                       out camZoom,
+                                                       out enabled,
+                                                       out primary,
+                                                       out clearColor,
+                                                       out backgroundColor,
+                                                       out cullingMask,
+                                                       out viewportX,
+                                                       out viewportY,
+                                                       out viewportWidth,
+                                                       out viewportHeight,
+                                                       out orthographicSize))
+                {
+                    continue;
+                }
+
+                float clampedViewportWidth = Clamp(viewportWidth, 0.01f, 1.0f);
+                float clampedViewportHeight = Clamp(viewportHeight, 0.01f, 1.0f);
+
+                float viewportPixelWidth = Math.Max(1.0f, _gameViewWidth * clampedViewportWidth);
+                float viewportPixelHeight = Math.Max(1.0f, _gameViewHeight * clampedViewportHeight);
+
+                float halfWorldWidth;
+                float halfWorldHeight;
+                if (orthographicSize > 0.0001f)
+                {
+                    halfWorldHeight = orthographicSize;
+                    float aspect = viewportPixelWidth / viewportPixelHeight;
+                    halfWorldWidth = halfWorldHeight * aspect;
+                }
+                else
+                {
+                    float effectiveZoom = Clamp(camZoom, 0.01f, 100.0f);
+                    halfWorldWidth = (viewportPixelWidth * 0.5f) / effectiveZoom;
+                    halfWorldHeight = (viewportPixelHeight * 0.5f) / effectiveZoom;
+                }
+
+                float worldX = camX - halfWorldWidth;
+                float worldY = camY - halfWorldHeight;
+                float worldWidth = halfWorldWidth * 2.0f;
+                float worldHeight = halfWorldHeight * 2.0f;
+
+                float sx = _editorCamera.WorldToScreenX(worldX, centerX);
+                float syBottom = _editorCamera.WorldToScreenY(worldY, centerY);
+                float sw = Math.Max(1.0f, worldWidth * _editorCamera.Zoom);
+                float sh = Math.Max(1.0f, worldHeight * _editorCamera.Zoom);
+
+                float drawX = _gameViewPosX + sx;
+                float drawY = _gameViewPosY + (_gameViewHeight - (syBottom + sh));
+
+                float r = primary ? 1.0f : 0.3f;
+                float g = primary ? 0.85f : 0.75f;
+                float b = primary ? 0.2f : 1.0f;
+                float a = enabled ? 0.95f : 0.45f;
+
+                ImGui.DrawRect(drawX, drawY, sw, sh, r, g, b, a, primary ? 2.0f : 1.5f);
+
+                float cx = _gameViewPosX + _editorCamera.WorldToScreenX(camX, centerX);
+                float cyBottom = _editorCamera.WorldToScreenY(camY, centerY);
+                float cy = _gameViewPosY + (_gameViewHeight - cyBottom);
+                ImGui.DrawLine(cx - 8.0f, cy, cx + 8.0f, cy, r, g, b, a, 1.0f);
+                ImGui.DrawLine(cx, cy - 8.0f, cx, cy + 8.0f, r, g, b, a, 1.0f);
+            }
+        }
+
         private static void HandleViewportSelectionAndDrag(bool hovered)
         {
             if (ImGuizmo.IsUsing())
@@ -1626,6 +1718,8 @@ namespace EngineEditor
             float axisYTop = _gameViewPosY + (_gameViewHeight - axisYBottom);
             ImGui.DrawLine(axisX, _gameViewPosY, axisX, _gameViewPosY + _gameViewHeight, 0.95f, 0.2f, 0.2f, 0.95f, 2.0f);
             ImGui.DrawLine(_gameViewPosX, axisYTop, _gameViewPosX + _gameViewWidth, axisYTop, 0.2f, 0.95f, 0.2f, 0.95f, 2.0f);
+
+            DrawCameraDebugBounds(centerX, centerY);
 
             int entityCount = EntityManager.GetEntityCount();
             for (int i = 0; i < entityCount; ++i)

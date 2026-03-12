@@ -26,6 +26,9 @@ namespace Engine
         public static extern void Text(string value);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetTooltip(string value);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool Button(string label);
 
         [MethodImpl(MethodImplOptions.InternalCall)]

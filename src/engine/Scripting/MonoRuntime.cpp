@@ -700,6 +700,7 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.ImGui::End", (const void*)&EditorImGui_End);
         mono_add_internal_call("Engine.ImGui::EndChild", (const void*)&EditorImGui_EndChild);
         mono_add_internal_call("Engine.ImGui::Text", (const void*)&EditorImGui_Text);
+        mono_add_internal_call("Engine.ImGui::SetTooltip", (const void*)&EditorImGui_SetTooltip);
         mono_add_internal_call("Engine.ImGui::Button", (const void*)&EditorImGui_Button);
         mono_add_internal_call("Engine.ImGui::OpenPopup", (const void*)&EditorImGui_OpenPopup);
         mono_add_internal_call("Engine.ImGui::BeginPopupModal", (const void*)&EditorImGui_BeginPopupModal);
