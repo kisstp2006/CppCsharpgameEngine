@@ -1446,6 +1446,13 @@ namespace EngineEditor
 
             ImGui.Text("Lifecycle: toggling Script Enabled invokes OnEnable/OnDisable when implemented.");
 
+            if (ImGui.Button("Refresh Script Fields"))
+            {
+                ScriptFieldInspector.InvalidateCache();
+                ScriptComponentValidation.RequestImmediateRuntimeReload();
+                ProjectOperations.SetStatusMessage("Requested script assembly reload and inspector field refresh.");
+            }
+
             if (currentTypeValidation.IsValid)
                 ScriptFieldInspector.DrawScriptFields(entityId, currentTypeValidation.NormalizedTypeName, validationSnapshot);
 

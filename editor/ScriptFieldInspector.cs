@@ -47,9 +47,17 @@ namespace EngineEditor
         private static readonly Dictionary<string, string> AssetPickerSearchText = new Dictionary<string, string>();
         private static readonly char[] AssetExtensionSeparators = { ',', ';', '|', ' ' };
         private const int AssetPickerMaxResults = 512;
+        private static string _lastScriptAssemblyIdentity = string.Empty;
         private static bool _optionsRegistered = false;
         private static bool _assetContextMenuRegistered = false;
         private static bool _hideTransformDuplicateFields = true;
+
+        public static void InvalidateCache()
+        {
+            FieldCache.Clear();
+            FieldErrors.Clear();
+            AssetPickerSearchText.Clear();
+        }
 
         public static void RegisterEditorOptions()
         {
@@ -90,10 +98,13 @@ namespace EngineEditor
 
         public static void DrawScriptFields(uint entityId, string scriptTypeName, ScriptValidationSnapshot validationSnapshot)
         {
-            if (validationSnapshot == null || validationSnapshot.ScriptAssembly == null)
+            Assembly scriptAssembly = validationSnapshot != null ? validationSnapshot.ScriptAssembly : null;
+            EnsureAssemblyCacheConsistency(scriptAssembly);
+
+            if (scriptAssembly == null)
                 return;
 
-            Type scriptType = ResolveScriptType(validationSnapshot.ScriptAssembly, scriptTypeName);
+            Type scriptType = ResolveScriptType(scriptAssembly, scriptTypeName);
             if (scriptType == null)
                 return;
 
@@ -597,7 +608,7 @@ namespace EngineEditor
 
         private static ScriptFieldDescriptor[] GetVisibleFields(Type scriptType)
         {
-            string cacheKey = scriptType.Assembly.FullName + "|" + scriptType.FullName;
+            string cacheKey = BuildTypeCacheKey(scriptType);
             if (FieldCache.TryGetValue(cacheKey, out ScriptFieldDescriptor[] cached))
                 return cached;
 
@@ -632,6 +643,58 @@ namespace EngineEditor
             ScriptFieldDescriptor[] result = visible.ToArray();
             FieldCache[cacheKey] = result;
             return result;
+        }
+
+        private static void EnsureAssemblyCacheConsistency(Assembly scriptAssembly)
+        {
+            string currentIdentity = BuildAssemblyIdentity(scriptAssembly);
+            if (string.Equals(_lastScriptAssemblyIdentity, currentIdentity, StringComparison.Ordinal))
+                return;
+
+            InvalidateCache();
+            _lastScriptAssemblyIdentity = currentIdentity;
+        }
+
+        private static string BuildTypeCacheKey(Type scriptType)
+        {
+            if (scriptType == null)
+                return string.Empty;
+
+            string typeName = scriptType.FullName ?? scriptType.Name ?? string.Empty;
+            string assemblyIdentity = BuildAssemblyIdentity(scriptType.Assembly);
+            return assemblyIdentity + "|" + typeName;
+        }
+
+        private static string BuildAssemblyIdentity(Assembly assembly)
+        {
+            if (assembly == null)
+                return string.Empty;
+
+            string fullName = assembly.FullName ?? string.Empty;
+            string location = string.Empty;
+            string moduleVersionId = string.Empty;
+
+            try
+            {
+                location = assembly.Location ?? string.Empty;
+            }
+            catch
+            {
+                location = string.Empty;
+            }
+
+            try
+            {
+                Module manifestModule = assembly.ManifestModule;
+                if (manifestModule != null)
+                    moduleVersionId = manifestModule.ModuleVersionId.ToString("D", CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                moduleVersionId = string.Empty;
+            }
+
+            return fullName + "|" + location + "|" + moduleVersionId;
         }
 
         private static bool HasVisibleAttribute(FieldInfo field)

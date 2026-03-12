@@ -41,18 +41,26 @@ static bool TryCreateAssemblyShadowCopy(const std::filesystem::path& sourcePath,
     const auto timestampMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()).count();
 
-    const std::string shadowName = sourcePath.stem().string() +
-                                   "_shadow_" +
-                                   std::to_string(timestampMs) +
-                                   "_" +
-                                   std::to_string(shadowCopyCounter) +
-                                   sourcePath.extension().string();
+    const std::string shadowSetName = sourcePath.stem().string() +
+                                      "_shadowset_" +
+                                      std::to_string(timestampMs) +
+                                      "_" +
+                                      std::to_string(shadowCopyCounter);
 
-    outShadowPath = shadowDirectory / shadowName;
+    const std::filesystem::path shadowSetDirectory = shadowDirectory / shadowSetName;
+    outShadowPath = shadowSetDirectory / sourcePath.filename();
 
     constexpr int maxAttempts = 30;
     for (int attempt = 0; attempt < maxAttempts; ++attempt)
     {
+        error.clear();
+        std::filesystem::create_directories(shadowSetDirectory, error);
+        if (error)
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(75));
+            continue;
+        }
+
         error.clear();
         std::filesystem::copy_file(sourcePath, outShadowPath, std::filesystem::copy_options::overwrite_existing, error);
         if (!error)
@@ -80,7 +88,7 @@ static bool TryCreateAssemblyShadowCopy(const std::filesystem::path& sourcePath,
                 if (extension != ".dll")
                     continue;
 
-                const std::filesystem::path targetPath = shadowDirectory / dependencyPath.filename();
+                const std::filesystem::path targetPath = shadowSetDirectory / dependencyPath.filename();
                 std::error_code copyDependencyError;
                 std::filesystem::copy_file(dependencyPath, targetPath, std::filesystem::copy_options::overwrite_existing, copyDependencyError);
                 if (copyDependencyError)
