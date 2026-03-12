@@ -79,28 +79,44 @@ static void AppendEngineLogEntry(EngineLogLevel level, const std::string& line)
         g_engineLogEntries.erase(g_engineLogEntries.begin());
 }
 
-static void EngineDebug_LogInternal(const char* level, EngineLogLevel logLevel, MonoString* message, std::ostream& stream)
+static void EngineDebug_LogInternal(const char* level, EngineLogLevel logLevel, MonoString* message)
 {
     const std::string utf8Message = MonoStringToUtf8(message);
     const std::string content = utf8Message.empty() ? "<null>" : utf8Message;
     const std::string line = BuildEngineLogPrefix(level) + content;
-    stream << line << std::endl;
+
+    switch (logLevel)
+    {
+    case EngineLogLevel::Log:
+        EngineLogger::Info("Engine.Debug", content);
+        break;
+    case EngineLogLevel::Warning:
+        EngineLogger::Warning("Engine.Debug", content);
+        break;
+    case EngineLogLevel::Error:
+        EngineLogger::Error("Engine.Debug", content);
+        break;
+    default:
+        EngineLogger::Info("Engine.Debug", content);
+        break;
+    }
+
     AppendEngineLogEntry(logLevel, line);
 }
 
 static void EngineDebug_Log(MonoString* message)
 {
-    EngineDebug_LogInternal("Log", EngineLogLevel::Log, message, std::cout);
+    EngineDebug_LogInternal("Log", EngineLogLevel::Log, message);
 }
 
 static void EngineDebug_LogWarning(MonoString* message)
 {
-    EngineDebug_LogInternal("Warning", EngineLogLevel::Warning, message, std::cout);
+    EngineDebug_LogInternal("Warning", EngineLogLevel::Warning, message);
 }
 
 static void EngineDebug_LogError(MonoString* message)
 {
-    EngineDebug_LogInternal("Error", EngineLogLevel::Error, message, std::cerr);
+    EngineDebug_LogInternal("Error", EngineLogLevel::Error, message);
 }
 
 static int EngineDebug_GetLogCount()
@@ -1475,6 +1491,18 @@ static void EditorBridge_RequestScriptAssemblyReload()
     g_editorSceneIoStatus = "Script assembly reload requested.";
 }
 
+static ProjectContext* EditorBridge_GetProjectContext()
+{
+    if (!g_editorEngineContext)
+        return nullptr;
+
+    ProjectContext* projectContext = g_editorEngineContext->GetProjectContext();
+    if (!projectContext || !projectContext->IsOpen())
+        return nullptr;
+
+    return projectContext;
+}
+
 static void EditorBridge_SetScriptAutoReloadEnabled(bool enabled)
 {
     if (!g_monoRuntimeImplForEditorBridge)
@@ -1495,6 +1523,52 @@ static void EditorBridge_SetScriptAutoReloadEnabled(bool enabled)
     g_editorSceneIoStatus = enabled
         ? "Enabled automatic script reload."
         : "Disabled automatic script reload.";
+}
+
+static MonoString* EditorBridge_GetProjectSetting(MonoString* key, MonoString* fallbackValue)
+{
+    const std::string settingKey = TrimWhitespace(MonoStringToUtf8(key));
+    std::string resolvedValue = MonoStringToUtf8(fallbackValue);
+
+    if (!settingKey.empty())
+    {
+        if (ProjectContext* projectContext = EditorBridge_GetProjectContext())
+        {
+            std::string storedValue;
+            if (projectContext->GetProjectSetting(settingKey, storedValue))
+                resolvedValue = storedValue;
+        }
+    }
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, resolvedValue.c_str()) : nullptr;
+}
+
+static bool EditorBridge_SetProjectSetting(MonoString* key, MonoString* value)
+{
+    ProjectContext* projectContext = EditorBridge_GetProjectContext();
+    if (!projectContext)
+    {
+        g_editorSceneIoStatus = "Set project setting failed: project context unavailable.";
+        return false;
+    }
+
+    const std::string settingKey = TrimWhitespace(MonoStringToUtf8(key));
+    if (settingKey.empty())
+    {
+        g_editorSceneIoStatus = "Set project setting failed: key is empty.";
+        return false;
+    }
+
+    const std::string settingValue = MonoStringToUtf8(value);
+    if (!projectContext->SetProjectSetting(settingKey, settingValue))
+    {
+        g_editorSceneIoStatus = "Set project setting failed: could not save project metadata.";
+        return false;
+    }
+
+    g_editorSceneIoStatus = "Updated project setting: " + settingKey + ".";
+    return true;
 }
 
 static void EditorBridge_SetPreferredScriptAssemblyPath(MonoString* assemblyPath)

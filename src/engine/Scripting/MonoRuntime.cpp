@@ -1,8 +1,10 @@
 #include "MonoRuntime.h"
 
 #include "engine/Engine.h"
+#include "engine/Assets/ProjectContext.h"
 #include "engine/ECS/Components.h"
 #include "engine/ECS/Scene.h"
+#include "engine/Core/Logger.h"
 #include "engine/Platform/ExplorerDialog.h"
 #include "engine/Platform/SDLInputState.h"
 #include "engine/Render/DebugDraw.h"
@@ -19,7 +21,6 @@
 #include <ctime>
 #include <fstream>
 #include <iomanip>
-#include <iostream>
 #include <limits>
 #include <map>
 #include <optional>
@@ -284,14 +285,14 @@ static std::filesystem::path FindScriptAssemblyPath(const std::filesystem::path&
         if (std::filesystem::exists(preferredPath))
         {
             if (verbose)
-                std::cout << "[Mono] Using project metadata script assembly: " << preferredPath << std::endl;
+                EngineLogger::Infof("Mono", "Using project metadata script assembly: ", preferredPath);
             return preferredPath;
         }
 
         if (verbose)
         {
-            std::cout << "[Mono] Preferred script assembly not found: " << preferredPath << std::endl;
-            std::cout << "[Mono] Falling back to legacy script assembly candidates..." << std::endl;
+            EngineLogger::Infof("Mono", "Preferred script assembly not found: ", preferredPath);
+            EngineLogger::Info("Mono", "Falling back to legacy script assembly candidates...");
         }
     }
 
@@ -309,13 +310,13 @@ static std::filesystem::path FindScriptAssemblyPath(const std::filesystem::path&
         if (std::filesystem::exists(candidate))
         {
             if (verbose)
-                std::cout << "[Mono] Using legacy fallback script assembly: " << candidate << std::endl;
+                EngineLogger::Infof("Mono", "Using legacy fallback script assembly: ", candidate);
             return candidate;
         }
     }
 
     if (verbose && !preferredPath.empty())
-        std::cout << "[Mono] Legacy fallback candidates also failed." << std::endl;
+        EngineLogger::Info("Mono", "Legacy fallback candidates also failed.");
 
     return {};
 }
@@ -343,21 +344,21 @@ static bool TryBuildDotnetProject(const std::filesystem::path& projectPath, cons
 {
     if (projectPath.empty() || !std::filesystem::exists(projectPath))
     {
-        std::cout << "[Mono] Skip build (project missing): " << projectLabel << std::endl;
+        EngineLogger::Infof("Mono", "Skip build (project missing): ", projectLabel);
         return false;
     }
 
     const std::string command = "dotnet build \"" + projectPath.string() + "\" -c Debug -nologo -t:Rebuild";
-    std::cout << "[Mono] Building " << projectLabel << ": " << projectPath << std::endl;
+    EngineLogger::Infof("Mono", "Building ", projectLabel, ": ", projectPath);
 
     const int exitCode = std::system(command.c_str());
     if (exitCode == 0)
     {
-        std::cout << "[Mono] Build succeeded for " << projectLabel << "." << std::endl;
+        EngineLogger::Infof("Mono", "Build succeeded for ", projectLabel, ".");
         return true;
     }
 
-    std::cerr << "[Mono] Build failed for " << projectLabel << " (exit code: " << exitCode << ")." << std::endl;
+    EngineLogger::Errorf("Mono", "Build failed for ", projectLabel, " (exit code: ", exitCode, ").");
     return false;
 }
 
@@ -365,17 +366,17 @@ static void ReportAssemblyAvailability(const std::filesystem::path& assemblyPath
 {
     if (assemblyPath.empty())
     {
-        std::cerr << "[Mono] " << assemblyLabel << " path could not be resolved." << std::endl;
+        EngineLogger::Errorf("Mono", assemblyLabel, " path could not be resolved.");
         return;
     }
 
     if (!std::filesystem::exists(assemblyPath))
     {
-        std::cerr << "[Mono] Missing " << assemblyLabel << ": " << assemblyPath << std::endl;
+        EngineLogger::Errorf("Mono", "Missing ", assemblyLabel, ": ", assemblyPath);
         return;
     }
 
-    std::cout << "[Mono] Verified " << assemblyLabel << ": " << assemblyPath << std::endl;
+    EngineLogger::Infof("Mono", "Verified ", assemblyLabel, ": ", assemblyPath);
 }
 
 #include "MonoRuntime/MonoRuntime.Assembly.inl"
@@ -424,7 +425,7 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
     if (scriptForceReload)
     {
         MonoRuntime_InvalidateScriptRuntimeState(impl, scene);
-        std::cout << "[Mono] Cleared runtime script cache/state before forced reload." << std::endl;
+        EngineLogger::Info("Mono", "Cleared runtime script cache/state before forced reload.");
     }
 
     ScriptAssemblyBindings newScriptBindings;
@@ -467,13 +468,13 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
     }
 
     if (scriptNeedsLoad)
-        std::cout << "[Mono] Script assembly became available: " << scriptPath << std::endl;
+        EngineLogger::Infof("Mono", "Script assembly became available: ", scriptPath);
     else if (scriptDeferredReload)
-        std::cout << "[Mono] Applied deferred script assembly reload: " << scriptPath << std::endl;
+        EngineLogger::Infof("Mono", "Applied deferred script assembly reload: ", scriptPath);
     else if (scriptForceReload)
-        std::cout << "[Mono] Reloaded script assembly from explicit request: " << scriptPath << std::endl;
+        EngineLogger::Infof("Mono", "Reloaded script assembly from explicit request: ", scriptPath);
     else
-        std::cout << "[Mono] Hot-reloaded script assembly: " << scriptPath << std::endl;
+        EngineLogger::Infof("Mono", "Hot-reloaded script assembly: ", scriptPath);
 
     return true;
 }
@@ -518,7 +519,7 @@ void MonoRuntime::SetPreferredScriptProjectPath(const std::string& projectPath)
 bool MonoRuntime::Initialize()
 {
 #if !ENGINE_MONO_RUNTIME_AVAILABLE
-    std::cout << "[Mono] Scripting disabled at compile time." << std::endl;
+    EngineLogger::Warning("Mono", "Scripting disabled at compile time.");
     return true;
 #else
     if (m_impl && m_impl->domain)
@@ -538,7 +539,7 @@ bool MonoRuntime::Initialize()
     m_impl->domain = mono_jit_init_version("CppCSharpGameEngine", "v4.0.30319");
     if (!m_impl->domain)
     {
-        std::cerr << "[Mono] Failed to initialize Mono JIT domain." << std::endl;
+        EngineLogger::Error("Mono", "Failed to initialize Mono JIT domain.");
         return false;
     }
 
@@ -571,6 +572,8 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::SetPreferredScriptAssemblyPath", (const void*)&EditorBridge_SetPreferredScriptAssemblyPath);
         mono_add_internal_call("Engine.EditorBridge::SetPreferredScriptProjectPath", (const void*)&EditorBridge_SetPreferredScriptProjectPath);
         mono_add_internal_call("Engine.EditorBridge::SetScriptAutoReloadEnabled", (const void*)&EditorBridge_SetScriptAutoReloadEnabled);
+        mono_add_internal_call("Engine.EditorBridge::GetProjectSetting", (const void*)&EditorBridge_GetProjectSetting);
+        mono_add_internal_call("Engine.EditorBridge::SetProjectSetting", (const void*)&EditorBridge_SetProjectSetting);
         mono_add_internal_call("Engine.EditorBridge::CreateAuxiliaryWindow", (const void*)&EditorBridge_CreateAuxiliaryWindow);
         mono_add_internal_call("Engine.EditorBridge::DestroyAuxiliaryWindow", (const void*)&EditorBridge_DestroyAuxiliaryWindow);
         mono_add_internal_call("Engine.EditorBridge::DestroyAllAuxiliaryWindows", (const void*)&EditorBridge_DestroyAllAuxiliaryWindows);
@@ -764,12 +767,12 @@ bool MonoRuntime::Initialize()
     if (!scriptProjectPath.empty())
     {
         if (!m_impl->preferredScriptProjectPath.empty())
-            std::cout << "[Mono] Script project build already handled by ProjectContext during project open." << std::endl;
+            EngineLogger::Info("Mono", "Script project build already handled by ProjectContext during project open.");
         else
             TryBuildDotnetProject(scriptProjectPath, "script project");
     }
     else
-        std::cout << "[Mono] Script project file not found; skipping script build step." << std::endl;
+        EngineLogger::Info("Mono", "Script project file not found; skipping script build step.");
 
     if (m_impl->editorMode)
     {
@@ -777,21 +780,21 @@ bool MonoRuntime::Initialize()
         if (!editorProjectPath.empty())
             TryBuildDotnetProject(editorProjectPath, "editor project");
         else
-            std::cout << "[Mono] Editor project file not found; skipping editor build step." << std::endl;
+            EngineLogger::Info("Mono", "Editor project file not found; skipping editor build step.");
     }
 
     const auto assemblyPath = FindScriptAssemblyPath(m_impl->preferredScriptAssemblyPath);
     ReportAssemblyAvailability(assemblyPath, "script assembly");
     if (assemblyPath.empty())
     {
-        std::cout << "[Mono] No script assembly found (metadata path + legacy candidates checked)." << std::endl;
+        EngineLogger::Warning("Mono", "No script assembly found (metadata path + legacy candidates checked).");
     }
     else
     {
         ScriptAssemblyBindings scriptBindings;
         if (!TryLoadScriptAssemblyBindings(m_impl->domain, m_impl->shadowCopyDirectory, assemblyPath, scriptBindings))
         {
-            std::cerr << "[Mono] Failed to load assembly: " << assemblyPath << std::endl;
+            EngineLogger::Errorf("Mono", "Failed to load assembly: ", assemblyPath);
         }
         else
         {
@@ -819,7 +822,7 @@ bool MonoRuntime::Initialize()
                 m_impl->gameplaySessionActive = false;
             }
 
-            std::cout << "[Mono] Loaded script assembly: " << assemblyPath << std::endl;
+            EngineLogger::Infof("Mono", "Loaded script assembly: ", assemblyPath);
         }
     }
 
@@ -829,14 +832,14 @@ bool MonoRuntime::Initialize()
         ReportAssemblyAvailability(editorPath, "editor assembly");
         if (editorPath.empty())
         {
-            std::cout << "[Mono] No editor assembly found (expected editor/bin/*/net472/EngineEditor.dll)." << std::endl;
+            EngineLogger::Info("Mono", "No editor assembly found (expected editor/bin/*/net472/EngineEditor.dll).");
             return true;
         }
 
         EditorAssemblyBindings editorBindings;
         if (!TryLoadEditorAssemblyBindings(m_impl->domain, m_impl->shadowCopyDirectory, editorPath, editorBindings))
         {
-            std::cerr << "[Mono] Failed to load editor assembly: " << editorPath << std::endl;
+            EngineLogger::Errorf("Mono", "Failed to load editor assembly: ", editorPath);
             return true;
         }
 
@@ -854,7 +857,7 @@ bool MonoRuntime::Initialize()
         if (m_impl->editorOnStart)
             mono_runtime_invoke(m_impl->editorOnStart, nullptr, nullptr, nullptr);
 
-        std::cout << "[Mono] Loaded editor assembly: " << editorPath << std::endl;
+        EngineLogger::Infof("Mono", "Loaded editor assembly: ", editorPath);
     }
     return true;
 #endif
@@ -923,9 +926,9 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
                             mono_runtime_invoke(m_impl->editorOnStart, nullptr, nullptr, nullptr);
 
                         if (editorNeedsLoad)
-                            std::cout << "[Mono] Editor assembly became available: " << editorPath << std::endl;
+                            EngineLogger::Infof("Mono", "Editor assembly became available: ", editorPath);
                         else
-                            std::cout << "[Mono] Hot-reloaded editor assembly: " << editorPath << std::endl;
+                            EngineLogger::Infof("Mono", "Hot-reloaded editor assembly: ", editorPath);
                     }
                 }
             }
@@ -1017,8 +1020,11 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
             MonoClass* klass = mono_class_from_name(m_impl->image, script.classNamespace.c_str(), script.className.c_str());
             if (!klass)
             {
-                std::cerr << "[Mono] Script class not found: "
-                          << script.classNamespace << "." << script.className << std::endl;
+                EngineLogger::Errorf("Mono",
+                                     "Script class not found: ",
+                                     script.classNamespace,
+                                     ".",
+                                     script.className);
                 m_impl->entityScripts.erase(instanceIt);
                 continue;
             }
@@ -1026,8 +1032,11 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
             MonoClass* monoBehaviourBaseClass = MonoRuntime_FindMonoBehaviourBaseClass(klass);
             if (!monoBehaviourBaseClass)
             {
-                std::cerr << "[Mono] Script class does not inherit Engine.MonoBehaviour (legacy OnCreate/OnUpdate scripts are unsupported): "
-                          << script.classNamespace << "." << script.className << std::endl;
+                EngineLogger::Errorf("Mono",
+                                     "Script class does not inherit Engine.MonoBehaviour (legacy OnCreate/OnUpdate scripts are unsupported): ",
+                                     script.classNamespace,
+                                     ".",
+                                     script.className);
                 m_impl->entityScripts.erase(instanceIt);
                 continue;
             }
@@ -1035,7 +1044,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
             instance.instance = mono_object_new(m_impl->domain, klass);
             if (!instance.instance)
             {
-                std::cerr << "[Mono] Failed to create script instance for entity." << std::endl;
+                EngineLogger::Error("Mono", "Failed to create script instance for entity.");
                 m_impl->entityScripts.erase(insertedIt);
                 continue;
             }
@@ -1050,7 +1059,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
 
             if (!instance.onCreate || !instance.onUpdate)
             {
-                std::cerr << "[Mono] Engine.MonoBehaviour bridge methods are missing (OnCreate/OnUpdate). Check EngineManagedApi version." << std::endl;
+                EngineLogger::Error("Mono", "Engine.MonoBehaviour bridge methods are missing (OnCreate/OnUpdate). Check EngineManagedApi version.");
                 MonoRuntime_TeardownScriptInstance(entityId, instance);
                 m_impl->entityScripts.erase(instanceIt);
                 continue;

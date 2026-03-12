@@ -56,7 +56,7 @@ static bool TryLoadEditorAssemblyBindings(MonoDomain* domain,
     std::filesystem::path pathToLoad;
     if (!TryCreateAssemblyShadowCopy(sourcePath, shadowDirectory, pathToLoad))
     {
-        std::cerr << "[Mono] Hot-reload copy failed for editor assembly: " << sourcePath << std::endl;
+        EngineLogger::Errorf("Mono", "Hot-reload copy failed for editor assembly: ", sourcePath);
         return false;
     }
 
@@ -64,21 +64,21 @@ static bool TryLoadEditorAssemblyBindings(MonoDomain* domain,
     outBindings.assembly = mono_domain_assembly_open(domain, loadPathString.c_str());
     if (!outBindings.assembly)
     {
-        std::cerr << "[Mono] Failed to load editor assembly shadow copy: " << loadPathString << std::endl;
+        EngineLogger::Errorf("Mono", "Failed to load editor assembly shadow copy: ", loadPathString);
         return false;
     }
 
     outBindings.image = mono_assembly_get_image(outBindings.assembly);
     if (!outBindings.image)
     {
-        std::cerr << "[Mono] Editor assembly image is null: " << loadPathString << std::endl;
+        EngineLogger::Errorf("Mono", "Editor assembly image is null: ", loadPathString);
         return false;
     }
 
     outBindings.editorClass = mono_class_from_name(outBindings.image, "EngineEditor", "EditorHost");
     if (!outBindings.editorClass)
     {
-        std::cerr << "[Mono] Missing EngineEditor.EditorHost in: " << loadPathString << std::endl;
+        EngineLogger::Errorf("Mono", "Missing EngineEditor.EditorHost in: ", loadPathString);
         return false;
     }
 
@@ -88,7 +88,7 @@ static bool TryLoadEditorAssemblyBindings(MonoDomain* domain,
 
     if (!outBindings.onUpdate)
     {
-        std::cerr << "[Mono] OnEditorUpdate(float) missing in EngineEditor.EditorHost: " << loadPathString << std::endl;
+        EngineLogger::Errorf("Mono", "OnEditorUpdate(float) missing in EngineEditor.EditorHost: ", loadPathString);
         return false;
     }
 

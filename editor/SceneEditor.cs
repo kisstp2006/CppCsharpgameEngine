@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 
 using Engine;
@@ -38,6 +39,7 @@ namespace EngineEditor
         private static bool _assetContextMenuRegistered = false;
         private static bool _defaultGizmoSnapEnabled = false;
         private static float _defaultGizmoSnapStep = 32.0f;
+        private static string _loadedProjectSettingsPath = string.Empty;
         private static readonly string[] _defaultTags = new string[]
         {
             "Untagged",
@@ -51,6 +53,8 @@ namespace EngineEditor
 
         private const int SceneStorageJson = 0;
         private const int SceneStorageBinary = 1;
+        private const string ProjectSettingDefaultSnapEnabled = "editor.scene.defaultSnapEnabled";
+        private const string ProjectSettingDefaultSnapStep = "editor.scene.defaultSnapStep";
 
         private sealed class ComponentInspectorEntry
         {
@@ -66,6 +70,8 @@ namespace EngineEditor
 
         public static void ResetEditorState()
         {
+            EnsureProjectSettingsLoaded();
+
             _selectedEntityId = -1;
             _tickAccumulator = 0.0f;
             _worldInitialized = false;
@@ -90,6 +96,8 @@ namespace EngineEditor
 
         public static void RegisterEditorOptions()
         {
+            EnsureProjectSettingsLoaded();
+
             if (_optionsRegistered)
                 return;
 
@@ -115,15 +123,110 @@ namespace EngineEditor
 
         private static void DrawSceneEditorOptions()
         {
+            EnsureProjectSettingsLoaded();
+
             bool defaultSnapEnabled = _defaultGizmoSnapEnabled;
             if (ImGui.Checkbox("Default snap enabled", ref defaultSnapEnabled))
+            {
                 _defaultGizmoSnapEnabled = defaultSnapEnabled;
+                SaveProjectSettings();
+            }
 
             float defaultSnapStep = _defaultGizmoSnapStep;
             if (ImGui.InputFloat("Default snap step", ref defaultSnapStep, 1.0f))
+            {
                 _defaultGizmoSnapStep = Clamp(defaultSnapStep, 1.0f, 1024.0f);
+                SaveProjectSettings();
+            }
 
             ImGui.Text("These defaults are applied when the scene editor state resets.");
+        }
+
+        private static void EnsureProjectSettingsLoaded()
+        {
+            string activeProjectPath = NormalizeProjectPath(ProjectOperations.ActiveProjectPath);
+            if (string.Equals(_loadedProjectSettingsPath, activeProjectPath, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            _loadedProjectSettingsPath = activeProjectPath;
+
+            _defaultGizmoSnapEnabled = ReadProjectBoolSetting(ProjectSettingDefaultSnapEnabled, false);
+            _defaultGizmoSnapStep = ReadProjectFloatSetting(ProjectSettingDefaultSnapStep, 32.0f, 1.0f, 1024.0f);
+
+            _gizmoSnapEnabled = _defaultGizmoSnapEnabled;
+            _gizmoSnapStep = _defaultGizmoSnapStep;
+        }
+
+        private static void SaveProjectSettings()
+        {
+            try
+            {
+                EditorBridge.SetProjectSetting(ProjectSettingDefaultSnapEnabled,
+                                               _defaultGizmoSnapEnabled ? "true" : "false");
+                EditorBridge.SetProjectSetting(ProjectSettingDefaultSnapStep,
+                                               _defaultGizmoSnapStep.ToString("0.###", CultureInfo.InvariantCulture));
+            }
+            catch
+            {
+                // Keep editor option interactions responsive even if project persistence fails.
+            }
+        }
+
+        private static bool ReadProjectBoolSetting(string key, bool fallbackValue)
+        {
+            try
+            {
+                string rawValue = EditorBridge.GetProjectSetting(key, fallbackValue ? "true" : "false");
+                if (bool.TryParse(rawValue, out bool parsedBool))
+                    return parsedBool;
+
+                if (string.Equals(rawValue, "1", StringComparison.Ordinal))
+                    return true;
+
+                if (string.Equals(rawValue, "0", StringComparison.Ordinal))
+                    return false;
+            }
+            catch
+            {
+            }
+
+            return fallbackValue;
+        }
+
+        private static float ReadProjectFloatSetting(string key, float fallbackValue, float minValue, float maxValue)
+        {
+            try
+            {
+                string rawValue = EditorBridge.GetProjectSetting(key,
+                                                                 fallbackValue.ToString("0.###", CultureInfo.InvariantCulture));
+                if (float.TryParse(rawValue,
+                                   NumberStyles.Float,
+                                   CultureInfo.InvariantCulture,
+                                   out float parsedValue))
+                {
+                    return Clamp(parsedValue, minValue, maxValue);
+                }
+            }
+            catch
+            {
+            }
+
+            return Clamp(fallbackValue, minValue, maxValue);
+        }
+
+        private static string NormalizeProjectPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return string.Empty;
+
+            try
+            {
+                return Path.GetFullPath(path);
+            }
+            catch
+            {
+                return path.Trim();
+            }
         }
 
         public static void ResetSelection()
@@ -431,11 +534,6 @@ namespace EngineEditor
                 return;
 
             _tickAccumulator = 0.0f;
-
-            int totalEntitiesLog = EntityManager.GetEntityCount();
-            int scriptedEntitiesLog = EditorBridge.GetScriptedEntityCount();
-
-            Console.WriteLine("[Editor] Entities=" + totalEntitiesLog + ", Scripted=" + scriptedEntitiesLog);
         }
 
         public static void DrawWorldViewportPanel(float deltaTime)

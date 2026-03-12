@@ -98,6 +98,12 @@ namespace Engine
         public static extern void SetScriptAutoReloadEnabled(bool enabled);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern string GetProjectSetting(string key, string fallbackValue);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool SetProjectSetting(string key, string value);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern uint CreateAuxiliaryWindow(string title,
                                 int width,
                                 int height,

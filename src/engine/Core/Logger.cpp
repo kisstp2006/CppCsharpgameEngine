@@ -14,6 +14,16 @@ namespace
 std::mutex g_loggerMutex;
 EngineLogger::Sink g_sink;
 
+bool IsLevelEnabled(EngineLogger::Level level)
+{
+#if defined(ENGINE_VERBOSE_LOGS) && ENGINE_VERBOSE_LOGS
+    (void)level;
+    return true;
+#else
+    return level == EngineLogger::Level::Warning || level == EngineLogger::Level::Error;
+#endif
+}
+
 std::tm ToLocalTime(std::time_t timestamp)
 {
     std::tm localTime{};
@@ -66,6 +76,9 @@ void EngineLogger::ResetSink()
 
 void EngineLogger::Log(Level level, std::string_view category, std::string_view message)
 {
+    if (!IsLevelEnabled(level))
+        return;
+
     Sink sink;
     {
         std::scoped_lock lock(g_loggerMutex);

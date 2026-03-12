@@ -50,6 +50,8 @@ public:
 
     Scene* GetScene() { return m_scene.get(); }
     const Scene* GetScene() const { return m_scene.get(); }
+    ProjectContext* GetProjectContext() { return m_projectContext.get(); }
+    const ProjectContext* GetProjectContext() const { return m_projectContext.get(); }
 
     bool SaveScene(const std::filesystem::path& scenePath, SceneStorageFormat format);
     bool LoadScene(const std::filesystem::path& scenePath, SceneStorageFormat format);

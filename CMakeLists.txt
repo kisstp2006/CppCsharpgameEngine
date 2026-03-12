@@ -19,6 +19,8 @@ endif()
 
 # Allow vendoring dependencies inside thirdparty/
 option(USE_THIRDPARTY "Use vendored third-party dependencies in thirdparty/" ON)
+option(ENGINE_VERBOSE_LOGS "Enable verbose engine logs (Debug/Info)." OFF)
+option(ENGINE_RECURSIVE_LOGS "Legacy alias for ENGINE_VERBOSE_LOGS." OFF)
 
 find_package(OpenGL REQUIRED)
 
@@ -199,6 +201,10 @@ add_library(Engine STATIC
   src/engine/Render/Texture.cpp
   src/engine/Scripting/MonoRuntime.cpp
 )
+
+if(ENGINE_VERBOSE_LOGS OR ENGINE_RECURSIVE_LOGS)
+  target_compile_definitions(Engine PUBLIC ENGINE_VERBOSE_LOGS=1)
+endif()
 
 target_include_directories(Engine PUBLIC src)
 

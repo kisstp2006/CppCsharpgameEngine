@@ -27,7 +27,8 @@ namespace EngineEditor
 
     internal static class ScriptComponentValidation
     {
-        private const string AutomationSettingsFileName = "script_automation.settings";
+        private const string ProjectSettingAutoCompile = "editor.scripting.autoCompile";
+        private const string ProjectSettingAutoReload = "editor.scripting.autoReload";
 
         private sealed class ScriptProjectInfo
         {
@@ -59,22 +60,15 @@ namespace EngineEditor
         private static bool _pendingRuntimeReloadRequest;
         private static bool _pendingManualRuntimeReloadRequest;
         private static readonly List<string> _pendingCompileErrorConsoleLines = new List<string>();
-        private static string _automationSettingsPath = string.Empty;
+        private static string _loadedProjectSettingsPath = string.Empty;
         private static string _compileSummary = "Script compilation has not run yet.";
         private static string[] _compileErrorLines = new string[0];
 
         public static void Initialize(string editorConfigDir)
         {
-            string settingsPath = string.Empty;
-            if (!string.IsNullOrWhiteSpace(editorConfigDir))
-                settingsPath = Path.Combine(editorConfigDir, AutomationSettingsFileName);
+            _ = editorConfigDir;
 
-            lock (SyncRoot)
-            {
-                _automationSettingsPath = settingsPath;
-            }
-
-            LoadAutomationSettings();
+            EnsureProjectSettingsLoaded();
             ApplyAutoReloadSettingToRuntime();
         }
 
@@ -147,6 +141,8 @@ namespace EngineEditor
 
         public static ScriptValidationSnapshot GetSnapshot()
         {
+            EnsureProjectSettingsLoaded();
+
             DateTime nowUtc = DateTime.UtcNow;
 
             Assembly scriptAssembly = FindLoadedScriptAssembly();
@@ -172,6 +168,8 @@ namespace EngineEditor
 
         public static bool EnsureCompiledForPlay(out string statusMessage)
         {
+            EnsureProjectSettingsLoaded();
+
             statusMessage = string.Empty;
 
             ScriptProjectInfo projectInfo = ResolveScriptProjectInfo();
@@ -553,18 +551,20 @@ namespace EngineEditor
 
         private static void DrawScriptAutomationOptions()
         {
+            EnsureProjectSettingsLoaded();
+
             bool autoCompile = _autoCompileEnabled;
             if (ImGui.Checkbox("Auto compile scripts", ref autoCompile))
             {
                 _autoCompileEnabled = autoCompile;
-                SaveAutomationSettings();
+                SaveProjectSettings();
             }
 
             bool autoReload = _autoReloadEnabled;
             if (ImGui.Checkbox("Auto reload runtime assembly", ref autoReload))
             {
                 _autoReloadEnabled = autoReload;
-                SaveAutomationSettings();
+                SaveProjectSettings();
                 ApplyAutoReloadSettingToRuntime();
             }
 
@@ -578,86 +578,78 @@ namespace EngineEditor
                 RequestImmediateRuntimeReload();
         }
 
-        private static void LoadAutomationSettings()
+        private static void EnsureProjectSettingsLoaded()
         {
-            string settingsPath;
+            string activeProjectPath = NormalizeProjectPath(ProjectOperations.ActiveProjectPath);
+            string loadedProjectPath;
             lock (SyncRoot)
             {
-                settingsPath = _automationSettingsPath;
+                loadedProjectPath = _loadedProjectSettingsPath;
             }
 
-            if (string.IsNullOrWhiteSpace(settingsPath) || !File.Exists(settingsPath))
+            if (string.Equals(loadedProjectPath, activeProjectPath, StringComparison.OrdinalIgnoreCase))
                 return;
 
-            bool autoCompile = true;
-            bool autoReload = true;
-
-            try
-            {
-                string[] lines = File.ReadAllLines(settingsPath);
-                for (int i = 0; i < lines.Length; ++i)
-                {
-                    string trimmed = (lines[i] ?? string.Empty).Trim();
-                    if (trimmed.Length == 0 || trimmed.StartsWith("#", StringComparison.Ordinal))
-                        continue;
-
-                    int separator = trimmed.IndexOf('=');
-                    if (separator <= 0 || separator >= trimmed.Length - 1)
-                        continue;
-
-                    string key = trimmed.Substring(0, separator).Trim();
-                    string value = trimmed.Substring(separator + 1).Trim();
-
-                    if (string.Equals(key, "autoCompile", StringComparison.OrdinalIgnoreCase))
-                        autoCompile = ParseBoolSetting(value, true);
-                    else if (string.Equals(key, "autoReload", StringComparison.OrdinalIgnoreCase))
-                        autoReload = ParseBoolSetting(value, true);
-                }
-            }
-            catch
-            {
-                return;
-            }
+            bool autoCompile = ReadProjectBoolSetting(ProjectSettingAutoCompile, true);
+            bool autoReload = ReadProjectBoolSetting(ProjectSettingAutoReload, true);
 
             lock (SyncRoot)
             {
+                _loadedProjectSettingsPath = activeProjectPath;
                 _autoCompileEnabled = autoCompile;
                 _autoReloadEnabled = autoReload;
             }
+
+            ApplyAutoReloadSettingToRuntime();
         }
 
-        private static void SaveAutomationSettings()
+        private static void SaveProjectSettings()
         {
-            string settingsPath;
             bool autoCompile;
             bool autoReload;
 
             lock (SyncRoot)
             {
-                settingsPath = _automationSettingsPath;
                 autoCompile = _autoCompileEnabled;
                 autoReload = _autoReloadEnabled;
             }
 
-            if (string.IsNullOrWhiteSpace(settingsPath))
-                return;
-
             try
             {
-                string directory = Path.GetDirectoryName(settingsPath);
-                if (!string.IsNullOrEmpty(directory))
-                    Directory.CreateDirectory(directory);
-
-                File.WriteAllLines(settingsPath,
-                                   new[]
-                                   {
-                                       "autoCompile=" + (autoCompile ? "true" : "false"),
-                                       "autoReload=" + (autoReload ? "true" : "false"),
-                                   });
+                EditorBridge.SetProjectSetting(ProjectSettingAutoCompile, autoCompile ? "true" : "false");
+                EditorBridge.SetProjectSetting(ProjectSettingAutoReload, autoReload ? "true" : "false");
             }
             catch
             {
-                // Keep the editor responsive if option persistence fails.
+                // Keep option interactions responsive if project persistence fails.
+            }
+        }
+
+        private static bool ReadProjectBoolSetting(string key, bool fallback)
+        {
+            try
+            {
+                string rawValue = EditorBridge.GetProjectSetting(key, fallback ? "true" : "false");
+                return ParseBoolSetting(rawValue, fallback);
+            }
+            catch
+            {
+                return fallback;
+            }
+        }
+
+        private static string NormalizeProjectPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return string.Empty;
+
+            try
+            {
+                return Path.GetFullPath(path);
+            }
+            catch
+            {
+                return path.Trim();
             }
         }
 

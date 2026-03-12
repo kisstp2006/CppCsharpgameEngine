@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 
 class ProjectContext
 {
@@ -24,6 +25,7 @@ public:
         std::string assemblyPath;
         std::string engineApiProject;
         std::string targetFramework = "net472";
+        std::unordered_map<std::string, std::string> projectSettings;
     };
 
 public:
@@ -44,6 +46,10 @@ public:
     std::filesystem::path ScriptProjectPath() const;
     std::filesystem::path ScriptSolutionPath() const;
     std::filesystem::path ScriptAssemblyAbsolutePath() const;
+
+    bool GetProjectSetting(const std::string& key, std::string& outValue) const;
+    bool SetProjectSetting(const std::string& key, const std::string& value);
+    bool RemoveProjectSetting(const std::string& key);
 
 private:
     bool LoadProjectMetadata();

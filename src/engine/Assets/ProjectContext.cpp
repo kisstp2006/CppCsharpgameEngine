@@ -1,13 +1,17 @@
 #include "ProjectContext.h"
 
+#include "engine/Core/Logger.h"
+
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdio>
 #include <fstream>
-#include <iostream>
 #include <optional>
 #include <sstream>
 #include <vector>
+
+#include <rapidjson/document.h>
 
 namespace
 {
@@ -223,8 +227,9 @@ namespace
         std::ifstream input(scriptProjectPath);
         if (!input.is_open())
         {
-            std::cerr << "[ProjectContext] Failed to open script project for reference check: "
-                      << scriptProjectPath << std::endl;
+            EngineLogger::Errorf("ProjectContext",
+                                 "Failed to open script project for reference check: ",
+                                 scriptProjectPath);
             return false;
         }
 
@@ -286,8 +291,9 @@ namespace
         const std::size_t projectTagPos = content.rfind("</Project>");
         if (projectTagPos == std::string::npos)
         {
-            std::cerr << "[ProjectContext] Could not patch script project (missing </Project>): "
-                      << scriptProjectPath << std::endl;
+            EngineLogger::Errorf("ProjectContext",
+                                 "Could not patch script project (missing </Project>): ",
+                                 scriptProjectPath);
             return false;
         }
 
@@ -307,21 +313,24 @@ namespace
             std::ofstream output(scriptProjectPath, std::ios::trunc);
             if (!output.is_open())
             {
-                std::cerr << "[ProjectContext] Failed to write patched script project: "
-                          << scriptProjectPath << std::endl;
+                EngineLogger::Errorf("ProjectContext",
+                                     "Failed to write patched script project: ",
+                                     scriptProjectPath);
                 return false;
             }
 
             output << content;
             if (!output.good())
             {
-                std::cerr << "[ProjectContext] Failed while saving patched script project: "
-                          << scriptProjectPath << std::endl;
+                EngineLogger::Errorf("ProjectContext",
+                                     "Failed while saving patched script project: ",
+                                     scriptProjectPath);
                 return false;
             }
 
-            std::cout << "[ProjectContext][Migration] Added EngineManagedApi ProjectReference to legacy script project: "
-                      << scriptProjectPath << std::endl;
+            EngineLogger::Infof("ProjectContext",
+                                "[Migration] Added EngineManagedApi ProjectReference to legacy script project: ",
+                                scriptProjectPath);
             return true;
         }
 
@@ -335,8 +344,9 @@ namespace
 
         if (wrapperPaths.empty())
         {
-            std::cerr << "[ProjectContext] Engine API wrappers not found under: "
-                      << (engineRoot / "scripts") << std::endl;
+            EngineLogger::Errorf("ProjectContext",
+                                 "Engine API wrappers not found under: ",
+                                 (engineRoot / "scripts"));
             return false;
         }
 
@@ -361,21 +371,24 @@ namespace
         std::ofstream output(scriptProjectPath, std::ios::trunc);
         if (!output.is_open())
         {
-            std::cerr << "[ProjectContext] Failed to write patched script project: "
-                      << scriptProjectPath << std::endl;
+            EngineLogger::Errorf("ProjectContext",
+                                 "Failed to write patched script project: ",
+                                 scriptProjectPath);
             return false;
         }
 
         output << content;
         if (!output.good())
         {
-            std::cerr << "[ProjectContext] Failed while saving patched script project: "
-                      << scriptProjectPath << std::endl;
+            EngineLogger::Errorf("ProjectContext",
+                                 "Failed while saving patched script project: ",
+                                 scriptProjectPath);
             return false;
         }
 
-        std::cout << "[ProjectContext][Migration] Added fallback Engine API source links to legacy script project: "
-              << scriptProjectPath << std::endl;
+        EngineLogger::Infof("ProjectContext",
+                            "[Migration] Added fallback Engine API source links to legacy script project: ",
+                            scriptProjectPath);
         return true;
     }
 
@@ -383,12 +396,12 @@ namespace
     {
         if (projectPath.empty() || !std::filesystem::exists(projectPath))
         {
-            std::cout << "[ProjectContext] Skip build (project missing): " << projectLabel << std::endl;
+            EngineLogger::Infof("ProjectContext", "Skip build (project missing): ", projectLabel);
             return false;
         }
 
         const std::string command = "dotnet build \"" + projectPath.string() + "\" -c Debug -nologo -t:Rebuild 2>&1";
-        std::cout << "[ProjectContext] Building " << projectLabel << ": " << projectPath << std::endl;
+        EngineLogger::Infof("ProjectContext", "Building ", projectLabel, ": ", projectPath);
 
 #if defined(_WIN32)
         FILE* pipe = _popen(command.c_str(), "r");
@@ -397,7 +410,7 @@ namespace
 #endif
         if (!pipe)
         {
-            std::cerr << "[ProjectContext] Failed to start dotnet build process for " << projectLabel << "." << std::endl;
+            EngineLogger::Errorf("ProjectContext", "Failed to start dotnet build process for ", projectLabel, ".");
             return false;
         }
 
@@ -437,25 +450,27 @@ namespace
 
         const std::size_t maxDiagnosticLines = 12;
         for (std::size_t i = 0; i < warningLines.size() && i < maxDiagnosticLines; ++i)
-            std::cout << "[ProjectContext][CSharp][Warning] " << warningLines[i] << std::endl;
+            EngineLogger::Warningf("ProjectContext", "[CSharp] ", warningLines[i]);
 
         for (std::size_t i = 0; i < errorLines.size() && i < maxDiagnosticLines; ++i)
-            std::cerr << "[ProjectContext][CSharp][Error] " << errorLines[i] << std::endl;
+            EngineLogger::Errorf("ProjectContext", "[CSharp] ", errorLines[i]);
 
         if (exitCode == 0)
         {
-            std::cout << "[ProjectContext] Build succeeded for " << projectLabel
-                      << " (warnings: " << warningLines.size() << ")." << std::endl;
+            EngineLogger::Infof("ProjectContext",
+                                "Build succeeded for ", projectLabel,
+                                " (warnings: ", warningLines.size(), ").");
             return true;
         }
 
-        std::cerr << "[ProjectContext] Build failed for " << projectLabel
-                  << " (exit code: " << exitCode
-                  << ", warnings: " << warningLines.size()
-                  << ", errors: " << errorLines.size() << ")." << std::endl;
+        EngineLogger::Errorf("ProjectContext",
+                             "Build failed for ", projectLabel,
+                             " (exit code: ", exitCode,
+                             ", warnings: ", warningLines.size(),
+                             ", errors: ", errorLines.size(), ").");
 
         if (errorLines.empty() && !output.empty())
-            std::cerr << "[ProjectContext][CSharp][Output] " << Trim(output) << std::endl;
+            EngineLogger::Errorf("ProjectContext", "[CSharp][Output] ", Trim(output));
 
         return false;
     }
@@ -484,7 +499,7 @@ bool ProjectContext::OpenProject(const std::filesystem::path& projectRoot)
 
     if (!LoadProjectMetadata())
     {
-        std::cerr << "[ProjectContext] Failed to load metadata from: " << m_projectFilePath << std::endl;
+        EngineLogger::Errorf("ProjectContext", "Failed to load metadata from: ", m_projectFilePath);
         m_isOpen = false;
         return false;
     }
@@ -492,7 +507,7 @@ bool ProjectContext::OpenProject(const std::filesystem::path& projectRoot)
     ApplyMetadataDefaults();
     if (!UpgradeProjectMetadataIfNeeded())
     {
-        std::cerr << "[ProjectContext] Failed to upgrade metadata for: " << m_projectFilePath << std::endl;
+        EngineLogger::Errorf("ProjectContext", "Failed to upgrade metadata for: ", m_projectFilePath);
         m_isOpen = false;
         return false;
     }
@@ -540,13 +555,74 @@ std::filesystem::path ProjectContext::ScriptAssemblyAbsolutePath() const
     return (m_projectRoot / configuredPath).lexically_normal();
 }
 
+bool ProjectContext::GetProjectSetting(const std::string& key, std::string& outValue) const
+{
+    const std::string trimmedKey = Trim(key);
+    if (trimmedKey.empty())
+        return false;
+
+    const auto it = m_metadata.projectSettings.find(trimmedKey);
+    if (it == m_metadata.projectSettings.end())
+        return false;
+
+    outValue = it->second;
+    return true;
+}
+
+bool ProjectContext::SetProjectSetting(const std::string& key, const std::string& value)
+{
+    if (!m_isOpen)
+        return false;
+
+    const std::string trimmedKey = Trim(key);
+    if (trimmedKey.empty())
+        return false;
+
+    const auto existing = m_metadata.projectSettings.find(trimmedKey);
+    const bool hadExisting = existing != m_metadata.projectSettings.end();
+    const std::string previousValue = hadExisting ? existing->second : std::string{};
+
+    m_metadata.projectSettings[trimmedKey] = value;
+    if (SaveProjectMetadata())
+        return true;
+
+    if (hadExisting)
+        m_metadata.projectSettings[trimmedKey] = previousValue;
+    else
+        m_metadata.projectSettings.erase(trimmedKey);
+
+    return false;
+}
+
+bool ProjectContext::RemoveProjectSetting(const std::string& key)
+{
+    if (!m_isOpen)
+        return false;
+
+    const std::string trimmedKey = Trim(key);
+    if (trimmedKey.empty())
+        return false;
+
+    const auto existing = m_metadata.projectSettings.find(trimmedKey);
+    if (existing == m_metadata.projectSettings.end())
+        return true;
+
+    const std::string previousValue = existing->second;
+    m_metadata.projectSettings.erase(existing);
+    if (SaveProjectMetadata())
+        return true;
+
+    m_metadata.projectSettings[trimmedKey] = previousValue;
+    return false;
+}
+
 bool ProjectContext::LoadProjectMetadata()
 {
     m_metadata = Metadata{};
 
     if (!std::filesystem::exists(m_projectFilePath))
     {
-        std::cerr << "[ProjectContext] project.json not found: " << m_projectFilePath << std::endl;
+        EngineLogger::Errorf("ProjectContext", "project.json not found: ", m_projectFilePath);
         return false;
     }
 
@@ -597,6 +673,52 @@ bool ProjectContext::LoadProjectMetadata()
     if (const auto targetFramework = ExtractJsonString(json, "targetFramework"))
         m_metadata.targetFramework = *targetFramework;
 
+    rapidjson::Document document;
+    if (!document.Parse(json.c_str()).HasParseError() && document.IsObject())
+    {
+        const auto settingsIt = document.FindMember("projectSettings");
+        if (settingsIt != document.MemberEnd() && settingsIt->value.IsObject())
+        {
+            for (auto member = settingsIt->value.MemberBegin(); member != settingsIt->value.MemberEnd(); ++member)
+            {
+                if (!member->name.IsString())
+                    continue;
+
+                const std::string key = member->name.GetString();
+                const rapidjson::Value& value = member->value;
+
+                if (value.IsString())
+                {
+                    m_metadata.projectSettings[key] = value.GetString();
+                }
+                else if (value.IsBool())
+                {
+                    m_metadata.projectSettings[key] = value.GetBool() ? "true" : "false";
+                }
+                else if (value.IsInt())
+                {
+                    m_metadata.projectSettings[key] = std::to_string(value.GetInt());
+                }
+                else if (value.IsUint())
+                {
+                    m_metadata.projectSettings[key] = std::to_string(value.GetUint());
+                }
+                else if (value.IsInt64())
+                {
+                    m_metadata.projectSettings[key] = std::to_string(value.GetInt64());
+                }
+                else if (value.IsUint64())
+                {
+                    m_metadata.projectSettings[key] = std::to_string(value.GetUint64());
+                }
+                else if (value.IsDouble())
+                {
+                    m_metadata.projectSettings[key] = std::to_string(value.GetDouble());
+                }
+            }
+        }
+    }
+
     return true;
 }
 
@@ -604,9 +726,10 @@ bool ProjectContext::UpgradeProjectMetadataIfNeeded()
 {
     if (m_metadata.version > CurrentProjectVersion)
     {
-        std::cerr << "[ProjectContext] project.json version " << m_metadata.version
-                  << " is newer than supported version " << CurrentProjectVersion
-                  << ". Opening without migration." << std::endl;
+        EngineLogger::Warningf("ProjectContext",
+                               "project.json version ", m_metadata.version,
+                               " is newer than supported version ", CurrentProjectVersion,
+                               ". Opening without migration.");
         return true;
     }
 
@@ -644,13 +767,14 @@ bool ProjectContext::UpgradeProjectMetadataIfNeeded()
 
     if (previousVersion < CurrentProjectVersion)
     {
-        std::cout << "[ProjectContext] Upgraded project.json from version " << previousVersion
-                  << " to " << CurrentProjectVersion << "." << std::endl;
+        EngineLogger::Infof("ProjectContext",
+                            "Upgraded project.json from version ", previousVersion,
+                            " to ", CurrentProjectVersion, ".");
     }
     else
     {
-        std::cout << "[ProjectContext] Refreshed project.json engineVersion to "
-                  << ProjectEngineVersion << "." << std::endl;
+        EngineLogger::Infof("ProjectContext",
+                            "Refreshed project.json engineVersion to ", ProjectEngineVersion, ".");
     }
 
     return true;
@@ -675,8 +799,46 @@ bool ProjectContext::SaveProjectMetadata() const
            << "  \"scriptSolution\": \"" << EscapeJsonString(m_metadata.scriptSolution) << "\",\n"
            << "  \"assemblyPath\": \"" << EscapeJsonString(m_metadata.assemblyPath) << "\",\n"
            << "  \"engineApiProject\": \"" << EscapeJsonString(m_metadata.engineApiProject) << "\",\n"
-           << "  \"targetFramework\": \"" << EscapeJsonString(m_metadata.targetFramework) << "\"\n"
-           << "}\n";
+           << "  \"targetFramework\": \"" << EscapeJsonString(m_metadata.targetFramework) << "\",\n";
+
+    output << "  \"projectSettings\": ";
+    if (m_metadata.projectSettings.empty())
+    {
+        output << "{}\n";
+    }
+    else
+    {
+        std::vector<std::string> keys;
+        keys.reserve(m_metadata.projectSettings.size());
+        for (const auto& [key, value] : m_metadata.projectSettings)
+        {
+            (void)value;
+            keys.push_back(key);
+        }
+
+        std::sort(keys.begin(), keys.end());
+
+        output << "{\n";
+        for (std::size_t index = 0; index < keys.size(); ++index)
+        {
+            const std::string& key = keys[index];
+            const auto found = m_metadata.projectSettings.find(key);
+            if (found == m_metadata.projectSettings.end())
+                continue;
+
+            output << "    \"" << EscapeJsonString(key) << "\": \""
+                   << EscapeJsonString(found->second) << "\"";
+
+            if (index + 1 < keys.size())
+                output << ",";
+
+            output << "\n";
+        }
+
+        output << "  }\n";
+    }
+
+    output << "}\n";
 
     return output.good();
 }
@@ -686,7 +848,7 @@ void ProjectContext::PrepareManagedScriptProject() const
     const std::filesystem::path scriptProjectPath = ScriptProjectPath();
     if (scriptProjectPath.empty())
     {
-        std::cout << "[ProjectContext] Script project path is empty; skipping C# build." << std::endl;
+        EngineLogger::Info("ProjectContext", "Script project path is empty; skipping C# build.");
         return;
     }
 
@@ -696,8 +858,9 @@ void ProjectContext::PrepareManagedScriptProject() const
 
     if (!EnsureEngineApiReferencesInCsproj(scriptProjectPath, workspaceRoot, m_metadata.engineApiProject))
     {
-        std::cerr << "[ProjectContext][Migration] Could not ensure Engine references in script project: "
-                  << scriptProjectPath << std::endl;
+        EngineLogger::Errorf("ProjectContext",
+                             "[Migration] Could not ensure Engine references in script project: ",
+                             scriptProjectPath);
     }
     BuildDotnetProjectAndReport(scriptProjectPath, "script project");
 }
@@ -750,6 +913,8 @@ void ProjectContext::ApplyMetadataDefaults()
         else
             m_metadata.assemblyPath = "scripts/bin/Debug/net472/GameScripts.dll";
 
-        std::cout << "[ProjectContext] Missing assemblyPath in project.json, using default: " << m_metadata.assemblyPath << std::endl;
+        EngineLogger::Infof("ProjectContext",
+                            "Missing assemblyPath in project.json, using default: ",
+                            m_metadata.assemblyPath);
     }
 }

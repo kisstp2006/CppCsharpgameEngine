@@ -85,9 +85,14 @@ static bool TryCreateAssemblyShadowCopy(const std::filesystem::path& sourcePath,
                 std::filesystem::copy_file(dependencyPath, targetPath, std::filesystem::copy_options::overwrite_existing, copyDependencyError);
                 if (copyDependencyError)
                 {
-                    std::cerr << "[Mono] Warning: failed to shadow-copy dependency "
-                              << dependencyPath << " -> " << targetPath
-                              << " (" << copyDependencyError.message() << ")" << std::endl;
+                    EngineLogger::Warningf("Mono",
+                                           "Failed to shadow-copy dependency ",
+                                           dependencyPath,
+                                           " -> ",
+                                           targetPath,
+                                           " (",
+                                           copyDependencyError.message(),
+                                           ")");
                 }
             }
 
@@ -111,7 +116,7 @@ static bool TryLoadScriptAssemblyBindings(MonoDomain* domain,
     std::filesystem::path pathToLoad;
     if (!TryCreateAssemblyShadowCopy(sourcePath, shadowDirectory, pathToLoad))
     {
-        std::cerr << "[Mono] Hot-reload copy failed for script assembly: " << sourcePath << std::endl;
+        EngineLogger::Errorf("Mono", "Hot-reload copy failed for script assembly: ", sourcePath);
         return false;
     }
 
@@ -121,7 +126,7 @@ static bool TryLoadScriptAssemblyBindings(MonoDomain* domain,
     const std::uintmax_t fileSize = std::filesystem::file_size(pathToLoad, fileSizeError);
     if (fileSizeError || fileSize == 0 || fileSize > static_cast<std::uintmax_t>(std::numeric_limits<int>::max()))
     {
-        std::cerr << "[Mono] Invalid script assembly shadow copy size: " << loadPathString << std::endl;
+        EngineLogger::Errorf("Mono", "Invalid script assembly shadow copy size: ", loadPathString);
         return false;
     }
 
@@ -130,14 +135,14 @@ static bool TryLoadScriptAssemblyBindings(MonoDomain* domain,
         std::ifstream input(loadPathString, std::ios::binary);
         if (!input)
         {
-            std::cerr << "[Mono] Failed to open script assembly shadow copy: " << loadPathString << std::endl;
+            EngineLogger::Errorf("Mono", "Failed to open script assembly shadow copy: ", loadPathString);
             return false;
         }
 
         input.read(assemblyBytes.data(), static_cast<std::streamsize>(assemblyBytes.size()));
         if (!input)
         {
-            std::cerr << "[Mono] Failed to read script assembly shadow copy: " << loadPathString << std::endl;
+            EngineLogger::Errorf("Mono", "Failed to read script assembly shadow copy: ", loadPathString);
             return false;
         }
     }
@@ -150,8 +155,12 @@ static bool TryLoadScriptAssemblyBindings(MonoDomain* domain,
                                                                 0);
     if (!transientImage)
     {
-        std::cerr << "[Mono] Failed to open script assembly image from data: " << loadPathString
-                  << " (" << mono_image_strerror(imageStatus) << ")" << std::endl;
+        EngineLogger::Errorf("Mono",
+                             "Failed to open script assembly image from data: ",
+                             loadPathString,
+                             " (",
+                             mono_image_strerror(imageStatus),
+                             ")");
         return false;
     }
 
@@ -162,8 +171,12 @@ static bool TryLoadScriptAssemblyBindings(MonoDomain* domain,
                                                         0);
     if (!outBindings.assembly)
     {
-        std::cerr << "[Mono] Failed to load script assembly shadow copy: " << loadPathString
-                  << " (" << mono_image_strerror(assemblyStatus) << ")" << std::endl;
+        EngineLogger::Errorf("Mono",
+                             "Failed to load script assembly shadow copy: ",
+                             loadPathString,
+                             " (",
+                             mono_image_strerror(assemblyStatus),
+                             ")");
         mono_image_close(transientImage);
         return false;
     }
@@ -171,7 +184,7 @@ static bool TryLoadScriptAssemblyBindings(MonoDomain* domain,
     outBindings.image = mono_assembly_get_image(outBindings.assembly);
     if (!outBindings.image)
     {
-        std::cerr << "[Mono] Script assembly image is null: " << loadPathString << std::endl;
+        EngineLogger::Errorf("Mono", "Script assembly image is null: ", loadPathString);
         return false;
     }
 
