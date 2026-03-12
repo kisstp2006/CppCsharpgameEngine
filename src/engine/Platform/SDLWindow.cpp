@@ -1,5 +1,6 @@
 #include "SDLWindow.h"
-#include <iostream>
+
+#include "engine/Core/Logger.h"
 
 SDLWindow::SDLWindow() = default;
 SDLWindow::~SDLWindow() = default;
@@ -8,7 +9,7 @@ bool SDLWindow::Initialize(const std::string& title, int width, int height)
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_TIMER) != 0)
     {
-        std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
+        EngineLogger::Error("SDL", std::string("SDL_Init failed: ") + SDL_GetError());
         return false;
     }
 
@@ -30,21 +31,21 @@ bool SDLWindow::Initialize(const std::string& title, int width, int height)
 
     if (!m_window)
     {
-        std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << "\n";
+        EngineLogger::Error("SDL", std::string("SDL_CreateWindow failed: ") + SDL_GetError());
         return false;
     }
 
     m_glContext = SDL_GL_CreateContext(m_window);
     if (!m_glContext)
     {
-        std::cerr << "SDL_GL_CreateContext failed: " << SDL_GetError() << "\n";
+        EngineLogger::Error("SDL", std::string("SDL_GL_CreateContext failed: ") + SDL_GetError());
         return false;
     }
 
     // Enable vsync
     if (SDL_GL_SetSwapInterval(1) != 0)
     {
-        std::cerr << "Warning: Unable to set VSync: " << SDL_GetError() << "\n";
+        EngineLogger::Warning("SDL", std::string("Unable to set VSync: ") + SDL_GetError());
     }
 
     return true;

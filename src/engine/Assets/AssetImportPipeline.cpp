@@ -1,10 +1,10 @@
 #include "AssetImportPipeline.h"
 
 #include "ProjectContext.h"
+#include "engine/Core/Logger.h"
 
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <string>
 
 #if !defined(__INTELLISENSE__) && !defined(ENGINE_ASSIMP_DISABLED) && __has_include(<assimp/Importer.hpp>) && __has_include(<assimp/postprocess.h>) && __has_include(<assimp/scene.h>)
@@ -79,8 +79,9 @@ namespace
 
         if (!scene)
         {
-            std::cerr << "[Assets] Assimp failed to parse model: " << record.sourcePath
-                      << " error=" << importer.GetErrorString() << std::endl;
+            EngineLogger::Errorf("Assets",
+                                 "Assimp failed to parse model: ", record.sourcePath,
+                                 " error=", importer.GetErrorString());
             return false;
         }
 
@@ -106,15 +107,16 @@ namespace
         std::filesystem::copy_file(record.sourcePath, importedModelPath, std::filesystem::copy_options::overwrite_existing, copyError);
         if (copyError)
         {
-            std::cerr << "[Assets] Failed to cache imported model: " << importedModelPath
-                      << " error=" << copyError.message() << std::endl;
+            EngineLogger::Errorf("Assets",
+                                 "Failed to cache imported model: ", importedModelPath,
+                                 " error=", copyError.message());
             return false;
         }
 
         std::ofstream metaOutput(importedMetaPath, std::ios::trunc);
         if (!metaOutput.is_open())
         {
-            std::cerr << "[Assets] Failed to write model meta: " << importedMetaPath << std::endl;
+            EngineLogger::Errorf("Assets", "Failed to write model meta: ", importedMetaPath);
             return false;
         }
 
@@ -142,8 +144,9 @@ namespace
 
         if (errorCode)
         {
-            std::cerr << "[Assets] Failed to remove cached model: " << importedModelPath
-                      << " error=" << errorCode.message() << std::endl;
+            EngineLogger::Errorf("Assets",
+                                 "Failed to remove cached model: ", importedModelPath,
+                                 " error=", errorCode.message());
             return false;
         }
 
@@ -152,8 +155,9 @@ namespace
 
         if (errorCode)
         {
-            std::cerr << "[Assets] Failed to remove cached model meta: " << importedMetaPath
-                      << " error=" << errorCode.message() << std::endl;
+            EngineLogger::Errorf("Assets",
+                                 "Failed to remove cached model meta: ", importedMetaPath,
+                                 " error=", errorCode.message());
             return false;
         }
 
@@ -168,8 +172,9 @@ namespace
 
         if (!imageData)
         {
-            std::cerr << "[Assets] stb_image failed to load image: " << record.sourcePath
-                      << " error=" << stbi_failure_reason() << std::endl;
+            EngineLogger::Errorf("Assets",
+                                 "stb_image failed to load image: ", record.sourcePath,
+                                 " error=", stbi_failure_reason());
             return false;
         }
 
@@ -184,8 +189,9 @@ namespace
         std::filesystem::copy_file(record.sourcePath, importedImagePath, std::filesystem::copy_options::overwrite_existing, copyError);
         if (copyError)
         {
-            std::cerr << "[Assets] Failed to cache imported image: " << importedImagePath
-                      << " error=" << copyError.message() << std::endl;
+            EngineLogger::Errorf("Assets",
+                                 "Failed to cache imported image: ", importedImagePath,
+                                 " error=", copyError.message());
             stbi_image_free(imageData);
             return false;
         }
@@ -193,7 +199,7 @@ namespace
         std::ofstream metaOutput(importedMetaPath, std::ios::trunc);
         if (!metaOutput.is_open())
         {
-            std::cerr << "[Assets] Failed to write image meta: " << importedMetaPath << std::endl;
+            EngineLogger::Errorf("Assets", "Failed to write image meta: ", importedMetaPath);
             stbi_image_free(imageData);
             return false;
         }
@@ -222,8 +228,9 @@ namespace
 
         if (errorCode)
         {
-            std::cerr << "[Assets] Failed to remove cached image: " << importedImagePath
-                      << " error=" << errorCode.message() << std::endl;
+            EngineLogger::Errorf("Assets",
+                                 "Failed to remove cached image: ", importedImagePath,
+                                 " error=", errorCode.message());
             return false;
         }
 
@@ -232,8 +239,9 @@ namespace
 
         if (errorCode)
         {
-            std::cerr << "[Assets] Failed to remove cached image meta: " << importedMetaPath
-                      << " error=" << errorCode.message() << std::endl;
+            EngineLogger::Errorf("Assets",
+                                 "Failed to remove cached image meta: ", importedMetaPath,
+                                 " error=", errorCode.message());
             return false;
         }
 
@@ -267,7 +275,7 @@ AssetImportPipeline::Result AssetImportPipeline::Run(
             else
                 ++result.failed;
 #else
-            std::cerr << "[Assets] Assimp is disabled; cannot import model: " << change.record.sourcePath << std::endl;
+            EngineLogger::Errorf("Assets", "Assimp is disabled; cannot import model: ", change.record.sourcePath);
             ++result.failed;
 #endif
             continue;
@@ -291,7 +299,7 @@ AssetImportPipeline::Result AssetImportPipeline::Run(
             else
                 ++result.failed;
 #else
-            std::cerr << "[Assets] stb_image is unavailable; cannot import image: " << change.record.sourcePath << std::endl;
+            EngineLogger::Errorf("Assets", "stb_image is unavailable; cannot import image: ", change.record.sourcePath);
             ++result.failed;
 #endif
             continue;

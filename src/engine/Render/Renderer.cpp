@@ -1,5 +1,6 @@
 #include "Renderer.h"
 
+#include "engine/Core/Logger.h"
 #include "Shader.h"
 #include "Texture.h"
 
@@ -11,7 +12,6 @@
 #include <glm/gtc/type_ptr.hpp>
 
 #include <cmath>
-#include <iostream>
 
 struct Renderer::Impl
 {
@@ -64,7 +64,7 @@ bool Renderer::Initialize(int width, int height)
 
     if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress))
     {
-        std::cerr << "Failed to initialize GLAD" << std::endl;
+        EngineLogger::Error("Renderer", "Failed to initialize GLAD");
         return false;
     }
 
@@ -111,7 +111,7 @@ bool Renderer::Initialize(int width, int height)
     m_impl = std::make_unique<Impl>();
     if (!m_impl->shader.Load(vertexSource, fragmentSource))
     {
-        std::cerr << "Failed to compile basic sprite shader" << std::endl;
+        EngineLogger::Error("Renderer", "Failed to compile basic sprite shader");
         return false;
     }
 

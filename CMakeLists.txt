@@ -184,6 +184,7 @@ endif()
 # Engine library
 add_library(Engine STATIC
   src/engine/Engine.cpp
+  src/engine/Core/Logger.cpp
   src/engine/Assets/AssetDatabase.cpp
   src/engine/Assets/AssetImportPipeline.cpp
   src/engine/Assets/ProjectContext.cpp

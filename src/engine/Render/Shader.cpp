@@ -1,6 +1,8 @@
 #include "Shader.h"
+
+#include "engine/Core/Logger.h"
+
 #include <glad/glad.h>
-#include <iostream>
 
 static unsigned int CompileShader(unsigned int type, const std::string& source)
 {
@@ -17,7 +19,7 @@ static unsigned int CompileShader(unsigned int type, const std::string& source)
         glGetShaderiv(id, GL_INFO_LOG_LENGTH, &length);
         std::string message(length, '\0');
         glGetShaderInfoLog(id, length, &length, message.data());
-        std::cerr << "Failed to compile shader: " << message << "\n";
+        EngineLogger::Error("Shader", std::string("Failed to compile shader: ") + message);
         glDeleteShader(id);
         return 0;
     }
@@ -65,7 +67,7 @@ bool Shader::Load(const std::string& vertexSrc, const std::string& fragmentSrc)
         glGetProgramiv(program, GL_INFO_LOG_LENGTH, &length);
         std::string message(length, '\0');
         glGetProgramInfoLog(program, length, &length, message.data());
-        std::cerr << "Failed to link shader program: " << message << "\n";
+        EngineLogger::Error("Shader", std::string("Failed to link shader program: ") + message);
         glDeleteProgram(program);
         return false;
     }

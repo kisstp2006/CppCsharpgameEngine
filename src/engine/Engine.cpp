@@ -11,6 +11,7 @@
 #include "Render/Renderer.h"
 #include "Render/Texture.h"
 #include "Scripting/MonoRuntime.h"
+#include "engine/Core/Logger.h"
 
 #include <imgui.h>
 #include <backends/imgui_impl_sdl2.h>
@@ -21,7 +22,6 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
-#include <iostream>
 
 namespace
 {
@@ -277,7 +277,7 @@ bool Engine::Initialize(const std::string& title, int width, int height)
         const std::filesystem::path databasePath = m_projectContext->LibraryRoot() / "AssetDatabase.json";
 
         if (!m_assetDatabase->LoadOrCreate(databasePath))
-            std::cerr << "[Assets] Failed to load asset database: " << databasePath << std::endl;
+            EngineLogger::Errorf("Assets", "Failed to load asset database: ", databasePath);
 
         m_assetDatabase->ScanProject(*m_projectContext);
         const auto assetChanges = m_assetDatabase->DetectChanges();
@@ -303,22 +303,24 @@ bool Engine::Initialize(const std::string& title, int width, int height)
                 }
             }
 
-            std::cout << "[Assets] Changes detected: added=" << addedCount
-                      << ", modified=" << modifiedCount
-                      << ", deleted=" << deletedCount << std::endl;
+            EngineLogger::Infof("Assets",
+                                "Changes detected: added=", addedCount,
+                                ", modified=", modifiedCount,
+                                ", deleted=", deletedCount);
 
             AssetImportPipeline importPipeline;
             const AssetImportPipeline::Result importResult = importPipeline.Run(*m_projectContext, assetChanges);
             if (importResult.imported > 0 || importResult.removed > 0 || importResult.failed > 0)
             {
-                std::cout << "[Assets] Import pass: imported=" << importResult.imported
-                          << ", removed=" << importResult.removed
-                          << ", failed=" << importResult.failed << std::endl;
+                EngineLogger::Infof("Assets",
+                                    "Import pass: imported=", importResult.imported,
+                                    ", removed=", importResult.removed,
+                                    ", failed=", importResult.failed);
             }
         }
 
         if (!m_assetDatabase->Save())
-            std::cerr << "[Assets] Failed to save asset database: " << databasePath << std::endl;
+            EngineLogger::Errorf("Assets", "Failed to save asset database: ", databasePath);
     }
     else
     {
