@@ -21,6 +21,8 @@ struct Renderer::Impl
     int projLocation = -1;
     int modelLocation = -1;
     int textureLocation = -1;
+    int useSolidColorLocation = -1;
+    int solidColorLocation = -1;
 
     unsigned int gameViewFbo = 0;
     unsigned int gameViewColorTexture = 0;
@@ -81,10 +83,15 @@ bool Renderer::Initialize(int width, int height)
         out vec4 FragColor;
 
         uniform sampler2D u_Texture;
+        uniform int u_UseSolidColor;
+        uniform vec4 u_SolidColor;
 
         void main()
         {
-            FragColor = texture(u_Texture, v_TexCoord);
+            if (u_UseSolidColor != 0)
+                FragColor = u_SolidColor;
+            else
+                FragColor = texture(u_Texture, v_TexCoord);
         }
     )glsl";
 
@@ -99,6 +106,8 @@ bool Renderer::Initialize(int width, int height)
     m_impl->projLocation = glGetUniformLocation(m_impl->shader.GetHandle(), "u_Projection");
     m_impl->modelLocation = glGetUniformLocation(m_impl->shader.GetHandle(), "u_Model");
     m_impl->textureLocation = glGetUniformLocation(m_impl->shader.GetHandle(), "u_Texture");
+    m_impl->useSolidColorLocation = glGetUniformLocation(m_impl->shader.GetHandle(), "u_UseSolidColor");
+    m_impl->solidColorLocation = glGetUniformLocation(m_impl->shader.GetHandle(), "u_SolidColor");
 
     // Setup quad with UVs
     float vertices[] = {
@@ -135,6 +144,8 @@ bool Renderer::Initialize(int width, int height)
                                             static_cast<float>(m_viewHeight));
     glUniformMatrix4fv(m_impl->projLocation, 1, GL_FALSE, glm::value_ptr(projection));
     glUniform1i(m_impl->textureLocation, 0);
+    glUniform1i(m_impl->useSolidColorLocation, 0);
+    glUniform4f(m_impl->solidColorLocation, 1.0f, 1.0f, 1.0f, 1.0f);
 
     return true;
 }
@@ -289,6 +300,7 @@ void Renderer::DrawSprite(Texture& texture,
     };
 
     m_impl->shader.Bind();
+    glUniform1i(m_impl->useSolidColorLocation, 0);
 
     glm::mat4 model(1.0f);
     model = glm::translate(model, glm::vec3(x, y, 0.0f));
@@ -304,6 +316,51 @@ void Renderer::DrawSprite(Texture& texture,
     glBindVertexArray(m_impl->vao);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
+}
+
+void Renderer::DrawSolidSprite(float x,
+                               float y,
+                               float width,
+                               float height,
+                               float r,
+                               float g,
+                               float b,
+                               float a)
+{
+    if (!m_impl)
+        return;
+
+    float vertices[] = {
+        // pos    // uv
+        0.0f, 1.0f, 0.0f, 1.0f,
+        1.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 0.0f,
+
+        0.0f, 1.0f, 0.0f, 1.0f,
+        1.0f, 1.0f, 1.0f, 1.0f,
+        1.0f, 0.0f, 1.0f, 0.0f,
+    };
+
+    m_impl->shader.Bind();
+    glUniform1i(m_impl->useSolidColorLocation, 1);
+    glUniform4f(m_impl->solidColorLocation, r, g, b, a);
+
+    glm::mat4 model(1.0f);
+    model = glm::translate(model, glm::vec3(x, y, 0.0f));
+    model = glm::scale(model, glm::vec3(width, height, 1.0f));
+    glUniformMatrix4fv(m_impl->modelLocation, 1, GL_FALSE, glm::value_ptr(model));
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, m_impl->vbo);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glBindVertexArray(m_impl->vao);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+
+    glUniform1i(m_impl->useSolidColorLocation, 0);
 }
 
 int Renderer::GetViewWidth() const

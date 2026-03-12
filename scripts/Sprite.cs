@@ -20,6 +20,12 @@ namespace Engine
         public static extern void SetTexturePath(uint entityId, string texturePath);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern uint GetFallbackColor(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetFallbackColor(uint entityId, uint color);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool GetSettings(uint entityId,
                                               out bool centered,
                                               out float offsetX,

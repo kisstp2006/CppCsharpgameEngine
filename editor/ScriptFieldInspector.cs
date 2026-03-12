@@ -205,33 +205,29 @@ namespace EngineEditor
                 case ScriptFieldKind.Color:
                     {
                         float[] values = ParseComponents(rawValue, descriptor.ComponentCount);
-                        if (descriptor.ComponentCount >= 4)
+                        bool hasAlpha = descriptor.ComponentCount >= 4;
+                        float r = values[0];
+                        float g = values[1];
+                        float b = values[2];
+                        float a = hasAlpha ? values[3] : 1.0f;
+
+                        if (InspectorInputs.ColorNormalized(fieldName, ref r, ref g, ref b, ref a, hasAlpha))
                         {
-                            float r = values[0];
-                            float g = values[1];
-                            float b = values[2];
-                            float a = values[3];
-                            if (InspectorInputs.Quaternion(fieldName, ref r, ref g, ref b, ref a, 0.01f))
+                            if (hasAlpha)
                             {
                                 newRawValue = r.ToString(CultureInfo.InvariantCulture) + "," +
                                               g.ToString(CultureInfo.InvariantCulture) + "," +
                                               b.ToString(CultureInfo.InvariantCulture) + "," +
                                               a.ToString(CultureInfo.InvariantCulture);
-                                changed = true;
                             }
-                        }
-                        else
-                        {
-                            float r = values[0];
-                            float g = values[1];
-                            float b = values[2];
-                            if (InspectorInputs.Vector3(fieldName, ref r, ref g, ref b, 0.01f))
+                            else
                             {
                                 newRawValue = r.ToString(CultureInfo.InvariantCulture) + "," +
                                               g.ToString(CultureInfo.InvariantCulture) + "," +
                                               b.ToString(CultureInfo.InvariantCulture);
-                                changed = true;
                             }
+
+                            changed = true;
                         }
                         break;
                     }

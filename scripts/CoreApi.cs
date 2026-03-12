@@ -256,6 +256,18 @@ namespace Engine
                 Sprite.SetTexturePath(EntityId, value ?? string.Empty);
             }
         }
+
+        public uint fallbackColor
+        {
+            get
+            {
+                return Sprite.GetFallbackColor(EntityId);
+            }
+            set
+            {
+                Sprite.SetFallbackColor(EntityId, value);
+            }
+        }
     }
 
     public class MonoBehaviour : Component

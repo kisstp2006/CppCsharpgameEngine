@@ -961,6 +961,11 @@ namespace EngineEditor
             if (ImGui.Button("Clear##SpriteTexture" + entityId))
                 EditorBridge.SetSpriteTexturePath(entityId, string.Empty);
 
+            uint fallbackColor = EditorBridge.GetSpriteFallbackColor(entityId);
+            bool fallbackColorChanged = InspectorInputs.ColorRgba32("Fallback Color (RGBA 0-255)", ref fallbackColor);
+            if (fallbackColorChanged)
+                EditorBridge.SetSpriteFallbackColor(entityId, fallbackColor);
+
             bool centered;
             float offsetX;
             float offsetY;
@@ -994,18 +999,18 @@ namespace EngineEditor
                 return;
             }
 
-            bool changed = false;
+            bool settingsChanged = false;
 
             EditorUIHelpers.DrawSectionHeader("Offset");
-            changed |= InspectorInputs.Bool("Centered", ref centered);
-            changed |= InspectorInputs.Vector2("Offset", ref offsetX, ref offsetY, 0.1f);
-            changed |= InspectorInputs.Bool("Flip H", ref flipH);
-            changed |= InspectorInputs.Bool("Flip V", ref flipV);
+            settingsChanged |= InspectorInputs.Bool("Centered", ref centered);
+            settingsChanged |= InspectorInputs.Vector2("Offset", ref offsetX, ref offsetY, 0.1f);
+            settingsChanged |= InspectorInputs.Bool("Flip H", ref flipH);
+            settingsChanged |= InspectorInputs.Bool("Flip V", ref flipV);
 
             EditorUIHelpers.DrawSectionHeader("Animation");
-            changed |= InspectorInputs.UInt("Hframes", ref hframes);
-            changed |= InspectorInputs.UInt("Vframes", ref vframes);
-            changed |= InspectorInputs.UInt("Frame", ref frame);
+            settingsChanged |= InspectorInputs.UInt("Hframes", ref hframes);
+            settingsChanged |= InspectorInputs.UInt("Vframes", ref vframes);
+            settingsChanged |= InspectorInputs.UInt("Frame", ref frame);
 
             if (hframes < 1)
                 hframes = 1;
@@ -1028,7 +1033,7 @@ namespace EngineEditor
                     resolvedFrame = frameCount - 1;
 
                 frame = (uint)resolvedFrame;
-                changed = true;
+                settingsChanged = true;
             }
 
             ulong maxFrames = (ulong)hframes * (ulong)vframes;
@@ -1037,29 +1042,29 @@ namespace EngineEditor
             if (frame >= maxFrames)
             {
                 frame = (uint)(maxFrames - 1);
-                changed = true;
+                settingsChanged = true;
             }
 
             EditorUIHelpers.DrawSectionHeader("Region");
-            changed |= InspectorInputs.Bool("Region Enabled", ref regionEnabled);
+            settingsChanged |= InspectorInputs.Bool("Region Enabled", ref regionEnabled);
             if (regionEnabled)
             {
-                changed |= InspectorInputs.Vector2("Region Pos", ref regionX, ref regionY, 1.0f);
-                changed |= InspectorInputs.Vector2("Region Size", ref regionWidth, ref regionHeight, 1.0f);
+                settingsChanged |= InspectorInputs.Vector2("Region Pos", ref regionX, ref regionY, 1.0f);
+                settingsChanged |= InspectorInputs.Vector2("Region Size", ref regionWidth, ref regionHeight, 1.0f);
                 if (regionWidth < 0.0f)
                 {
                     regionWidth = 0.0f;
-                    changed = true;
+                    settingsChanged = true;
                 }
 
                 if (regionHeight < 0.0f)
                 {
                     regionHeight = 0.0f;
-                    changed = true;
+                    settingsChanged = true;
                 }
             }
 
-            if (changed)
+            if (settingsChanged)
             {
                 EditorBridge.SetSpriteSettings(entityId,
                                                centered,
@@ -1083,7 +1088,7 @@ namespace EngineEditor
             float camX;
             float camY;
             float camZoom;
-                if (EntityManager.GetCamera(entityId, out camX, out camY, out camZoom))
+            if (EntityManager.GetCamera(entityId, out camX, out camY, out camZoom))
             {
                 bool cameraChanged = false;
                 cameraChanged |= InspectorInputs.Vector2("Cam Position", ref camX, ref camY, 1.0f);

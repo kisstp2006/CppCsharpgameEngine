@@ -25,6 +25,7 @@ struct SpriteComponent
     Texture* texture = nullptr;
     std::uint64_t textureAssetHandle = 0;
     std::string textureAssetPath;
+    std::uint32_t fallbackColor = 0xFFFFFFFF;
     bool centered = true;
     float offsetX = 0.0f;
     float offsetY = 0.0f;

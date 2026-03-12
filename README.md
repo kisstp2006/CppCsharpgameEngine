@@ -192,6 +192,28 @@ Build the editor assembly with:
 dotnet build editor\EngineEditor.csproj -c Debug
 ```
 
+## Project Starter Templates
+
+Create Project now supports five starter templates with optional starter content generation:
+
+- `Debug Monitor`
+- `Sprite Input Controller`
+- `Event Logger`
+- `Minimal Empty`
+- `Input + Debug Hybrid`
+
+You can also enable optional starter scene generation (JSON) from the create-project popup. Generated starter scenes are template-specific and saved as `Scenes/Main.scene.json`.
+
+`ScriptEntry.cs` is no longer generated for new projects.
+
+## Sprite Missing-Texture Fallback
+
+Sprites now render even when `textureAssetPath` is empty or unresolved.
+
+- Default fallback color is white (`0xFFFFFFFF`, RGBA).
+- The fallback color is editable from the Sprite inspector (`Fallback Color (RGBA 0-255)`).
+- Fallback color is persisted in scene files (binary and JSON).
+
 ## Next steps
 
 - Add Mono script hot-reload and managed exception reporting.

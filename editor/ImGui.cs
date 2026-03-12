@@ -35,6 +35,9 @@ namespace Engine
         public static extern bool BeginPopupModal(string popupId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool BeginPopup(string popupId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void EndPopup();
 
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -63,6 +66,17 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool Checkbox(string label, ref bool value);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool ColorButton(string id, float r, float g, float b, float a);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool ColorPicker4(string label,
+                               ref float r,
+                               ref float g,
+                               ref float b,
+                               ref float a,
+                               bool showAlpha);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool IsWindowHovered();

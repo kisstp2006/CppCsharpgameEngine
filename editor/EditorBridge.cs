@@ -185,6 +185,12 @@ namespace Engine
         public static extern void SetSpriteTexturePath(uint entityId, string texturePath);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern uint GetSpriteFallbackColor(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetSpriteFallbackColor(uint entityId, uint color);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool GetSpriteSettings(uint entityId,
                                 out bool centered,
                                 out float offsetX,

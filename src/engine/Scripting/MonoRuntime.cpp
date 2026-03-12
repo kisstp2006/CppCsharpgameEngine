@@ -598,6 +598,8 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::RemoveSprite", (const void*)&EditorBridge_RemoveSprite);
         mono_add_internal_call("Engine.EditorBridge::GetSpriteTexturePath", (const void*)&EditorBridge_GetSpriteTexturePath);
         mono_add_internal_call("Engine.EditorBridge::SetSpriteTexturePath", (const void*)&EditorBridge_SetSpriteTexturePath);
+        mono_add_internal_call("Engine.EditorBridge::GetSpriteFallbackColor", (const void*)&EditorBridge_GetSpriteFallbackColor);
+        mono_add_internal_call("Engine.EditorBridge::SetSpriteFallbackColor", (const void*)&EditorBridge_SetSpriteFallbackColor);
         mono_add_internal_call("Engine.EditorBridge::GetSpriteSettings", (const void*)&EditorBridge_GetSpriteSettings);
         mono_add_internal_call("Engine.EditorBridge::SetSpriteSettings", (const void*)&EditorBridge_SetSpriteSettings);
         mono_add_internal_call("Engine.EditorBridge::HasScript", (const void*)&EditorBridge_HasScript);
@@ -632,6 +634,8 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.Sprite::Remove", (const void*)&RuntimeSprite_Remove);
     mono_add_internal_call("Engine.Sprite::GetTexturePath", (const void*)&RuntimeSprite_GetTexturePath);
     mono_add_internal_call("Engine.Sprite::SetTexturePath", (const void*)&RuntimeSprite_SetTexturePath);
+    mono_add_internal_call("Engine.Sprite::GetFallbackColor", (const void*)&RuntimeSprite_GetFallbackColor);
+    mono_add_internal_call("Engine.Sprite::SetFallbackColor", (const void*)&RuntimeSprite_SetFallbackColor);
     mono_add_internal_call("Engine.Sprite::GetSettings", (const void*)&RuntimeSprite_GetSettings);
     mono_add_internal_call("Engine.Sprite::SetSettings", (const void*)&RuntimeSprite_SetSettings);
     mono_add_internal_call("Engine.EntityManager::CreateEntityInternal", (const void*)&EntityManager_CreateEntityInternal);
@@ -691,6 +695,7 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.ImGui::Button", (const void*)&EditorImGui_Button);
         mono_add_internal_call("Engine.ImGui::OpenPopup", (const void*)&EditorImGui_OpenPopup);
         mono_add_internal_call("Engine.ImGui::BeginPopupModal", (const void*)&EditorImGui_BeginPopupModal);
+        mono_add_internal_call("Engine.ImGui::BeginPopup", (const void*)&EditorImGui_BeginPopup);
         mono_add_internal_call("Engine.ImGui::EndPopup", (const void*)&EditorImGui_EndPopup);
         mono_add_internal_call("Engine.ImGui::CloseCurrentPopup", (const void*)&EditorImGui_CloseCurrentPopup);
         mono_add_internal_call("Engine.ImGui::SameLine", (const void*)&EditorImGui_SameLine);
@@ -701,6 +706,8 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.ImGui::InputFloat", (const void*)&EditorImGui_InputFloat);
         mono_add_internal_call("Engine.ImGui::Separator", (const void*)&EditorImGui_Separator);
         mono_add_internal_call("Engine.ImGui::Checkbox", (const void*)&EditorImGui_Checkbox);
+        mono_add_internal_call("Engine.ImGui::ColorButton", (const void*)&EditorImGui_ColorButton);
+        mono_add_internal_call("Engine.ImGui::ColorPicker4", (const void*)&EditorImGui_ColorPicker4);
         mono_add_internal_call("Engine.ImGui::IsWindowHovered", (const void*)&EditorImGui_IsWindowHovered);
         mono_add_internal_call("Engine.ImGui::GetWantCaptureMouse", (const void*)&EditorImGui_GetWantCaptureMouse);
         mono_add_internal_call("Engine.ImGui::GetWantCaptureKeyboard", (const void*)&EditorImGui_GetWantCaptureKeyboard);

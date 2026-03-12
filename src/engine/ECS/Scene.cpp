@@ -13,7 +13,7 @@
 
 namespace
 {
-    constexpr std::uint32_t kSceneFileVersion = 3;
+    constexpr std::uint32_t kSceneFileVersion = 4;
 
     enum ComponentFlags : std::uint8_t
     {
@@ -41,6 +41,7 @@ namespace
         bool hasSprite = false;
         std::uint64_t spriteTextureAssetHandle = 0;
         std::string spriteTexturePath;
+        std::uint32_t spriteFallbackColor = 0xFFFFFFFF;
         bool spriteCentered = true;
         float spriteOffsetX = 0.0f;
         float spriteOffsetY = 0.0f;
@@ -311,6 +312,7 @@ namespace
                 persisted.hasSprite = true;
                 persisted.spriteTextureAssetHandle = sprite->textureAssetHandle;
                 persisted.spriteTexturePath = sprite->textureAssetPath;
+                persisted.spriteFallbackColor = sprite->fallbackColor;
                 persisted.spriteCentered = sprite->centered;
                 persisted.spriteOffsetX = sprite->offsetX;
                 persisted.spriteOffsetY = sprite->offsetY;
@@ -662,6 +664,7 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             {
                 WriteBinary(output, entity.spriteTextureAssetHandle);
                 WriteStringBinary(output, entity.spriteTexturePath);
+                WriteBinary(output, entity.spriteFallbackColor);
                 const std::uint8_t centered = entity.spriteCentered ? 1 : 0;
                 WriteBinary(output, centered);
                 WriteBinary(output, entity.spriteOffsetX);
@@ -753,6 +756,7 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             rapidjson::Value texturePathValue;
             texturePathValue.SetString(entity.spriteTexturePath.c_str(), static_cast<rapidjson::SizeType>(entity.spriteTexturePath.size()), allocator);
             spriteObject.AddMember("textureAssetPath", texturePathValue, allocator);
+            spriteObject.AddMember("fallbackColor", entity.spriteFallbackColor, allocator);
             spriteObject.AddMember("centered", entity.spriteCentered, allocator);
             spriteObject.AddMember("offsetX", entity.spriteOffsetX, allocator);
             spriteObject.AddMember("offsetY", entity.spriteOffsetY, allocator);
@@ -944,6 +948,15 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
 
                 if (fileVersion >= 3)
                 {
+                    if (fileVersion >= 4)
+                    {
+                        if (!ReadBinary(input, entity.spriteFallbackColor))
+                        {
+                            m_lastIoError = "Failed to read binary sprite fallback color.";
+                            return false;
+                        }
+                    }
+
                     std::uint8_t centered = 0;
                     std::uint8_t flipH = 0;
                     std::uint8_t flipV = 0;
@@ -1139,6 +1152,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                     entity.hasSprite = true;
                     if (!ReadOptionalUInt64(sprite, "textureAssetHandle", entity.spriteTextureAssetHandle, parseError) ||
                         !ReadOptionalString(sprite, "textureAssetPath", entity.spriteTexturePath, parseError) ||
+                        !ReadOptionalUInt32(sprite, "fallbackColor", entity.spriteFallbackColor, parseError) ||
                         !ReadOptionalBool(sprite, "centered", entity.spriteCentered, parseError) ||
                         !ReadOptionalFloat(sprite, "offsetX", entity.spriteOffsetX, parseError) ||
                         !ReadOptionalFloat(sprite, "offsetY", entity.spriteOffsetY, parseError) ||
@@ -1241,6 +1255,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             sprite.texture = nullptr;
             sprite.textureAssetHandle = persisted.spriteTextureAssetHandle;
             sprite.textureAssetPath = persisted.spriteTexturePath;
+            sprite.fallbackColor = persisted.spriteFallbackColor;
             sprite.centered = persisted.spriteCentered;
             sprite.offsetX = persisted.spriteOffsetX;
             sprite.offsetY = persisted.spriteOffsetY;

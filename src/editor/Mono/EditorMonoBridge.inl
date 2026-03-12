@@ -575,6 +575,34 @@ static void RuntimeSprite_SetTexturePath(std::uint32_t entityId, MonoString* tex
     sprite->texture = nullptr;
 }
 
+static std::uint32_t RuntimeSprite_GetFallbackColor(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForSpriteApi();
+    if (!scene)
+        return 0xFFFFFFFFu;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const SpriteComponent* sprite = scene->TryGetSprite(entity);
+    if (!sprite)
+        return 0xFFFFFFFFu;
+
+    return sprite->fallbackColor;
+}
+
+static void RuntimeSprite_SetFallbackColor(std::uint32_t entityId, std::uint32_t color)
+{
+    Scene* scene = GetSceneContextForSpriteApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    SpriteComponent* sprite = scene->TryGetSprite(entity);
+    if (!sprite)
+        return;
+
+    sprite->fallbackColor = color;
+}
+
 static bool RuntimeSprite_GetSettings(std::uint32_t entityId,
                                       bool* centered,
                                       float* offsetX,
@@ -2664,6 +2692,32 @@ static void EditorBridge_SetSpriteTexturePath(std::uint32_t entityId, MonoString
     sprite->texture = nullptr;
 }
 
+static std::uint32_t EditorBridge_GetSpriteFallbackColor(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return 0xFFFFFFFFu;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const SpriteComponent* sprite = g_editorSceneContext->TryGetSprite(entity);
+    if (!sprite)
+        return 0xFFFFFFFFu;
+
+    return sprite->fallbackColor;
+}
+
+static void EditorBridge_SetSpriteFallbackColor(std::uint32_t entityId, std::uint32_t color)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    SpriteComponent* sprite = g_editorSceneContext->TryGetSprite(entity);
+    if (!sprite)
+        return;
+
+    sprite->fallbackColor = color;
+}
+
 static bool EditorBridge_GetSpriteSettings(std::uint32_t entityId,
                                            bool* centered,
                                            float* offsetX,
@@ -2919,6 +2973,16 @@ static bool EditorImGui_BeginPopupModal(MonoString* popupId)
     return ImGui::BeginPopupModal(popupName, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
 }
 
+static bool EditorImGui_BeginPopup(MonoString* popupId)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string value = MonoStringToUtf8(popupId);
+    const char* popupName = value.empty() ? "Popup" : value.c_str();
+    return ImGui::BeginPopup(popupName);
+}
+
 static void EditorImGui_EndPopup()
 {
     if (ImGui::GetCurrentContext())
@@ -3008,6 +3072,72 @@ static bool EditorImGui_Checkbox(MonoString* label, MonoBoolean* value)
     bool v = (*value != 0);
     bool changed = ImGui::Checkbox(checkLabel, &v);
     *value = v ? 1 : 0;
+    return changed;
+}
+
+static bool EditorImGui_ColorButton(MonoString* id, float r, float g, float b, float a)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string value = MonoStringToUtf8(id);
+    const char* buttonId = value.empty() ? "##ColorButton" : value.c_str();
+
+    if (r < 0.0f)
+        r = 0.0f;
+    else if (r > 1.0f)
+        r = 1.0f;
+
+    if (g < 0.0f)
+        g = 0.0f;
+    else if (g > 1.0f)
+        g = 1.0f;
+
+    if (b < 0.0f)
+        b = 0.0f;
+    else if (b > 1.0f)
+        b = 1.0f;
+
+    if (a < 0.0f)
+        a = 0.0f;
+    else if (a > 1.0f)
+        a = 1.0f;
+
+    return ImGui::ColorButton(buttonId,
+                              ImVec4(r, g, b, a),
+                              ImGuiColorEditFlags_NoTooltip,
+                              ImVec2(30.0f, 16.0f));
+}
+
+static bool EditorImGui_ColorPicker4(MonoString* label,
+                                     float* r,
+                                     float* g,
+                                     float* b,
+                                     float* a,
+                                     bool showAlpha)
+{
+    if (!ImGui::GetCurrentContext() || !r || !g || !b || !a)
+        return false;
+
+    const std::string value = MonoStringToUtf8(label);
+    const char* pickerLabel = value.empty() ? "##ColorPicker" : value.c_str();
+
+    float color[4] = { *r, *g, *b, *a };
+    int flags = ImGuiColorEditFlags_DisplayRGB |
+        ImGuiColorEditFlags_DisplayHex |
+        ImGuiColorEditFlags_Uint8 |
+        ImGuiColorEditFlags_PickerHueWheel;
+
+    if (!showAlpha)
+        flags |= ImGuiColorEditFlags_NoAlpha;
+
+    const bool changed = ImGui::ColorPicker4(pickerLabel, color, flags);
+
+    *r = color[0];
+    *g = color[1];
+    *b = color[2];
+    *a = showAlpha ? color[3] : 1.0f;
+
     return changed;
 }
 

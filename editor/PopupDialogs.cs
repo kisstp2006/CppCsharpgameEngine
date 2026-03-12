@@ -13,6 +13,8 @@ namespace EngineEditor
         private static string _newProjectName = "NewProject";
         private static string _newProjectLocation = string.Empty;
         private static int _newProjectTemplateIndex = 0;
+        private static bool _generateStarterContent = true;
+        private static bool _generateStarterScene = true;
         private static bool _openAfterCreate = true;
         private static string _pendingDeleteProjectPath = string.Empty;
 
@@ -63,6 +65,17 @@ namespace EngineEditor
                     _newProjectTemplateIndex = i;
             }
 
+            ImGui.Checkbox("Generate starter content", ref _generateStarterContent);
+            if (_generateStarterContent)
+            {
+                ImGui.Checkbox("Generate starter demo scene (JSON)", ref _generateStarterScene);
+            }
+            else
+            {
+                _generateStarterScene = false;
+                ImGui.Text("Starter scene generation is disabled when starter content is off.");
+            }
+
             ImGui.Checkbox("Open project after creation", ref _openAfterCreate);
 
             if (ImGui.Button("Create Project"))
@@ -85,7 +98,10 @@ namespace EngineEditor
                         Directory.CreateDirectory(location);
                         string[] templates_copy = ProjectCodeGenerator.GetProjectTemplates();
                         string templateName = templates_copy[_newProjectTemplateIndex];
-                        ProjectOperations.CreateProject(Path.Combine(location, projectName), templateName);
+                        ProjectOperations.CreateProject(Path.Combine(location, projectName),
+                                                        templateName,
+                                                        _generateStarterContent,
+                                                        _generateStarterScene);
                         ImGui.CloseCurrentPopup();
                         if (_openAfterCreate)
                             EditorHost.SetShowProjectManagerView(false);

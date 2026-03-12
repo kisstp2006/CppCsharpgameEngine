@@ -29,6 +29,14 @@ public:
                     float uvMinY,
                     float uvMaxX,
                     float uvMaxY);
+    void DrawSolidSprite(float x,
+                         float y,
+                         float width,
+                         float height,
+                         float r,
+                         float g,
+                         float b,
+                         float a);
 
     int GetViewWidth() const;
     int GetViewHeight() const;

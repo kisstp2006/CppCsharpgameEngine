@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 
 namespace EngineEditor
 {
@@ -7,9 +8,15 @@ namespace EngineEditor
     {
         private const string GeneratedScriptTargetFramework = "net48";
         private const int GeneratedProjectFileVersion = 3;
+        private const int GeneratedSceneFileVersion = 4;
         private const string GeneratedEngineVersion = "2026.03";
         private const string CSharpProjectTypeGuid = "{9A19103F-16F7-4668-BE54-9A1E7A4F7556}";
         private const string LegacyScriptTemplateStartMarker = "OnEngineStart called. Template:";
+        private const string TemplateDebugMonitor = "Debug Monitor";
+        private const string TemplateSpriteInputController = "Sprite Input Controller";
+        private const string TemplateEventLogger = "Event Logger";
+        private const string TemplateMinimalEmpty = "Minimal Empty";
+        private const string TemplateInputDebugHybrid = "Input + Debug Hybrid";
 
         private sealed class ProjectGenerationResult
         {
@@ -21,10 +28,11 @@ namespace EngineEditor
 
         private static readonly string[] ProjectTemplates = new string[]
         {
-            "Core 2D",
-            "Universal 2D",
-            "Universal 3D",
-            "Sample",
+            TemplateDebugMonitor,
+            TemplateSpriteInputController,
+            TemplateEventLogger,
+            TemplateMinimalEmpty,
+            TemplateInputDebugHybrid,
         };
 
         public static string[] GetProjectTemplates()
@@ -32,7 +40,11 @@ namespace EngineEditor
             return ProjectTemplates;
         }
 
-        public static void GenerateProject(string projectRootPath, string projectName, string templateName)
+        public static void GenerateProject(string projectRootPath,
+                                           string projectName,
+                                           string templateName,
+                                           bool generateStarterContent,
+                                           bool generateStarterScene)
         {
             Directory.CreateDirectory(projectRootPath);
             Directory.CreateDirectory(Path.Combine(projectRootPath, "Assets"));
@@ -40,9 +52,16 @@ namespace EngineEditor
             Directory.CreateDirectory(Path.Combine(projectRootPath, "Scenes"));
 
             string engineApiProjectAbsolutePath = ResolveEngineApiProjectPath();
-            var generation = GenerateManagedProjectArtifacts(projectRootPath, projectName, templateName, engineApiProjectAbsolutePath);
+            var generation = GenerateManagedProjectArtifacts(projectRootPath,
+                                                             projectName,
+                                                             templateName,
+                                                             engineApiProjectAbsolutePath,
+                                                             generateStarterContent);
             string json = BuildProjectJsonContent(projectName, templateName, generation);
             File.WriteAllText(Path.Combine(projectRootPath, "project.json"), json);
+
+            if (generateStarterScene)
+                WriteStarterSceneTemplate(projectRootPath, templateName, generateStarterContent);
         }
 
         public static bool TryUpgradeLegacyScriptTemplate(string projectRootPath)
@@ -92,7 +111,11 @@ namespace EngineEditor
             }
         }
 
-        private static ProjectGenerationResult GenerateManagedProjectArtifacts(string projectRootPath, string projectName, string templateName, string engineApiProjectAbsolutePath)
+        private static ProjectGenerationResult GenerateManagedProjectArtifacts(string projectRootPath,
+                                                                               string projectName,
+                                                                               string templateName,
+                                                                               string engineApiProjectAbsolutePath,
+                                                                               bool generateStarterContent)
         {
             string csprojFileName = projectName + ".csproj";
             string slnFileName = projectName + ".sln";
@@ -114,9 +137,12 @@ namespace EngineEditor
             string slnContent = BuildSlnContent(projectName, csprojFileName, projectGuid, engineApiProjectRelativePath, engineApiProjectGuid);
             File.WriteAllText(slnPath, slnContent);
 
-            string scriptTemplatePath = Path.Combine(projectRootPath, "Scripts", "ScriptEntry.cs");
-            if (!File.Exists(scriptTemplatePath))
-                WriteInitialScriptTemplate(scriptTemplatePath, templateName);
+            if (generateStarterContent)
+            {
+                string scriptTemplatePath = Path.Combine(projectRootPath, "Scripts", ResolveTemplateScriptFileName(templateName));
+                if (!File.Exists(scriptTemplatePath))
+                    WriteInitialScriptTemplate(scriptTemplatePath, templateName);
+            }
 
             return new ProjectGenerationResult
             {
@@ -230,47 +256,342 @@ namespace EngineEditor
 
         private static string BuildInitialScriptTemplateContent(string templateName)
         {
-            return "using Engine;\n\n"
-                + "namespace GameScripts\n"
-                + "{\n"
-               + "    public sealed class SpinnerScript : MonoBehaviour\n"
-               + "    {\n"
-               + "        private float _logAccumulator;\n\n"
-               + "        // Called once when the script instance is created.\n"
-               + "        protected override void Start()\n"
-               + "        {\n"
-               + "            Debug.Log(\"[GameScripts] SpinnerScript started on '\" + gameObject.name + \"'.\");\n"
-               + "        }\n\n"
-               + "        // Called every frame while the script is enabled.\n"
-               + "        protected override void Update()\n"
-               + "        {\n"
-               + "            _logAccumulator += Time.deltaTime;\n"
-               + "            if (_logAccumulator >= 1.0f)\n"
-               + "            {\n"
-               + "                _logAccumulator = 0.0f;\n"
-               + "                Debug.Log(\"[GameScripts] SpinnerScript Update tick on '\" + gameObject.name + \"'.\");\n"
-               + "            }\n"
-               + "        }\n"
-               + "    }\n"
-               + "}\n";
+            string resolvedTemplate = ResolveTemplateName(templateName);
+            switch (resolvedTemplate)
+            {
+                case TemplateDebugMonitor:
+                    return BuildDebugMonitorScriptTemplate();
+                case TemplateSpriteInputController:
+                    return BuildSpriteInputControllerScriptTemplate();
+                case TemplateEventLogger:
+                    return BuildEventLoggerScriptTemplate();
+                case TemplateMinimalEmpty:
+                    return BuildMinimalEmptyScriptTemplate();
+                case TemplateInputDebugHybrid:
+                    return BuildInputDebugHybridScriptTemplate();
+                default:
+                    return BuildDebugMonitorScriptTemplate();
+            }
         }
 
         private static string ExtractTemplateNameFromLegacyScript(string scriptContent)
         {
             if (string.IsNullOrWhiteSpace(scriptContent))
-                return "Universal 2D";
+                return TemplateDebugMonitor;
 
             int markerStart = scriptContent.IndexOf(LegacyScriptTemplateStartMarker, StringComparison.Ordinal);
             if (markerStart < 0)
-                return "Universal 2D";
+                return TemplateDebugMonitor;
 
             int valueStart = markerStart + LegacyScriptTemplateStartMarker.Length;
             int valueEnd = scriptContent.IndexOf('.', valueStart);
             if (valueEnd <= valueStart)
-                return "Universal 2D";
+                return TemplateDebugMonitor;
 
             string parsed = scriptContent.Substring(valueStart, valueEnd - valueStart).Trim();
-            return string.IsNullOrWhiteSpace(parsed) ? "Universal 2D" : parsed;
+            return string.IsNullOrWhiteSpace(parsed) ? TemplateDebugMonitor : parsed;
+        }
+
+        private static void WriteStarterSceneTemplate(string projectRootPath,
+                                                      string templateName,
+                                                      bool includeScriptComponent)
+        {
+            string scenePath = Path.Combine(projectRootPath, "Scenes", "Main.scene.json");
+            if (File.Exists(scenePath))
+                return;
+
+            string sceneJson = BuildStarterSceneJsonContent(templateName, includeScriptComponent);
+            File.WriteAllText(scenePath, sceneJson);
+        }
+
+        private static string BuildStarterSceneJsonContent(string templateName, bool includeScriptComponent)
+        {
+            string resolvedTemplate = ResolveTemplateName(templateName);
+            string actorName = ResolveTemplateActorName(resolvedTemplate);
+            string scriptClassName = ResolveTemplateScriptClassName(resolvedTemplate);
+            bool includeSprite = resolvedTemplate == TemplateSpriteInputController ||
+                                 resolvedTemplate == TemplateInputDebugHybrid;
+
+            var json = new StringBuilder();
+            json.Append("{\n");
+            json.Append("  \"sceneVersion\": ").Append(GeneratedSceneFileVersion).Append(",\n");
+            json.Append("  \"entities\": [\n");
+            json.Append("    {\n");
+            json.Append("      \"id\": 1,\n");
+            json.Append("      \"name\": \"Main Camera\",\n");
+            json.Append("      \"tag\": \"Untagged\",\n");
+            json.Append("      \"layer\": 0,\n");
+            json.Append("      \"active\": true,\n");
+            json.Append("      \"static\": false,\n");
+            json.Append("      \"components\": {\n");
+            json.Append("        \"transform\": {\n");
+            json.Append("          \"x\": 0.0,\n");
+            json.Append("          \"y\": 0.0,\n");
+            json.Append("          \"width\": 100.0,\n");
+            json.Append("          \"height\": 100.0\n");
+            json.Append("        },\n");
+            json.Append("        \"camera\": {\n");
+            json.Append("          \"x\": 0.0,\n");
+            json.Append("          \"y\": 0.0,\n");
+            json.Append("          \"zoom\": 1.0\n");
+            json.Append("        }\n");
+            json.Append("      }\n");
+            json.Append("    },\n");
+            json.Append("    {\n");
+            json.Append("      \"id\": 2,\n");
+            json.Append("      \"name\": \"").Append(StringUtilities.EscapeJson(actorName)).Append("\",\n");
+            json.Append("      \"tag\": \"Untagged\",\n");
+            json.Append("      \"layer\": 0,\n");
+            json.Append("      \"active\": true,\n");
+            json.Append("      \"static\": false,\n");
+            json.Append("      \"components\": {\n");
+            json.Append("        \"transform\": {\n");
+            json.Append("          \"x\": 0.0,\n");
+            json.Append("          \"y\": 0.0,\n");
+            json.Append("          \"width\": 96.0,\n");
+            json.Append("          \"height\": 96.0\n");
+            json.Append("        }");
+
+            if (includeSprite)
+            {
+                json.Append(",\n");
+                json.Append("        \"sprite\": {\n");
+                json.Append("          \"textureAssetHandle\": 0,\n");
+                json.Append("          \"textureAssetPath\": \"\",\n");
+                json.Append("          \"centered\": true,\n");
+                json.Append("          \"offsetX\": 0.0,\n");
+                json.Append("          \"offsetY\": 0.0,\n");
+                json.Append("          \"flipH\": false,\n");
+                json.Append("          \"flipV\": false,\n");
+                json.Append("          \"hframes\": 1,\n");
+                json.Append("          \"vframes\": 1,\n");
+                json.Append("          \"frame\": 0,\n");
+                json.Append("          \"regionEnabled\": false,\n");
+                json.Append("          \"regionX\": 0.0,\n");
+                json.Append("          \"regionY\": 0.0,\n");
+                json.Append("          \"regionWidth\": 0.0,\n");
+                json.Append("          \"regionHeight\": 0.0,\n");
+                json.Append("          \"fallbackColor\": 4294967295\n");
+                json.Append("        }");
+            }
+
+            if (includeScriptComponent)
+            {
+                json.Append(",\n");
+                json.Append("        \"script\": {\n");
+                json.Append("          \"classNamespace\": \"GameScripts\",\n");
+                json.Append("          \"className\": \"").Append(StringUtilities.EscapeJson(scriptClassName)).Append("\",\n");
+                json.Append("          \"enabled\": true,\n");
+                json.Append("          \"serializedFieldState\": \"\"\n");
+                json.Append("        }");
+            }
+
+            json.Append("\n");
+            json.Append("      }\n");
+            json.Append("    }\n");
+            json.Append("  ]\n");
+            json.Append("}\n");
+
+            return json.ToString();
+        }
+
+        private static string ResolveTemplateName(string templateName)
+        {
+            if (string.IsNullOrWhiteSpace(templateName))
+                return TemplateDebugMonitor;
+
+            for (int i = 0; i < ProjectTemplates.Length; ++i)
+            {
+                if (string.Equals(ProjectTemplates[i], templateName, StringComparison.OrdinalIgnoreCase))
+                    return ProjectTemplates[i];
+            }
+
+            return TemplateDebugMonitor;
+        }
+
+        private static string ResolveTemplateActorName(string templateName)
+        {
+            switch (ResolveTemplateName(templateName))
+            {
+                case TemplateSpriteInputController:
+                    return "Player";
+                case TemplateEventLogger:
+                    return "EventLogger";
+                case TemplateMinimalEmpty:
+                    return "EmptyActor";
+                case TemplateInputDebugHybrid:
+                    return "HybridActor";
+                case TemplateDebugMonitor:
+                default:
+                    return "DebugMonitor";
+            }
+        }
+
+        private static string ResolveTemplateScriptClassName(string templateName)
+        {
+            switch (ResolveTemplateName(templateName))
+            {
+                case TemplateSpriteInputController:
+                    return "SpriteInputControllerScript";
+                case TemplateEventLogger:
+                    return "EventLoggerScript";
+                case TemplateMinimalEmpty:
+                    return "MinimalEmptyScript";
+                case TemplateInputDebugHybrid:
+                    return "InputDebugHybridScript";
+                case TemplateDebugMonitor:
+                default:
+                    return "DebugMonitorScript";
+            }
+        }
+
+        private static string ResolveTemplateScriptFileName(string templateName)
+        {
+            return ResolveTemplateScriptClassName(templateName) + ".cs";
+        }
+
+        private static string BuildDebugMonitorScriptTemplate()
+        {
+            return "using Engine;\n\n"
+                + "namespace GameScripts\n"
+                + "{\n"
+                + "    public sealed class DebugMonitorScript : MonoBehaviour\n"
+                + "    {\n"
+                + "        private float _sampleSeconds;\n"
+                + "        private int _sampleFrames;\n\n"
+                + "        protected override void Start()\n"
+                + "        {\n"
+                + "            Debug.Log(\"[Starter] Debug monitor initialized on '\" + gameObject.name + \"'.\");\n"
+                + "        }\n\n"
+                + "        protected override void Update()\n"
+                + "        {\n"
+                + "            _sampleSeconds += Time.deltaTime;\n"
+                + "            ++_sampleFrames;\n\n"
+                + "            if (_sampleSeconds >= 1.0f)\n"
+                + "            {\n"
+                + "                float fps = _sampleFrames / _sampleSeconds;\n"
+                + "                Debug.Log(\"[Starter] FPS: \" + fps.ToString(\"0.0\"));\n"
+                + "                _sampleSeconds = 0.0f;\n"
+                + "                _sampleFrames = 0;\n"
+                + "            }\n"
+                + "        }\n"
+                + "    }\n"
+                + "}\n";
+        }
+
+        private static string BuildSpriteInputControllerScriptTemplate()
+        {
+            return "using Engine;\n\n"
+                + "namespace GameScripts\n"
+                + "{\n"
+                + "    public sealed class SpriteInputControllerScript : MonoBehaviour\n"
+                + "    {\n"
+                + "        private float _speed = 260.0f;\n\n"
+                + "        protected override void Start()\n"
+                + "        {\n"
+                + "            Debug.Log(\"[Starter] WASD movement is active for '\" + gameObject.name + \"'.\");\n"
+                + "        }\n\n"
+                + "        protected override void Update()\n"
+                + "        {\n"
+                + "            Vector3 move = new Vector3(0.0f, 0.0f, 0.0f);\n"
+                + "            if (Input.GetKey(KeyCode.A))\n"
+                + "                move.x -= 1.0f;\n"
+                + "            if (Input.GetKey(KeyCode.D))\n"
+                + "                move.x += 1.0f;\n"
+                + "            if (Input.GetKey(KeyCode.S))\n"
+                + "                move.y -= 1.0f;\n"
+                + "            if (Input.GetKey(KeyCode.W))\n"
+                + "                move.y += 1.0f;\n\n"
+                + "            if (move.x == 0.0f && move.y == 0.0f)\n"
+                + "                return;\n\n"
+                + "            Vector3 position = transform.position;\n"
+                + "            position.x += move.x * _speed * Time.deltaTime;\n"
+                + "            position.y += move.y * _speed * Time.deltaTime;\n"
+                + "            transform.position = position;\n"
+                + "        }\n"
+                + "    }\n"
+                + "}\n";
+        }
+
+        private static string BuildEventLoggerScriptTemplate()
+        {
+            return "using Engine;\n\n"
+                + "namespace GameScripts\n"
+                + "{\n"
+                + "    public sealed class EventLoggerScript : MonoBehaviour\n"
+                + "    {\n"
+                + "        protected override void Start()\n"
+                + "        {\n"
+                + "            Debug.Log(\"[Starter] Start on '\" + gameObject.name + \"'.\");\n"
+                + "        }\n\n"
+                + "        protected override void OnEnable()\n"
+                + "        {\n"
+                + "            Debug.Log(\"[Starter] OnEnable on '\" + gameObject.name + \"'.\");\n"
+                + "        }\n\n"
+                + "        protected override void OnDisable()\n"
+                + "        {\n"
+                + "            Debug.Log(\"[Starter] OnDisable on '\" + gameObject.name + \"'.\");\n"
+                + "        }\n\n"
+                + "        protected override void OnDestroy()\n"
+                + "        {\n"
+                + "            Debug.Log(\"[Starter] OnDestroy on '\" + gameObject.name + \"'.\");\n"
+                + "        }\n"
+                + "    }\n"
+                + "}\n";
+        }
+
+        private static string BuildMinimalEmptyScriptTemplate()
+        {
+            return "using Engine;\n\n"
+                + "namespace GameScripts\n"
+                + "{\n"
+                + "    public sealed class MinimalEmptyScript : MonoBehaviour\n"
+                + "    {\n"
+                + "    }\n"
+                + "}\n";
+        }
+
+        private static string BuildInputDebugHybridScriptTemplate()
+        {
+            return "using Engine;\n\n"
+                + "namespace GameScripts\n"
+                + "{\n"
+                + "    public sealed class InputDebugHybridScript : MonoBehaviour\n"
+                + "    {\n"
+                + "        private float _speed = 220.0f;\n"
+                + "        private float _logTimer;\n\n"
+                + "        protected override void Start()\n"
+                + "        {\n"
+                + "            Debug.Log(\"[Starter] Hybrid input+debug script ready.\");\n"
+                + "        }\n\n"
+                + "        protected override void Update()\n"
+                + "        {\n"
+                + "            Vector3 move = new Vector3(0.0f, 0.0f, 0.0f);\n"
+                + "            if (Input.GetKey(KeyCode.A))\n"
+                + "                move.x -= 1.0f;\n"
+                + "            if (Input.GetKey(KeyCode.D))\n"
+                + "                move.x += 1.0f;\n"
+                + "            if (Input.GetKey(KeyCode.S))\n"
+                + "                move.y -= 1.0f;\n"
+                + "            if (Input.GetKey(KeyCode.W))\n"
+                + "                move.y += 1.0f;\n\n"
+                + "            if (move.x != 0.0f || move.y != 0.0f)\n"
+                + "            {\n"
+                + "                Vector3 position = transform.position;\n"
+                + "                position.x += move.x * _speed * Time.deltaTime;\n"
+                + "                position.y += move.y * _speed * Time.deltaTime;\n"
+                + "                transform.position = position;\n"
+                + "            }\n\n"
+                + "            _logTimer += Time.deltaTime;\n"
+                + "            if (_logTimer >= 1.0f)\n"
+                + "            {\n"
+                + "                _logTimer = 0.0f;\n"
+                + "                Vector3 current = transform.position;\n"
+                + "                Debug.Log(\"[Starter] Position: \" + current.ToString());\n"
+                + "            }\n"
+                + "        }\n"
+                + "    }\n"
+                + "}\n";
         }
     }
 }

@@ -120,7 +120,10 @@ namespace EngineEditor
             }
         }
 
-        public static void CreateProject(string projectPath, string templateName)
+        public static void CreateProject(string projectPath,
+                                         string templateName,
+                                         bool generateStarterContent,
+                                         bool generateStarterScene)
         {
             try
             {
@@ -128,7 +131,11 @@ namespace EngineEditor
                 string finalProjectPath = GetUniqueProjectPath(projectPath);
                 bool resolvedConflict = !string.Equals(finalProjectPath, projectPath, StringComparison.OrdinalIgnoreCase);
 
-                ProjectCodeGenerator.GenerateProject(finalProjectPath, Path.GetFileName(finalProjectPath), templateName);
+                ProjectCodeGenerator.GenerateProject(finalProjectPath,
+                                                    Path.GetFileName(finalProjectPath),
+                                                    templateName,
+                                                    generateStarterContent,
+                                                    generateStarterScene);
 
                 ProjectManager.RefreshProjectList();
                 OpenProject(finalProjectPath);

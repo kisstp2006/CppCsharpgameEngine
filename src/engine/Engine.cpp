@@ -106,6 +106,23 @@ namespace
             return 1.0f;
         return value;
     }
+
+    static float ByteToUnit(std::uint32_t value)
+    {
+        return static_cast<float>(value) / 255.0f;
+    }
+
+    static void UnpackColorRgba32(std::uint32_t rgba,
+                                  float& outR,
+                                  float& outG,
+                                  float& outB,
+                                  float& outA)
+    {
+        outR = ByteToUnit((rgba >> 24) & 0xFFu);
+        outG = ByteToUnit((rgba >> 16) & 0xFFu);
+        outB = ByteToUnit((rgba >> 8) & 0xFFu);
+        outA = ByteToUnit(rgba & 0xFFu);
+    }
 }
 
 Engine::Engine() = default;
@@ -451,16 +468,31 @@ void Engine::Run()
                 const auto& transform = view.get<const TransformComponent>(entity);
                 auto& sprite = m_scene->Registry().get<SpriteComponent>(entity);
 
-                Texture* texture = ResolveSpriteTexture(sprite, m_spriteTextureCache, m_projectContext.get());
-                if (!texture)
-                    continue;
-
                 float drawX = transform.x + sprite.offsetX;
                 float drawY = transform.y + sprite.offsetY;
                 if (sprite.centered)
                 {
                     drawX -= transform.width * 0.5f;
                     drawY -= transform.height * 0.5f;
+                }
+
+                Texture* texture = ResolveSpriteTexture(sprite, m_spriteTextureCache, m_projectContext.get());
+                if (!texture)
+                {
+                    float r = 1.0f;
+                    float g = 1.0f;
+                    float b = 1.0f;
+                    float a = 1.0f;
+                    UnpackColorRgba32(sprite.fallbackColor, r, g, b, a);
+                    m_renderer->DrawSolidSprite(drawX,
+                                                drawY,
+                                                transform.width,
+                                                transform.height,
+                                                r,
+                                                g,
+                                                b,
+                                                a);
+                    continue;
                 }
 
                 const int textureWidth = texture->GetWidth();
