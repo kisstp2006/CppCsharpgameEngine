@@ -178,7 +178,9 @@ static bool TryLoadScriptAssemblyBindings(MonoDomain* domain,
     outBindings.scriptClass = mono_class_from_name(outBindings.image, "GameScripts", "ScriptEntry");
     if (!outBindings.scriptClass)
     {
-        std::cerr << "[Mono] Missing GameScripts.ScriptEntry in: " << loadPathString << std::endl;
+        outBindings.onStart = nullptr;
+        outBindings.onUpdate = nullptr;
+        outBindings.onShutdown = nullptr;
         return true;
     }
 

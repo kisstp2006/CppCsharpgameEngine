@@ -1030,8 +1030,11 @@ namespace EngineEditor
 
         private static Assembly FindLoadedScriptAssembly()
         {
+            string expectedAssemblyName = ResolveExpectedScriptAssemblyName();
+            string activeProjectPath = ProjectOperations.ActiveProjectPath;
             Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
             Assembly selectedAssembly = null;
+            int selectedScore = 0;
 
             for (int i = 0; i < assemblies.Length; ++i)
             {
@@ -1039,12 +1042,99 @@ namespace EngineEditor
                 if (assembly == null || assembly.IsDynamic)
                     continue;
 
-                Type scriptEntry = assembly.GetType("GameScripts.ScriptEntry", false);
-                if (scriptEntry != null)
+                int score = ScoreScriptAssemblyCandidate(assembly, expectedAssemblyName, activeProjectPath);
+                if (score > selectedScore)
+                {
+                    selectedScore = score;
                     selectedAssembly = assembly;
+                }
             }
 
             return selectedAssembly;
+        }
+
+        private static string ResolveExpectedScriptAssemblyName()
+        {
+            ScriptProjectInfo projectInfo = ResolveScriptProjectInfo();
+            if (projectInfo != null && !string.IsNullOrWhiteSpace(projectInfo.ScriptProjectPath))
+                return Path.GetFileNameWithoutExtension(projectInfo.ScriptProjectPath) ?? string.Empty;
+
+            string activeProjectPath = ProjectOperations.ActiveProjectPath;
+            if (!string.IsNullOrWhiteSpace(activeProjectPath))
+                return Path.GetFileName(activeProjectPath) ?? string.Empty;
+
+            return string.Empty;
+        }
+
+        private static int ScoreScriptAssemblyCandidate(Assembly assembly, string expectedAssemblyName, string activeProjectPath)
+        {
+            if (assembly == null)
+                return 0;
+
+            string assemblyName = string.Empty;
+            string assemblyLocation = string.Empty;
+            try
+            {
+                AssemblyName name = assembly.GetName();
+                assemblyName = name != null ? name.Name ?? string.Empty : string.Empty;
+            }
+            catch
+            {
+                assemblyName = string.Empty;
+            }
+
+            try
+            {
+                assemblyLocation = assembly.Location ?? string.Empty;
+            }
+            catch
+            {
+                assemblyLocation = string.Empty;
+            }
+
+            Type[] types = GetAssemblyTypes(assembly);
+            Type monoBehaviourType = typeof(Engine.MonoBehaviour);
+            bool hasMonoBehaviourScript = false;
+            bool hasGameScriptsMonoBehaviourScript = false;
+
+            for (int i = 0; i < types.Length; ++i)
+            {
+                Type type = types[i];
+                if (type == null || !type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
+                    continue;
+
+                if (type == monoBehaviourType)
+                    continue;
+
+                if (!monoBehaviourType.IsAssignableFrom(type))
+                    continue;
+
+                hasMonoBehaviourScript = true;
+                string fullName = type.FullName ?? string.Empty;
+                if (fullName.StartsWith("GameScripts.", StringComparison.Ordinal))
+                    hasGameScriptsMonoBehaviourScript = true;
+            }
+
+            bool hasLegacyScriptEntry = assembly.GetType("GameScripts.ScriptEntry", false) != null;
+
+            int score = 0;
+            if (hasMonoBehaviourScript)
+                score += 40;
+            if (hasGameScriptsMonoBehaviourScript)
+                score += 20;
+            if (hasLegacyScriptEntry)
+                score += 5;
+
+            if (!string.IsNullOrWhiteSpace(expectedAssemblyName)
+                && string.Equals(assemblyName, expectedAssemblyName, StringComparison.OrdinalIgnoreCase))
+                score += 25;
+
+            if (!string.IsNullOrWhiteSpace(activeProjectPath)
+                && !string.IsNullOrWhiteSpace(assemblyLocation)
+                && assemblyLocation.StartsWith(activeProjectPath, StringComparison.OrdinalIgnoreCase))
+                score += 10;
+
+            return score;
         }
 
         private static string BuildAssemblyIdentity(Assembly assembly)

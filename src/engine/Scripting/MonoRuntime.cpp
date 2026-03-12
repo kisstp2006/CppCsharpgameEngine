@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cmath>
 #include <cctype>
+#include <cstring>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
@@ -138,14 +139,17 @@ static void MonoRuntime_InvokeEntityLifecycle(MonoMethod* method, MonoObject* in
     mono_runtime_invoke(method, instanceObject, args, nullptr);
 }
 
-static MonoMethod* MonoRuntime_FindMethodInHierarchy(MonoClass* klass, const char* methodName, int parameterCount)
+static MonoClass* MonoRuntime_FindMonoBehaviourBaseClass(MonoClass* klass)
 {
     MonoClass* current = klass;
     while (current)
     {
-        MonoMethod* method = mono_class_get_method_from_name(current, methodName, parameterCount);
-        if (method)
-            return method;
+        const char* classNamespace = mono_class_get_namespace(current);
+        const char* className = mono_class_get_name(current);
+        if (classNamespace && className
+            && std::strcmp(classNamespace, "Engine") == 0
+            && std::strcmp(className, "MonoBehaviour") == 0)
+            return current;
 
         current = mono_class_get_parent(current);
     }
@@ -1003,6 +1007,15 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
                 continue;
             }
 
+            MonoClass* monoBehaviourBaseClass = MonoRuntime_FindMonoBehaviourBaseClass(klass);
+            if (!monoBehaviourBaseClass)
+            {
+                std::cerr << "[Mono] Script class does not inherit Engine.MonoBehaviour (legacy OnCreate/OnUpdate scripts are unsupported): "
+                          << script.classNamespace << "." << script.className << std::endl;
+                m_impl->entityScripts.erase(instanceIt);
+                continue;
+            }
+
             instance.instance = mono_object_new(m_impl->domain, klass);
             if (!instance.instance)
             {
@@ -1013,11 +1026,20 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
 
             mono_runtime_object_init(instance.instance);
             instance.gcHandle = mono_gchandle_new(instance.instance, true);
-            instance.onCreate = MonoRuntime_FindMethodInHierarchy(klass, "OnCreate", 1);
-            instance.onUpdate = MonoRuntime_FindMethodInHierarchy(klass, "OnUpdate", 2);
-            instance.onEnable = MonoRuntime_FindMethodInHierarchy(klass, "OnEnable", 1);
-            instance.onDisable = MonoRuntime_FindMethodInHierarchy(klass, "OnDisable", 1);
-            instance.onDestroy = MonoRuntime_FindMethodInHierarchy(klass, "OnDestroy", 1);
+            instance.onCreate = mono_class_get_method_from_name(monoBehaviourBaseClass, "OnCreate", 1);
+            instance.onUpdate = mono_class_get_method_from_name(monoBehaviourBaseClass, "OnUpdate", 2);
+            instance.onEnable = mono_class_get_method_from_name(monoBehaviourBaseClass, "OnEnable", 1);
+            instance.onDisable = mono_class_get_method_from_name(monoBehaviourBaseClass, "OnDisable", 1);
+            instance.onDestroy = mono_class_get_method_from_name(monoBehaviourBaseClass, "OnDestroy", 1);
+
+            if (!instance.onCreate || !instance.onUpdate)
+            {
+                std::cerr << "[Mono] Engine.MonoBehaviour bridge methods are missing (OnCreate/OnUpdate). Check EngineManagedApi version." << std::endl;
+                MonoRuntime_TeardownScriptInstance(entityId, instance);
+                m_impl->entityScripts.erase(instanceIt);
+                continue;
+            }
+
             instance.classNamespace = script.classNamespace;
             instance.className = script.className;
 

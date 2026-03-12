@@ -108,7 +108,7 @@ Engine.DebugDraw.FilledCircle(360f, 200f, 24f, 0.2f, 0.8f, 1f, 0.5f, 24, 0.5f);
 - `CreateEntity()`, `DestroyEntity(entity)`, `IsValid(entity)`
 - `AddComponent<T>()`, `HasComponent<T>()`, `TryGetComponent<T>()`, `RemoveComponent<T>()`
 - Typed helpers for built-in components:
-	`AddTransform`, `AddSprite`, `AddScript`, `TryGetTransform`, `TryGetSprite`, `TryGetScript`
+  `AddTransform`, `AddSprite`, `AddScript`, `TryGetTransform`, `TryGetSprite`, `TryGetScript`
 
 Quick example:
 
@@ -134,11 +134,19 @@ The engine now supports an ECS `ScriptComponent` that can be attached to entitie
 - `className` (default: `SpinnerScript`)
 - `enabled`
 
-At runtime (when Mono is available and `GameScripts.dll` is present), the engine creates one C# object instance per scripted entity and calls:
+At runtime (when Mono is available and `GameScripts.dll` is present), the engine creates one C# object instance per scripted entity.
 
-- `OnCreate(uint entityId)` once
-- `OnUpdate(uint entityId, float deltaTime)` every frame
-- `OnDestroy(uint entityId)` on removal/shutdown
+Scripts must inherit from `Engine.MonoBehaviour`, and user lifecycle overrides are Unity-like:
+
+- `Start()` once
+- `Update()` every frame
+- `OnEnable()` when enabled
+- `OnDisable()` when disabled
+- `OnDestroy()` on removal/shutdown
+
+`GameScripts.ScriptEntry` is optional. If present, engine-level hooks (`OnEngineStart/OnEngineUpdate/OnEngineShutdown`) are called; if omitted, entity scripts still run normally.
+
+Legacy per-script public methods like `OnCreate(uint entityId)` / `OnUpdate(uint,float)` on script classes are no longer supported as a user API.
 
 The sample script assembly project is under `scripts/` and builds to:
 

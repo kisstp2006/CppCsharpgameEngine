@@ -9,6 +9,7 @@ namespace EngineEditor
         private const int GeneratedProjectFileVersion = 3;
         private const string GeneratedEngineVersion = "2026.03";
         private const string CSharpProjectTypeGuid = "{9A19103F-16F7-4668-BE54-9A1E7A4F7556}";
+        private const string LegacyScriptTemplateStartMarker = "OnEngineStart called. Template:";
 
         private sealed class ProjectGenerationResult
         {
@@ -42,6 +43,53 @@ namespace EngineEditor
             var generation = GenerateManagedProjectArtifacts(projectRootPath, projectName, templateName, engineApiProjectAbsolutePath);
             string json = BuildProjectJsonContent(projectName, templateName, generation);
             File.WriteAllText(Path.Combine(projectRootPath, "project.json"), json);
+        }
+
+        public static bool TryUpgradeLegacyScriptTemplate(string projectRootPath)
+        {
+            if (string.IsNullOrWhiteSpace(projectRootPath) || !Directory.Exists(projectRootPath))
+                return false;
+
+            string scriptTemplatePath = Path.Combine(projectRootPath, "Scripts", "ScriptEntry.cs");
+            if (!File.Exists(scriptTemplatePath))
+                return false;
+
+            string existingContent;
+            try
+            {
+                existingContent = File.ReadAllText(scriptTemplatePath);
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(existingContent))
+                return false;
+
+            bool hasLegacySpinner = existingContent.IndexOf("public sealed class SpinnerScript", StringComparison.Ordinal) >= 0;
+            bool hasLegacyOnCreate = existingContent.IndexOf("public void OnCreate(uint entityId)", StringComparison.Ordinal) >= 0;
+            bool hasMonoBehaviourBase = existingContent.IndexOf(": MonoBehaviour", StringComparison.Ordinal) >= 0;
+
+            if (!(hasLegacySpinner && hasLegacyOnCreate) || hasMonoBehaviourBase)
+                return false;
+
+            string templateName = ExtractTemplateNameFromLegacyScript(existingContent);
+            string updatedContent = BuildInitialScriptTemplateContent(templateName);
+
+            try
+            {
+                string backupPath = scriptTemplatePath + ".legacy.bak";
+                if (!File.Exists(backupPath))
+                    File.WriteAllText(backupPath, existingContent);
+
+                File.WriteAllText(scriptTemplatePath, updatedContent);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static ProjectGenerationResult GenerateManagedProjectArtifacts(string projectRootPath, string projectName, string templateName, string engineApiProjectAbsolutePath)
@@ -174,56 +222,55 @@ namespace EngineEditor
 
         private static void WriteInitialScriptTemplate(string scriptTemplatePath, string templateName)
         {
-            string content = "using Engine;\n\n" +
-                             "namespace GameScripts\n" +
-                             "{\n" +
-                             "    public static class ScriptEntry\n" +
-                             "    {\n" +
-                             "        public static void OnEngineStart()\n" +
-                             "        {\n" +
-                             "            Debug.Log(\"[GameScripts] OnEngineStart called. Template: " + StringUtilities.EscapeCSharpString(templateName) + ".\");\n" +
-                             "        }\n\n" +
-                             "        public static void OnEngineUpdate(float deltaTime)\n" +
-                             "        {\n" +
-                             "            _ = deltaTime;\n" +
-                             "        }\n\n" +
-                             "        public static void OnEngineShutdown()\n" +
-                             "        {\n" +
-                             "            Debug.Log(\"[GameScripts] OnEngineShutdown called.\");\n" +
-                             "        }\n" +
-                             "    }\n\n" +
-                             "    public sealed class SpinnerScript : MonoBehaviour\n" +
-                             "    {\n" +
-                             "        public float moveSpeed = 280.0f;\n" +
-                             "        private float _logAccumulator;\n\n" +
-                             "        protected override void Start()\n" +
-                             "        {\n" +
-                             "            Debug.Log(\"[GameScripts] SpinnerScript started on '\" + gameObject.name + \"'.\");\n" +
-                             "        }\n\n" +
-                             "        protected override void Update()\n" +
-                             "        {\n" +
-                             "            float dt = Time.deltaTime;\n" +
-                             "            float moveX = 0.0f;\n" +
-                             "            float moveY = 0.0f;\n\n" +
-                             "            if (Input.GetKey(KeyCode.W)) moveY += moveSpeed * dt;\n" +
-                             "            if (Input.GetKey(KeyCode.S)) moveY -= moveSpeed * dt;\n" +
-                             "            if (Input.GetKey(KeyCode.A)) moveX -= moveSpeed * dt;\n" +
-                             "            if (Input.GetKey(KeyCode.D)) moveX += moveSpeed * dt;\n\n" +
-                             "            if (moveX == 0.0f && moveY == 0.0f)\n" +
-                             "                return;\n\n" +
-                             "            transform.position = transform.position + new Vector3(moveX, moveY, 0.0f);\n" +
-                             "            _logAccumulator += dt;\n" +
-                             "            if (_logAccumulator >= 0.2f)\n" +
-                             "            {\n" +
-                             "                _logAccumulator = 0.0f;\n" +
-                             "                Debug.Log(\"[GameScripts] Spinner moved to \" + transform.position + \".\");\n" +
-                             "            }\n" +
-                             "        }\n" +
-                             "    }\n" +
-                             "}\n";
+            string content = BuildInitialScriptTemplateContent(templateName);
 
             Directory.CreateDirectory(Path.GetDirectoryName(scriptTemplatePath));
             File.WriteAllText(scriptTemplatePath, content);
+        }
+
+        private static string BuildInitialScriptTemplateContent(string templateName)
+        {
+            return "using Engine;\n\n"
+                + "namespace GameScripts\n"
+                + "{\n"
+               + "    public sealed class SpinnerScript : MonoBehaviour\n"
+               + "    {\n"
+               + "        private float _logAccumulator;\n\n"
+               + "        // Called once when the script instance is created.\n"
+               + "        protected override void Start()\n"
+               + "        {\n"
+               + "            Debug.Log(\"[GameScripts] SpinnerScript started on '\" + gameObject.name + \"'.\");\n"
+               + "        }\n\n"
+               + "        // Called every frame while the script is enabled.\n"
+               + "        protected override void Update()\n"
+               + "        {\n"
+               + "            _logAccumulator += Time.deltaTime;\n"
+               + "            if (_logAccumulator >= 1.0f)\n"
+               + "            {\n"
+               + "                _logAccumulator = 0.0f;\n"
+               + "                Debug.Log(\"[GameScripts] SpinnerScript Update tick on '\" + gameObject.name + \"'.\");\n"
+               + "            }\n"
+               + "        }\n"
+               + "    }\n"
+               + "}\n";
+        }
+
+        private static string ExtractTemplateNameFromLegacyScript(string scriptContent)
+        {
+            if (string.IsNullOrWhiteSpace(scriptContent))
+                return "Universal 2D";
+
+            int markerStart = scriptContent.IndexOf(LegacyScriptTemplateStartMarker, StringComparison.Ordinal);
+            if (markerStart < 0)
+                return "Universal 2D";
+
+            int valueStart = markerStart + LegacyScriptTemplateStartMarker.Length;
+            int valueEnd = scriptContent.IndexOf('.', valueStart);
+            if (valueEnd <= valueStart)
+                return "Universal 2D";
+
+            string parsed = scriptContent.Substring(valueStart, valueEnd - valueStart).Trim();
+            return string.IsNullOrWhiteSpace(parsed) ? "Universal 2D" : parsed;
         }
     }
 }

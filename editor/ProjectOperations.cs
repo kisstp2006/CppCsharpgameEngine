@@ -66,7 +66,11 @@ namespace EngineEditor
                 SaveLastProjectPath(normalizedProjectPath);
                 AddRecentProjectPath(normalizedProjectPath);
                 SyncRuntimeScriptPaths(normalizedProjectPath);
+                bool upgradedLegacyTemplate = ProjectCodeGenerator.TryUpgradeLegacyScriptTemplate(normalizedProjectPath);
                 ScriptComponentValidation.RequestImmediateBuildForActiveProject();
+
+                if (upgradedLegacyTemplate)
+                    _statusMessage += " Migrated legacy script template to MonoBehaviour (backup: ScriptEntry.cs.legacy.bak).";
             }
             catch (Exception ex)
             {
