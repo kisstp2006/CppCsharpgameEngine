@@ -136,18 +136,18 @@ static void EngineDebug_ClearLogs()
 
 static Scene* GetSceneContextForSpriteApi()
 {
-    if (g_editorSceneContext)
-        return g_editorSceneContext;
+    if (g_runtimeSceneForScriptApi)
+        return g_runtimeSceneForScriptApi;
 
-    return g_runtimeSceneForScriptApi;
+    return g_editorSceneContext;
 }
 
 static Scene* GetSceneContextForEntityApi()
 {
-    if (g_editorSceneContext)
-        return g_editorSceneContext;
+    if (g_runtimeSceneForScriptApi)
+        return g_runtimeSceneForScriptApi;
 
-    return g_runtimeSceneForScriptApi;
+    return g_editorSceneContext;
 }
 
 static std::uint32_t EntityManager_CreateEntityInternal()

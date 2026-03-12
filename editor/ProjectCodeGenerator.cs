@@ -192,33 +192,32 @@ namespace EngineEditor
                              "            Debug.Log(\"[GameScripts] OnEngineShutdown called.\");\n" +
                              "        }\n" +
                              "    }\n\n" +
-                             "    public sealed class SpinnerScript\n" +
+                             "    public sealed class SpinnerScript : MonoBehaviour\n" +
                              "    {\n" +
-                             "        private float _accumulator;\n\n" +
-                             "        public void OnCreate(uint entityId)\n" +
+                             "        public float moveSpeed = 280.0f;\n" +
+                             "        private float _logAccumulator;\n\n" +
+                             "        protected override void Start()\n" +
                              "        {\n" +
-                             "            Debug.Log(\"[GameScripts] SpinnerScript created for entity \" + entityId + \".\");\n" +
+                             "            Debug.Log(\"[GameScripts] SpinnerScript started on '\" + gameObject.name + \"'.\");\n" +
                              "        }\n\n" +
-                             "        public void OnEnable(uint entityId)\n" +
+                             "        protected override void Update()\n" +
                              "        {\n" +
-                             "            Debug.Log(\"[GameScripts] SpinnerScript enabled for entity \" + entityId + \".\");\n" +
-                             "        }\n\n" +
-                             "        public void OnDisable(uint entityId)\n" +
-                             "        {\n" +
-                             "            Debug.Log(\"[GameScripts] SpinnerScript disabled for entity \" + entityId + \".\");\n" +
-                             "        }\n\n" +
-                             "        public void OnUpdate(uint entityId, float deltaTime)\n" +
-                             "        {\n" +
-                             "            _accumulator += deltaTime;\n" +
-                             "            if (_accumulator >= 2.0f)\n" +
+                             "            float dt = Time.deltaTime;\n" +
+                             "            float moveX = 0.0f;\n" +
+                             "            float moveY = 0.0f;\n\n" +
+                             "            if (Input.GetKey(KeyCode.W)) moveY += moveSpeed * dt;\n" +
+                             "            if (Input.GetKey(KeyCode.S)) moveY -= moveSpeed * dt;\n" +
+                             "            if (Input.GetKey(KeyCode.A)) moveX -= moveSpeed * dt;\n" +
+                             "            if (Input.GetKey(KeyCode.D)) moveX += moveSpeed * dt;\n\n" +
+                             "            if (moveX == 0.0f && moveY == 0.0f)\n" +
+                             "                return;\n\n" +
+                             "            transform.position = transform.position + new Vector3(moveX, moveY, 0.0f);\n" +
+                             "            _logAccumulator += dt;\n" +
+                             "            if (_logAccumulator >= 0.2f)\n" +
                              "            {\n" +
-                             "                _accumulator = 0.0f;\n" +
-                             "                Debug.Log(\"[GameScripts] SpinnerScript update on entity \" + entityId + \".\");\n" +
+                             "                _logAccumulator = 0.0f;\n" +
+                             "                Debug.Log(\"[GameScripts] Spinner moved to \" + transform.position + \".\");\n" +
                              "            }\n" +
-                             "        }\n\n" +
-                             "        public void OnDestroy(uint entityId)\n" +
-                             "        {\n" +
-                             "            Debug.Log(\"[GameScripts] SpinnerScript destroyed for entity \" + entityId + \".\");\n" +
                              "        }\n" +
                              "    }\n" +
                              "}\n";

@@ -29,39 +29,19 @@ namespace GameScripts
         }
     }
 
-    public sealed class SpinnerScript
+    public sealed class SpinnerScript : MonoBehaviour
     {
-        private float _moveSpeed = 200.0f;
+        private float _moveSpeed = 280.0f;
         private float _logAccumulator;
 
-        public void OnCreate(uint entityId)
+        protected override void Start()
         {
-            if (!EntityManager.HasTransform(entityId))
-            {
-                EntityManager.AddTransform(entityId);
-            }
-
-            Debug.Log("[GameScripts] SpinnerScript created for entity " + entityId + ". WASD movement enabled.");
+            Debug.Log("[GameScripts] SpinnerScript started on '" + gameObject.name + "'.");
         }
 
-        public void OnEnable(uint entityId)
+        protected override void Update()
         {
-            Debug.Log("[GameScripts] SpinnerScript enabled for entity " + entityId + ".");
-        }
-
-        public void OnDisable(uint entityId)
-        {
-            Debug.Log("[GameScripts] SpinnerScript disabled for entity " + entityId + ".");
-        }
-
-        public void OnUpdate(uint entityId, float deltaTime)
-        {
-            float x;
-            float y;
-            float width;
-            float height;
-            if (!EntityManager.GetTransform(entityId, out x, out y, out width, out height))
-                return;
+            float deltaTime = Time.deltaTime;
 
             float moveX = 0.0f;
             float moveY = 0.0f;
@@ -78,27 +58,21 @@ namespace GameScripts
             if (moveX == 0.0f && moveY == 0.0f)
                 return;
 
-            EntityManager.SetTransform(entityId, x + moveX, y + moveY, width, height);
+            Vector3 current = transform.position;
+            Vector3 next = current + new Vector3(moveX, moveY, 0.0f);
+            transform.position = next;
 
             _logAccumulator += deltaTime;
             if (_logAccumulator >= 0.2f)
             {
                 _logAccumulator = 0.0f;
-
-                float newX;
-                float newY;
-                float newWidth;
-                float newHeight;
-                if (EntityManager.GetTransform(entityId, out newX, out newY, out newWidth, out newHeight))
-                {
-                    Debug.Log("[GameScripts] Entity " + entityId + " moved to (" + newX + ", " + newY + ")");
-                }
+                Debug.Log("[GameScripts] " + gameObject.name + " moved to " + transform.position + ".");
             }
         }
 
-        public void OnDestroy(uint entityId)
+        protected override void OnDestroy()
         {
-            Debug.Log("[GameScripts] SpinnerScript destroyed for entity " + entityId + ".");
+            Debug.Log("[GameScripts] SpinnerScript destroyed on '" + gameObject.name + "'.");
         }
     }
 }

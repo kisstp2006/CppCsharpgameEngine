@@ -243,25 +243,25 @@ namespace EngineEditor
 
             if (hasOnCreateName && !validOnCreate)
             {
-                result.Message = "OnCreate must be: public void OnCreate(uint entityId).";
+                result.Message = "OnCreate must be: public void OnCreate(uint entityId), or inherit MonoBehaviour and override Start().";
                 return result;
             }
 
             if (hasOnUpdateName && !validOnUpdate)
             {
-                result.Message = "OnUpdate must be: public void OnUpdate(uint entityId, float deltaTime).";
+                result.Message = "OnUpdate must be: public void OnUpdate(uint entityId, float deltaTime), or inherit MonoBehaviour and override Update().";
                 return result;
             }
 
             if (hasOnDestroyName && !validOnDestroy)
             {
-                result.Message = "OnDestroy must be: public void OnDestroy(uint entityId).";
+                result.Message = "OnDestroy must be: public void OnDestroy(uint entityId), or inherit MonoBehaviour and override OnDestroy().";
                 return result;
             }
 
             if (!validOnCreate && !validOnUpdate && !validOnDestroy)
             {
-                result.Message = "Script class must implement at least one valid lifecycle method (OnCreate, OnUpdate, OnDestroy).";
+                result.Message = "Script class must implement a valid lifecycle (OnCreate/OnUpdate/OnDestroy) or inherit MonoBehaviour and override Start/Update/OnDestroy.";
                 return result;
             }
 

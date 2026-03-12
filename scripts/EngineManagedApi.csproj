@@ -15,5 +15,6 @@
     <Compile Include="ImGuizmo.cs" />
     <Compile Include="Input.cs" />
     <Compile Include="Sprite.cs" />
+    <Compile Include="CoreApi.cs" />
   </ItemGroup>
 </Project>

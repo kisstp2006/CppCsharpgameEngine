@@ -1303,6 +1303,7 @@ namespace EngineEditor
                 _selectedPath = Path.GetFullPath(candidatePath);
                 NavigateToFolder(targetFolder, true);
                 RefreshPanelData(projectPath, false);
+                ScriptComponentValidation.RequestImmediateBuildForActiveProject();
                 ProjectOperations.SetStatusMessage("Created script: " + Path.GetFileName(candidatePath));
                 return true;
             }
@@ -1331,26 +1332,26 @@ namespace EngineEditor
             return "using Engine;\n\n"
                   + "namespace GameScripts\n"
                   + "{\n"
-                  + "    public sealed class " + className + "\n"
+                                    + "    public sealed class " + className + " : MonoBehaviour\n"
                   + "    {\n"
-                  + "        public void OnCreate(uint entityId)\n"
+                                    + "        protected override void Start()\n"
                   + "        {\n"
-                + "            Debug.Log(\"[GameScripts] " + escapedClassName + " created for entity \" + entityId + \".\");\n"
+                                + "            Debug.Log(\"[GameScripts] " + escapedClassName + " started on '\" + gameObject.name + \"'.\");\n"
                   + "        }\n\n"
-                  + "        public void OnEnable(uint entityId)\n"
+                                    + "        protected override void OnEnable()\n"
                   + "        {\n"
-                + "            Debug.Log(\"[GameScripts] " + escapedClassName + " enabled on entity \" + entityId + \".\");\n"
+                                + "            Debug.Log(\"[GameScripts] " + escapedClassName + " enabled on '\" + gameObject.name + \"'.\");\n"
                   + "        }\n\n"
-                  + "        public void OnDisable(uint entityId)\n"
+                                    + "        protected override void OnDisable()\n"
                   + "        {\n"
-                + "            Debug.Log(\"[GameScripts] " + escapedClassName + " disabled on entity \" + entityId + \".\");\n"
+                                + "            Debug.Log(\"[GameScripts] " + escapedClassName + " disabled on '\" + gameObject.name + \"'.\");\n"
                   + "        }\n\n"
-                  + "        public void OnUpdate(uint entityId, float deltaTime)\n"
+                                    + "        protected override void Update()\n"
                   + "        {\n"
                   + "        }\n\n"
-                  + "        public void OnDestroy(uint entityId)\n"
+                                    + "        protected override void OnDestroy()\n"
                   + "        {\n"
-                + "            Debug.Log(\"[GameScripts] " + escapedClassName + " destroyed for entity \" + entityId + \".\");\n"
+                                + "            Debug.Log(\"[GameScripts] " + escapedClassName + " destroyed on '\" + gameObject.name + \"'.\");\n"
                   + "        }\n"
                   + "    }\n"
                   + "}\n";
