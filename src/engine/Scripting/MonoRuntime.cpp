@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cctype>
 #include <ctime>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -82,8 +83,11 @@ struct MonoRuntime::Impl
 
     std::filesystem::file_time_type scriptAssemblyWriteTime{};
     std::filesystem::file_time_type editorAssemblyWriteTime{};
+    std::uintmax_t scriptAssemblyFileSize = 0;
     bool hasScriptAssemblyWriteTime = false;
     bool hasEditorAssemblyWriteTime = false;
+    bool hasScriptAssemblyFileSize = false;
+    bool scriptReloadRequested = false;
 
     float hotReloadPollAccumulator = 0.0f;
 #endif
@@ -102,6 +106,7 @@ static bool MonoRuntime_ShouldRunGameplay(const MonoRuntime::Impl* impl);
 static void MonoRuntime_StopActiveScriptInstances(MonoRuntime::Impl* impl, Scene* scene);
 static void MonoRuntime_StartPlaySession(MonoRuntime::Impl* impl, Scene* scene);
 static void MonoRuntime_StopPlaySession(MonoRuntime::Impl* impl, Scene* scene);
+static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Scene* scene, bool forceReload);
 #endif
 
 #include "editor/Mono/EditorMonoBridge.inl"
@@ -276,7 +281,7 @@ static bool TryBuildDotnetProject(const std::filesystem::path& projectPath, cons
         return false;
     }
 
-    const std::string command = "dotnet build \"" + projectPath.string() + "\" -c Debug -nologo";
+    const std::string command = "dotnet build \"" + projectPath.string() + "\" -c Debug -nologo -t:Rebuild";
     std::cout << "[Mono] Building " << projectLabel << ": " << projectPath << std::endl;
 
     const int exitCode = std::system(command.c_str());
@@ -309,6 +314,84 @@ static void ReportAssemblyAvailability(const std::filesystem::path& assemblyPath
 
 #include "MonoRuntime/MonoRuntime.Assembly.inl"
 #include "editor/Mono/EditorMonoAssembly.inl"
+
+#if ENGINE_MONO_RUNTIME_AVAILABLE
+static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Scene* scene, bool forceReload)
+{
+    if (!impl)
+        return false;
+
+    const auto scriptPath = FindScriptAssemblyPath(impl->preferredScriptAssemblyPath, false);
+    if (scriptPath.empty())
+        return false;
+
+    std::filesystem::file_time_type scriptWriteTime{};
+    std::uintmax_t scriptFileSize = 0;
+    const bool hasScriptWriteTime = TryGetFileWriteTime(scriptPath, scriptWriteTime);
+    const bool hasScriptFileSize = TryGetFileSize(scriptPath, scriptFileSize);
+
+    const bool scriptPathChanged = !impl->resolvedScriptAssemblyPath.empty() &&
+                                   (scriptPath != impl->resolvedScriptAssemblyPath);
+    const bool scriptTimeChanged = hasScriptWriteTime &&
+                                   impl->hasScriptAssemblyWriteTime &&
+                                   (scriptWriteTime != impl->scriptAssemblyWriteTime);
+    const bool scriptSizeChanged = hasScriptFileSize &&
+                                   impl->hasScriptAssemblyFileSize &&
+                                   (scriptFileSize != impl->scriptAssemblyFileSize);
+    const bool scriptNeedsLoad = !impl->scriptLoaded;
+    const bool scriptForceReload = forceReload || impl->scriptReloadRequested;
+
+    if (!(scriptNeedsLoad || scriptPathChanged || scriptTimeChanged || scriptSizeChanged || scriptForceReload))
+        return false;
+
+    ScriptAssemblyBindings newScriptBindings;
+    if (!TryLoadScriptAssemblyBindings(impl->domain, impl->shadowCopyDirectory, scriptPath, newScriptBindings))
+        return false;
+
+    MonoRuntime_StopActiveScriptInstances(impl, scene);
+
+    const bool wasGameplaySessionActive = impl->gameplaySessionActive;
+    if (wasGameplaySessionActive && impl->scriptLoaded && impl->onShutdown)
+        mono_runtime_invoke(impl->onShutdown, nullptr, nullptr, nullptr);
+
+    impl->assembly = newScriptBindings.assembly;
+    impl->image = newScriptBindings.image;
+    impl->scriptClass = newScriptBindings.scriptClass;
+    impl->onStart = newScriptBindings.onStart;
+    impl->onUpdate = newScriptBindings.onUpdate;
+    impl->onShutdown = newScriptBindings.onShutdown;
+    impl->scriptLoaded = true;
+
+    impl->resolvedScriptAssemblyPath = scriptPath;
+    impl->hasScriptAssemblyWriteTime = hasScriptWriteTime;
+    impl->hasScriptAssemblyFileSize = hasScriptFileSize;
+    if (hasScriptWriteTime)
+        impl->scriptAssemblyWriteTime = scriptWriteTime;
+    if (hasScriptFileSize)
+        impl->scriptAssemblyFileSize = scriptFileSize;
+    impl->scriptReloadRequested = false;
+
+    if (wasGameplaySessionActive)
+    {
+        if (impl->onStart)
+            mono_runtime_invoke(impl->onStart, nullptr, nullptr, nullptr);
+        impl->gameplaySessionActive = true;
+    }
+    else
+    {
+        impl->gameplaySessionActive = false;
+    }
+
+    if (scriptNeedsLoad)
+        std::cout << "[Mono] Script assembly became available: " << scriptPath << std::endl;
+    else if (scriptForceReload)
+        std::cout << "[Mono] Reloaded script assembly from explicit request: " << scriptPath << std::endl;
+    else
+        std::cout << "[Mono] Hot-reloaded script assembly: " << scriptPath << std::endl;
+
+    return true;
+}
+#endif
 
 MonoRuntime::MonoRuntime() = default;
 MonoRuntime::~MonoRuntime()
@@ -398,6 +481,7 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::StartPlayMode", (const void*)&EditorBridge_StartPlayMode);
         mono_add_internal_call("Engine.EditorBridge::StopPlayMode", (const void*)&EditorBridge_StopPlayMode);
         mono_add_internal_call("Engine.EditorBridge::SetSimulationPaused", (const void*)&EditorBridge_SetSimulationPaused);
+        mono_add_internal_call("Engine.EditorBridge::RequestScriptAssemblyReload", (const void*)&EditorBridge_RequestScriptAssemblyReload);
         mono_add_internal_call("Engine.EditorBridge::CreateAuxiliaryWindow", (const void*)&EditorBridge_CreateAuxiliaryWindow);
         mono_add_internal_call("Engine.EditorBridge::DestroyAuxiliaryWindow", (const void*)&EditorBridge_DestroyAuxiliaryWindow);
         mono_add_internal_call("Engine.EditorBridge::DestroyAllAuxiliaryWindows", (const void*)&EditorBridge_DestroyAllAuxiliaryWindows);
@@ -437,6 +521,7 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::GetScriptFieldValue", (const void*)&EditorBridge_GetScriptFieldValue);
         mono_add_internal_call("Engine.EditorBridge::SetScriptFieldValue", (const void*)&EditorBridge_SetScriptFieldValue);
         mono_add_internal_call("Engine.EditorBridge::SetGameViewSize", (const void*)&EditorBridge_SetGameViewSize);
+        mono_add_internal_call("Engine.EditorBridge::SetEditorPreviewCamera", (const void*)&EditorBridge_SetEditorPreviewCamera);
         mono_add_internal_call("Engine.EditorBridge::GetGameViewTextureHandle", (const void*)&EditorBridge_GetGameViewTextureHandle);
     }
 
@@ -568,6 +653,8 @@ bool MonoRuntime::Initialize()
 
             m_impl->resolvedScriptAssemblyPath = assemblyPath;
             m_impl->hasScriptAssemblyWriteTime = TryGetFileWriteTime(assemblyPath, m_impl->scriptAssemblyWriteTime);
+            m_impl->hasScriptAssemblyFileSize = TryGetFileSize(assemblyPath, m_impl->scriptAssemblyFileSize);
+            m_impl->scriptReloadRequested = false;
 
             if (!m_impl->editorMode)
             {
@@ -637,62 +724,7 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
     {
         m_impl->hotReloadPollAccumulator = 0.0f;
 
-        const auto scriptPath = FindScriptAssemblyPath(m_impl->preferredScriptAssemblyPath, false);
-        if (!scriptPath.empty())
-        {
-            std::filesystem::file_time_type scriptWriteTime{};
-            const bool hasScriptWriteTime = TryGetFileWriteTime(scriptPath, scriptWriteTime);
-
-            const bool scriptPathChanged = !m_impl->resolvedScriptAssemblyPath.empty() &&
-                                           (scriptPath != m_impl->resolvedScriptAssemblyPath);
-            const bool scriptTimeChanged = hasScriptWriteTime &&
-                                           m_impl->hasScriptAssemblyWriteTime &&
-                                           (scriptWriteTime != m_impl->scriptAssemblyWriteTime);
-            const bool scriptNeedsLoad = !m_impl->scriptLoaded;
-
-            if (scriptNeedsLoad || scriptPathChanged || scriptTimeChanged)
-            {
-                ScriptAssemblyBindings newScriptBindings;
-                if (TryLoadScriptAssemblyBindings(m_impl->domain, m_impl->shadowCopyDirectory, scriptPath, newScriptBindings))
-                {
-                    MonoRuntime_StopActiveScriptInstances(m_impl.get(), scene);
-
-                    const bool wasGameplaySessionActive = m_impl->gameplaySessionActive;
-
-                    if (wasGameplaySessionActive && m_impl->scriptLoaded && m_impl->onShutdown)
-                        mono_runtime_invoke(m_impl->onShutdown, nullptr, nullptr, nullptr);
-
-                    m_impl->assembly = newScriptBindings.assembly;
-                    m_impl->image = newScriptBindings.image;
-                    m_impl->scriptClass = newScriptBindings.scriptClass;
-                    m_impl->onStart = newScriptBindings.onStart;
-                    m_impl->onUpdate = newScriptBindings.onUpdate;
-                    m_impl->onShutdown = newScriptBindings.onShutdown;
-                    m_impl->scriptLoaded = true;
-
-                    m_impl->resolvedScriptAssemblyPath = scriptPath;
-                    m_impl->hasScriptAssemblyWriteTime = hasScriptWriteTime;
-                    if (hasScriptWriteTime)
-                        m_impl->scriptAssemblyWriteTime = scriptWriteTime;
-
-                    if (wasGameplaySessionActive)
-                    {
-                        if (m_impl->onStart)
-                            mono_runtime_invoke(m_impl->onStart, nullptr, nullptr, nullptr);
-                        m_impl->gameplaySessionActive = true;
-                    }
-                    else
-                    {
-                        m_impl->gameplaySessionActive = false;
-                    }
-
-                    if (scriptNeedsLoad)
-                        std::cout << "[Mono] Script assembly became available: " << scriptPath << std::endl;
-                    else
-                        std::cout << "[Mono] Hot-reloaded script assembly: " << scriptPath << std::endl;
-                }
-            }
-        }
+        MonoRuntime_ReloadScriptAssemblyIfNeeded(m_impl.get(), scene, false);
 
         if (m_impl->editorMode)
         {

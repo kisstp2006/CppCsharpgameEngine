@@ -471,7 +471,14 @@ namespace EngineEditor
             _gameViewHeight = availHeight;
 
             if (!simulationRunning)
+            {
                 EditorBridge.SetGameViewSize(_gameViewWidth, _gameViewHeight);
+                EditorBridge.SetEditorPreviewCamera(_editorCamera.X, _editorCamera.Y, _editorCamera.Zoom, true);
+            }
+            else
+            {
+                EditorBridge.SetEditorPreviewCamera(0.0f, 0.0f, 1.0f, false);
+            }
 
             ulong gameViewTextureHandle = EditorBridge.GetGameViewTextureHandle();
             if (gameViewTextureHandle != 0)
@@ -933,7 +940,7 @@ namespace EngineEditor
                 if (string.IsNullOrWhiteSpace(initialDirectory) || !Directory.Exists(initialDirectory))
                     initialDirectory = Directory.GetCurrentDirectory();
 
-                string pickedPath = Explorer.PickFile("Select sprite texture (.bmp)", initialDirectory);
+                string pickedPath = Explorer.PickFile("Select sprite texture (png/jpg/bmp/tga)", initialDirectory);
                 if (!string.IsNullOrWhiteSpace(pickedPath))
                 {
                     string normalizedPath = pickedPath;
@@ -1211,6 +1218,70 @@ namespace EngineEditor
             return px >= x && py >= y && px <= (x + width) && py <= (y + height);
         }
 
+        private static void ResolveEntityVisualRect(uint entityId,
+                                                    float transformX,
+                                                    float transformY,
+                                                    float transformWidth,
+                                                    float transformHeight,
+                                                    out float rectX,
+                                                    out float rectY,
+                                                    out float rectWidth,
+                                                    out float rectHeight)
+        {
+            rectWidth = Math.Abs(transformWidth);
+            rectHeight = Math.Abs(transformHeight);
+            if (rectWidth < 0.0001f)
+                rectWidth = 0.0001f;
+            if (rectHeight < 0.0001f)
+                rectHeight = 0.0001f;
+
+            rectX = transformX;
+            rectY = transformY;
+
+            if (!EditorBridge.HasSprite(entityId))
+                return;
+
+            bool centered;
+            float offsetX;
+            float offsetY;
+            bool flipH;
+            bool flipV;
+            uint hframes;
+            uint vframes;
+            uint frame;
+            bool regionEnabled;
+            float regionX;
+            float regionY;
+            float regionWidth;
+            float regionHeight;
+
+            if (!EditorBridge.GetSpriteSettings(entityId,
+                                                out centered,
+                                                out offsetX,
+                                                out offsetY,
+                                                out flipH,
+                                                out flipV,
+                                                out hframes,
+                                                out vframes,
+                                                out frame,
+                                                out regionEnabled,
+                                                out regionX,
+                                                out regionY,
+                                                out regionWidth,
+                                                out regionHeight))
+            {
+                return;
+            }
+
+            rectX = transformX + offsetX;
+            rectY = transformY + offsetY;
+            if (centered)
+            {
+                rectX -= rectWidth * 0.5f;
+                rectY -= rectHeight * 0.5f;
+            }
+        }
+
         private static void HandleViewportSelectionAndDrag(bool hovered)
         {
             if (ImGuizmo.IsUsing())
@@ -1261,10 +1332,16 @@ namespace EngineEditor
                     if (!EditorBridge.GetTransform(entityId, out x, out y, out width, out height))
                         continue;
 
-                    if (!IsPointInsideRect(mouseWorldX, mouseWorldY, x, y, width, height))
+                    float rectX;
+                    float rectY;
+                    float rectWidth;
+                    float rectHeight;
+                    ResolveEntityVisualRect(entityId, x, y, width, height, out rectX, out rectY, out rectWidth, out rectHeight);
+
+                    if (!IsPointInsideRect(mouseWorldX, mouseWorldY, rectX, rectY, rectWidth, rectHeight))
                         continue;
 
-                    float area = Math.Abs(width * height);
+                    float area = Math.Abs(rectWidth * rectHeight);
                     if (area < bestArea)
                     {
                         bestArea = area;
@@ -1384,10 +1461,16 @@ namespace EngineEditor
                 if (!EditorBridge.GetTransform(entityId, out x, out y, out width, out height))
                     continue;
 
-                float sx = _editorCamera.WorldToScreenX(x, centerX);
-                float syBottom = _editorCamera.WorldToScreenY(y, centerY);
-                float sw = Math.Max(1.0f, width * _editorCamera.Zoom);
-                float sh = Math.Max(1.0f, height * _editorCamera.Zoom);
+                float rectX;
+                float rectY;
+                float rectWidth;
+                float rectHeight;
+                ResolveEntityVisualRect(entityId, x, y, width, height, out rectX, out rectY, out rectWidth, out rectHeight);
+
+                float sx = _editorCamera.WorldToScreenX(rectX, centerX);
+                float syBottom = _editorCamera.WorldToScreenY(rectY, centerY);
+                float sw = Math.Max(1.0f, rectWidth * _editorCamera.Zoom);
+                float sh = Math.Max(1.0f, rectHeight * _editorCamera.Zoom);
 
                 float drawX = _gameViewPosX + sx;
                 float drawY = _gameViewPosY + (_gameViewHeight - (syBottom + sh));

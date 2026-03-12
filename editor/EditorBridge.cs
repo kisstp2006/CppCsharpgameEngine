@@ -86,6 +86,9 @@ namespace Engine
         public static extern void SetSimulationPaused(bool paused);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void RequestScriptAssemblyReload();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern uint CreateAuxiliaryWindow(string title,
                                 int width,
                                 int height,
@@ -233,6 +236,9 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void SetGameViewSize(float width, float height);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetEditorPreviewCamera(float x, float y, float zoom, bool enabled);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern ulong GetGameViewTextureHandle();

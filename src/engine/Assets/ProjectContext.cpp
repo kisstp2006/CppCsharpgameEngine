@@ -387,7 +387,7 @@ namespace
             return false;
         }
 
-        const std::string command = "dotnet build \"" + projectPath.string() + "\" -c Debug -nologo 2>&1";
+        const std::string command = "dotnet build \"" + projectPath.string() + "\" -c Debug -nologo -t:Rebuild 2>&1";
         std::cout << "[ProjectContext] Building " << projectLabel << ": " << projectPath << std::endl;
 
 #if defined(_WIN32)

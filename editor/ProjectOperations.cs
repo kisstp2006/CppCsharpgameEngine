@@ -63,6 +63,7 @@ namespace EngineEditor
                 _statusMessage = "Opened project: " + Path.GetFileName(normalizedProjectPath);
                 SaveLastProjectPath(normalizedProjectPath);
                 AddRecentProjectPath(normalizedProjectPath);
+                ScriptComponentValidation.RequestImmediateBuildForActiveProject();
             }
             catch (Exception ex)
             {

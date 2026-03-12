@@ -11,6 +11,10 @@ namespace EngineEditor
         private static bool _showProjectManagerView = true;
         private static string _editorConfigDir = string.Empty;
         private static string _playSnapshotPath = string.Empty;
+        private static float _compileProgressPulse = 0.0f;
+        private static bool _compileDialogOpen;
+
+        private const string CompilePopupId = "##ScriptCompileBlockingModal";
 
         public static string StatusMessage => _statusMessage;
 
@@ -40,6 +44,10 @@ namespace EngineEditor
         public static void OnEditorUpdate(float deltaTime)
         {
             bool hasOpenProject = ProjectOperations.HasOpenProject();
+            bool compileBlocking = DrawScriptBuildProgressWindow(deltaTime);
+
+            if (compileBlocking)
+                return;
 
             if (hasOpenProject)
                 DrawTopBar();
@@ -69,6 +77,70 @@ namespace EngineEditor
             SceneEditor.UpdateTick(deltaTime);
             EditorOptionsWindow.Draw();
             EditorConsoleWindow.Draw();
+        }
+
+        private static bool DrawScriptBuildProgressWindow(float deltaTime)
+        {
+            ScriptValidationSnapshot snapshot = ScriptComponentValidation.GetSnapshot();
+            bool busy = snapshot.IsCompiling;
+            if (!busy)
+            {
+                _compileProgressPulse = 0.0f;
+
+                if (_compileDialogOpen && ImGui.BeginPopupModal(CompilePopupId))
+                {
+                    ImGui.CloseCurrentPopup();
+                    ImGui.EndPopup();
+                }
+
+                _compileDialogOpen = false;
+                return false;
+            }
+
+            _compileProgressPulse += deltaTime * 0.65f;
+            while (_compileProgressPulse > 1.0f)
+                _compileProgressPulse -= 1.0f;
+
+            float progress = 0.15f + (_compileProgressPulse * 0.75f);
+            string message = "Compiling C# scripts...";
+
+            ImGui.OpenPopup(CompilePopupId);
+            if (ImGui.BeginPopupModal(CompilePopupId))
+            {
+                _compileDialogOpen = true;
+                ImGui.Text(message);
+                ImGui.Text(BuildProgressBarText(progress, 22));
+                ImGui.Text(snapshot.CompileSummary);
+                ImGui.EndPopup();
+            }
+
+            return true;
+        }
+
+        private static string BuildProgressBarText(float fraction, int segmentCount)
+        {
+            if (segmentCount < 4)
+                segmentCount = 4;
+
+            float clamped = Clamp01(fraction);
+            int filled = (int)Math.Floor(clamped * segmentCount + 0.5f);
+            if (filled < 0)
+                filled = 0;
+            if (filled > segmentCount)
+                filled = segmentCount;
+
+            string bar = new string('#', filled) + new string('-', segmentCount - filled);
+            int percent = (int)Math.Floor(clamped * 100.0f + 0.5f);
+            return "[" + bar + "] " + percent + "%";
+        }
+
+        private static float Clamp01(float value)
+        {
+            if (value < 0.0f)
+                return 0.0f;
+            if (value > 1.0f)
+                return 1.0f;
+            return value;
         }
 
         private static void DrawTopBar()
@@ -184,6 +256,28 @@ namespace EngineEditor
             if (simulationState == EditorBridge.SimulationPlay)
                 return true;
 
+            if (!ScriptComponentValidation.EnsureCompiledForPlay(out string compileGateMessage))
+            {
+                if (string.IsNullOrEmpty(compileGateMessage))
+                    compileGateMessage = "Play blocked: script compile gate rejected start.";
+
+                ProjectOperations.SetStatusMessage(compileGateMessage);
+                return false;
+            }
+
+            ScriptValidationSnapshot scriptSnapshot = ScriptComponentValidation.GetSnapshot();
+            if (scriptSnapshot.IsCompiling)
+            {
+                ProjectOperations.SetStatusMessage("Play blocked: script compilation is still running.");
+                return false;
+            }
+
+            if (scriptSnapshot.HasCompileErrors)
+            {
+                ProjectOperations.SetStatusMessage("Play blocked: fix script compile errors first.");
+                return false;
+            }
+
             string snapshotDirectory = Path.GetDirectoryName(_playSnapshotPath);
             if (!string.IsNullOrEmpty(snapshotDirectory))
                 Directory.CreateDirectory(snapshotDirectory);
@@ -197,6 +291,8 @@ namespace EngineEditor
                 ProjectOperations.SetStatusMessage(error);
                 return false;
             }
+
+            EditorBridge.RequestScriptAssemblyReload();
 
             if (!EditorBridge.StartPlayMode())
             {

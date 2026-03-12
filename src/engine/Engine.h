@@ -64,6 +64,7 @@ public:
     bool SetAuxiliaryWindowSize(AuxiliaryWindowId id, int width, int height);
     bool CenterAuxiliaryWindow(AuxiliaryWindowId id);
     std::size_t GetAuxiliaryWindowCount() const;
+    void SetEditorPreviewCamera(float x, float y, float zoom, bool enabled);
 
 private:
     bool InitializeImGui();
@@ -81,5 +82,9 @@ private:
 
     bool m_editorMode = false;
     bool m_running = false;
+    bool m_editorPreviewCameraEnabled = false;
+    float m_editorPreviewCameraX = 0.0f;
+    float m_editorPreviewCameraY = 0.0f;
+    float m_editorPreviewCameraZoom = 1.0f;
     std::string m_lastSceneIoError;
 };

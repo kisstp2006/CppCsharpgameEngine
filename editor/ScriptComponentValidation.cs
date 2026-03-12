@@ -4,6 +4,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 
+using Engine;
+
 namespace EngineEditor
 {
     internal sealed class ScriptValidationSnapshot
@@ -48,8 +50,53 @@ namespace EngineEditor
         private static bool _hasAttemptedBuild;
         private static bool _isBuildRunning;
         private static bool _hasCompileErrors;
+        private static bool _immediateBuildRequested;
+        private static bool _pendingRuntimeReloadRequest;
         private static string _compileSummary = "Script compilation has not run yet.";
         private static string[] _compileErrorLines = new string[0];
+
+        public static void RequestImmediateBuildForActiveProject()
+        {
+            ScriptProjectInfo projectInfo = ResolveScriptProjectInfo();
+            if (projectInfo == null || string.IsNullOrEmpty(projectInfo.ScriptProjectPath) || !File.Exists(projectInfo.ScriptProjectPath))
+                return;
+
+            bool shouldStartBuild = false;
+
+            lock (SyncRoot)
+            {
+                _immediateBuildRequested = true;
+
+                if (!string.Equals(_trackedProjectKey, projectInfo.ProjectKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    _trackedProjectKey = projectInfo.ProjectKey;
+                    _lastSourceScanUtc = DateTime.MinValue;
+                    _lastSourceFingerprint = 0;
+                    _lastSourceChangeUtc = DateTime.MinValue;
+                    _lastBuildStartUtc = DateTime.MinValue;
+                    _hasAttemptedBuild = false;
+                    _isBuildRunning = false;
+                    _hasCompileErrors = false;
+                    _pendingRuntimeReloadRequest = false;
+                    _compileSummary = "Script compilation has not run yet.";
+                    _compileErrorLines = new string[0];
+                }
+
+                if (!_isBuildRunning)
+                {
+                    shouldStartBuild = true;
+                    _isBuildRunning = true;
+                    _hasAttemptedBuild = true;
+                    _immediateBuildRequested = false;
+                    _lastBuildStartUtc = DateTime.UtcNow;
+                    _compileSummary = "Compiling scripts...";
+                    _compileErrorLines = new string[0];
+                }
+            }
+
+            if (shouldStartBuild)
+                StartBuildTask(projectInfo.ScriptProjectPath, projectInfo.ProjectRoot);
+        }
 
         public static ScriptValidationSnapshot GetSnapshot()
         {
@@ -60,6 +107,7 @@ namespace EngineEditor
 
             ScriptProjectInfo projectInfo = ResolveScriptProjectInfo();
             UpdateCompilationState(projectInfo, nowUtc);
+            DispatchPendingRuntimeReloadRequest();
 
             lock (SyncRoot)
             {
@@ -72,6 +120,81 @@ namespace EngineEditor
                 snapshot.CompileErrorLines = _compileErrorLines;
                 return snapshot;
             }
+        }
+
+        public static bool EnsureCompiledForPlay(out string statusMessage)
+        {
+            statusMessage = string.Empty;
+
+            ScriptProjectInfo projectInfo = ResolveScriptProjectInfo();
+            if (projectInfo == null || string.IsNullOrEmpty(projectInfo.ScriptProjectPath) || !File.Exists(projectInfo.ScriptProjectPath))
+                return true;
+
+            DateTime nowUtc = DateTime.UtcNow;
+            long sourceFingerprint = ComputeSourceFingerprint(projectInfo);
+            bool shouldStartBuild = false;
+
+            lock (SyncRoot)
+            {
+                if (!string.Equals(_trackedProjectKey, projectInfo.ProjectKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    _trackedProjectKey = projectInfo.ProjectKey;
+                    _lastSourceScanUtc = DateTime.MinValue;
+                    _lastSourceFingerprint = 0;
+                    _lastSourceChangeUtc = DateTime.MinValue;
+                    _lastBuildStartUtc = DateTime.MinValue;
+                    _hasAttemptedBuild = false;
+                    _isBuildRunning = false;
+                    _hasCompileErrors = false;
+                    _pendingRuntimeReloadRequest = false;
+                    _compileSummary = "Script compilation has not run yet.";
+                    _compileErrorLines = new string[0];
+                }
+
+                _lastSourceScanUtc = nowUtc;
+                if (!_hasAttemptedBuild)
+                {
+                    _lastSourceFingerprint = sourceFingerprint;
+                    _lastSourceChangeUtc = nowUtc;
+                }
+                else if (sourceFingerprint != _lastSourceFingerprint)
+                {
+                    _lastSourceFingerprint = sourceFingerprint;
+                    _lastSourceChangeUtc = nowUtc;
+                }
+
+                if (_isBuildRunning)
+                {
+                    statusMessage = "Play blocked: script compilation is still running.";
+                    return false;
+                }
+
+                bool needsBuild = !_hasAttemptedBuild || _lastSourceChangeUtc > _lastBuildStartUtc;
+                if (needsBuild)
+                {
+                    shouldStartBuild = true;
+                    _isBuildRunning = true;
+                    _hasAttemptedBuild = true;
+                    _immediateBuildRequested = false;
+                    _lastBuildStartUtc = nowUtc;
+                    _compileSummary = "Compiling scripts...";
+                    _compileErrorLines = new string[0];
+                    statusMessage = "Play delayed: compiling scripts before entering play mode.";
+                }
+                else if (_hasCompileErrors)
+                {
+                    statusMessage = "Play blocked: fix script compile errors first.";
+                    return false;
+                }
+            }
+
+            if (shouldStartBuild)
+            {
+                StartBuildTask(projectInfo.ScriptProjectPath, projectInfo.ProjectRoot);
+                return false;
+            }
+
+            return true;
         }
 
         public static ScriptTypeValidationResult ValidateTypeName(string scriptTypeName, ScriptValidationSnapshot snapshot)
@@ -182,6 +305,7 @@ namespace EngineEditor
                 {
                     _isBuildRunning = false;
                     _hasCompileErrors = false;
+                    _pendingRuntimeReloadRequest = false;
                     _compileSummary = "Script project not found, compile check skipped.";
                     _compileErrorLines = new string[0];
                 }
@@ -208,6 +332,7 @@ namespace EngineEditor
                     _hasAttemptedBuild = false;
                     _isBuildRunning = false;
                     _hasCompileErrors = false;
+                    _pendingRuntimeReloadRequest = false;
                     _compileSummary = "Script compilation has not run yet.";
                     _compileErrorLines = new string[0];
                 }
@@ -239,18 +364,33 @@ namespace EngineEditor
             {
                 if (!_isBuildRunning)
                 {
-                    bool firstBuildNeeded = !_hasAttemptedBuild;
-                    bool debounceElapsed = (nowUtc - _lastSourceChangeUtc).TotalSeconds >= buildDebounceSeconds;
-                    bool cooldownElapsed = (nowUtc - _lastBuildStartUtc).TotalSeconds >= buildCooldownSeconds;
-
-                    if ((firstBuildNeeded || debounceElapsed) && cooldownElapsed)
+                    if (_immediateBuildRequested)
                     {
                         shouldStartBuild = true;
                         _isBuildRunning = true;
                         _hasAttemptedBuild = true;
+                        _immediateBuildRequested = false;
                         _lastBuildStartUtc = nowUtc;
                         _compileSummary = "Compiling scripts...";
                         _compileErrorLines = new string[0];
+                    }
+
+                    if (!shouldStartBuild)
+                    {
+                        bool firstBuildNeeded = !_hasAttemptedBuild;
+                        bool debounceElapsed = (nowUtc - _lastSourceChangeUtc).TotalSeconds >= buildDebounceSeconds;
+                        bool cooldownElapsed = (nowUtc - _lastBuildStartUtc).TotalSeconds >= buildCooldownSeconds;
+                        bool hasPendingSourceChange = _hasAttemptedBuild && _lastSourceChangeUtc > _lastBuildStartUtc;
+
+                        if ((firstBuildNeeded || (hasPendingSourceChange && debounceElapsed)) && cooldownElapsed)
+                        {
+                            shouldStartBuild = true;
+                            _isBuildRunning = true;
+                            _hasAttemptedBuild = true;
+                            _lastBuildStartUtc = nowUtc;
+                            _compileSummary = "Compiling scripts...";
+                            _compileErrorLines = new string[0];
+                        }
                     }
                 }
             }
@@ -273,7 +413,7 @@ namespace EngineEditor
             {
                 var startInfo = new ProcessStartInfo();
                 startInfo.FileName = "dotnet";
-                startInfo.Arguments = "build \"" + scriptProjectPath + "\" -c Debug -nologo";
+                startInfo.Arguments = "build \"" + scriptProjectPath + "\" -c Debug -nologo -t:Rebuild";
                 startInfo.WorkingDirectory = string.IsNullOrEmpty(projectRoot) ? Directory.GetCurrentDirectory() : projectRoot;
                 startInfo.UseShellExecute = false;
                 startInfo.CreateNoWindow = true;
@@ -319,8 +459,36 @@ namespace EngineEditor
             {
                 _isBuildRunning = false;
                 _hasCompileErrors = hasErrors;
+                if (!hasErrors)
+                    _pendingRuntimeReloadRequest = true;
                 _compileSummary = summary;
                 _compileErrorLines = TrimErrorLines(errorLines, 6);
+            }
+        }
+
+        private static void DispatchPendingRuntimeReloadRequest()
+        {
+            bool shouldRequest;
+            lock (SyncRoot)
+            {
+                shouldRequest = _pendingRuntimeReloadRequest;
+                if (shouldRequest)
+                    _pendingRuntimeReloadRequest = false;
+            }
+
+            if (!shouldRequest)
+                return;
+
+            try
+            {
+                EditorBridge.RequestScriptAssemblyReload();
+            }
+            catch
+            {
+                lock (SyncRoot)
+                {
+                    _pendingRuntimeReloadRequest = true;
+                }
             }
         }
 
@@ -374,7 +542,14 @@ namespace EngineEditor
                 if (!string.IsNullOrEmpty(projectInfo.ScriptsRootPath) && Directory.Exists(projectInfo.ScriptsRootPath))
                 {
                     string[] sourceFiles = Directory.GetFiles(projectInfo.ScriptsRootPath, "*.cs", SearchOption.AllDirectories);
-                    files.AddRange(sourceFiles);
+                    for (int i = 0; i < sourceFiles.Length; ++i)
+                    {
+                        string candidate = sourceFiles[i];
+                        if (IsIgnoredSourcePath(candidate))
+                            continue;
+
+                        files.Add(candidate);
+                    }
                 }
 
                 if (!string.IsNullOrEmpty(projectInfo.ScriptProjectPath) && File.Exists(projectInfo.ScriptProjectPath))
@@ -395,6 +570,8 @@ namespace EngineEditor
             {
                 string filePath = files[i];
                 long ticks = 0;
+                long fileLength = 0;
+                int contentSignature = 0;
 
                 try
                 {
@@ -405,11 +582,69 @@ namespace EngineEditor
                     ticks = 0;
                 }
 
+                try
+                {
+                    var fileInfo = new FileInfo(filePath);
+                    fileLength = fileInfo.Exists ? fileInfo.Length : 0;
+                }
+                catch
+                {
+                    fileLength = 0;
+                }
+
+                contentSignature = ComputeFileContentSignature(filePath);
+
                 fingerprint = unchecked(fingerprint * 31 + StringComparer.OrdinalIgnoreCase.GetHashCode(filePath));
                 fingerprint = unchecked(fingerprint * 31 + ticks.GetHashCode());
+                fingerprint = unchecked(fingerprint * 31 + fileLength.GetHashCode());
+                fingerprint = unchecked(fingerprint * 31 + contentSignature);
             }
 
             return fingerprint;
+        }
+
+        private static int ComputeFileContentSignature(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                return 0;
+
+            const int maxBytes = 4096;
+            const int fnvPrime = 16777619;
+            const int fnvOffsetBasis = unchecked((int)2166136261);
+
+            try
+            {
+                byte[] bytes = File.ReadAllBytes(filePath);
+                int hash = fnvOffsetBasis;
+
+                int length = bytes.Length;
+                int headLength = length < maxBytes ? length : maxBytes / 2;
+                int tailStart = length <= maxBytes ? headLength : length - (maxBytes - headLength);
+
+                for (int i = 0; i < headLength; ++i)
+                    hash = unchecked((hash ^ bytes[i]) * fnvPrime);
+
+                for (int i = tailStart; i < length; ++i)
+                    hash = unchecked((hash ^ bytes[i]) * fnvPrime);
+
+                hash = unchecked((hash ^ length) * fnvPrime);
+                return hash;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static bool IsIgnoredSourcePath(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath))
+                return true;
+
+            string normalized = filePath.Replace('\\', '/');
+            return normalized.IndexOf("/obj/", StringComparison.OrdinalIgnoreCase) >= 0
+                || normalized.IndexOf("/bin/", StringComparison.OrdinalIgnoreCase) >= 0
+                || normalized.IndexOf("/.vs/", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static ScriptProjectInfo ResolveScriptProjectInfo()

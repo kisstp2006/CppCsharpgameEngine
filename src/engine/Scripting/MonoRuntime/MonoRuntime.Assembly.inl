@@ -16,6 +16,13 @@ static bool TryGetFileWriteTime(const std::filesystem::path& path, std::filesyst
     return !error;
 }
 
+static bool TryGetFileSize(const std::filesystem::path& path, std::uintmax_t& outFileSize)
+{
+    std::error_code error;
+    outFileSize = std::filesystem::file_size(path, error);
+    return !error;
+}
+
 static bool TryCreateAssemblyShadowCopy(const std::filesystem::path& sourcePath,
                                         const std::filesystem::path& shadowDirectory,
                                         std::filesystem::path& outShadowPath)
@@ -43,7 +50,7 @@ static bool TryCreateAssemblyShadowCopy(const std::filesystem::path& sourcePath,
 
     outShadowPath = shadowDirectory / shadowName;
 
-    constexpr int maxAttempts = 6;
+    constexpr int maxAttempts = 30;
     for (int attempt = 0; attempt < maxAttempts; ++attempt)
     {
         error.clear();
@@ -87,7 +94,7 @@ static bool TryCreateAssemblyShadowCopy(const std::filesystem::path& sourcePath,
             return true;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(40));
+        std::this_thread::sleep_for(std::chrono::milliseconds(75));
     }
 
     return false;
@@ -109,10 +116,55 @@ static bool TryLoadScriptAssemblyBindings(MonoDomain* domain,
     }
 
     const std::string loadPathString = pathToLoad.string();
-    outBindings.assembly = mono_domain_assembly_open(domain, loadPathString.c_str());
+
+    std::error_code fileSizeError;
+    const std::uintmax_t fileSize = std::filesystem::file_size(pathToLoad, fileSizeError);
+    if (fileSizeError || fileSize == 0 || fileSize > static_cast<std::uintmax_t>(std::numeric_limits<int>::max()))
+    {
+        std::cerr << "[Mono] Invalid script assembly shadow copy size: " << loadPathString << std::endl;
+        return false;
+    }
+
+    std::vector<char> assemblyBytes(static_cast<std::size_t>(fileSize));
+    {
+        std::ifstream input(loadPathString, std::ios::binary);
+        if (!input)
+        {
+            std::cerr << "[Mono] Failed to open script assembly shadow copy: " << loadPathString << std::endl;
+            return false;
+        }
+
+        input.read(assemblyBytes.data(), static_cast<std::streamsize>(assemblyBytes.size()));
+        if (!input)
+        {
+            std::cerr << "[Mono] Failed to read script assembly shadow copy: " << loadPathString << std::endl;
+            return false;
+        }
+    }
+
+    MonoImageOpenStatus imageStatus = MONO_IMAGE_OK;
+    MonoImage* transientImage = mono_image_open_from_data_full(assemblyBytes.data(),
+                                                                static_cast<uint32_t>(assemblyBytes.size()),
+                                                                1,
+                                                                &imageStatus,
+                                                                0);
+    if (!transientImage)
+    {
+        std::cerr << "[Mono] Failed to open script assembly image from data: " << loadPathString
+                  << " (" << mono_image_strerror(imageStatus) << ")" << std::endl;
+        return false;
+    }
+
+    MonoImageOpenStatus assemblyStatus = MONO_IMAGE_OK;
+    outBindings.assembly = mono_assembly_load_from_full(transientImage,
+                                                        loadPathString.c_str(),
+                                                        &assemblyStatus,
+                                                        0);
     if (!outBindings.assembly)
     {
-        std::cerr << "[Mono] Failed to load script assembly shadow copy: " << loadPathString << std::endl;
+        std::cerr << "[Mono] Failed to load script assembly shadow copy: " << loadPathString
+                  << " (" << mono_image_strerror(assemblyStatus) << ")" << std::endl;
+        mono_image_close(transientImage);
         return false;
     }
 

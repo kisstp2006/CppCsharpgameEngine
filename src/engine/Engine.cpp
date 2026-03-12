@@ -215,6 +215,14 @@ bool Engine::CenterAuxiliaryWindow(AuxiliaryWindowId id)
     return m_auxiliaryWindows && m_auxiliaryWindows->CenterWindow(id);
 }
 
+void Engine::SetEditorPreviewCamera(float x, float y, float zoom, bool enabled)
+{
+    m_editorPreviewCameraX = x;
+    m_editorPreviewCameraY = y;
+    m_editorPreviewCameraZoom = zoom;
+    m_editorPreviewCameraEnabled = enabled;
+}
+
 std::size_t Engine::GetAuxiliaryWindowCount() const
 {
     return m_auxiliaryWindows ? m_auxiliaryWindows->GetWindowCount() : 0;
@@ -401,16 +409,36 @@ void Engine::Run()
             float cameraX = 0.0f;
             float cameraY = 0.0f;
             float cameraZoom = 1.0f;
+            bool useEditorPreviewCamera = false;
 
-            const Scene::Entity cameraEntity = m_scene->FindFirstCamera();
-            if (m_scene->IsValid(cameraEntity))
+            if (m_editorMode && m_editorPreviewCameraEnabled)
             {
-                const CameraComponent* activeCamera = m_scene->TryGetCamera(cameraEntity);
-                if (activeCamera)
+#ifndef ENGINE_MONO_DISABLED
+                useEditorPreviewCamera = (!m_mono) ||
+                    (m_mono->GetSimulationState() == MonoRuntime::SimulationState::Edit);
+#else
+                useEditorPreviewCamera = true;
+#endif
+            }
+
+            if (useEditorPreviewCamera)
+            {
+                cameraX = m_editorPreviewCameraX;
+                cameraY = m_editorPreviewCameraY;
+                cameraZoom = m_editorPreviewCameraZoom;
+            }
+            else
+            {
+                const Scene::Entity cameraEntity = m_scene->FindFirstCamera();
+                if (m_scene->IsValid(cameraEntity))
                 {
-                    cameraX = activeCamera->x;
-                    cameraY = activeCamera->y;
-                    cameraZoom = activeCamera->zoom;
+                    const CameraComponent* activeCamera = m_scene->TryGetCamera(cameraEntity);
+                    if (activeCamera)
+                    {
+                        cameraX = activeCamera->x;
+                        cameraY = activeCamera->y;
+                        cameraZoom = activeCamera->zoom;
+                    }
                 }
             }
 

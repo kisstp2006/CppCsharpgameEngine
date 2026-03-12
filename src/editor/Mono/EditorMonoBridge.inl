@@ -415,6 +415,21 @@ static bool EditorBridge_StartPlayMode()
         return false;
     }
 
+    const bool reloadSucceeded = MonoRuntime_ReloadScriptAssemblyIfNeeded(g_monoRuntimeImplForEditorBridge,
+                                                                          g_editorSceneContext,
+                                                                          true);
+    if (!reloadSucceeded)
+    {
+        g_editorSceneIoStatus = "Play failed: script reload did not complete. Wait for compile/reload and try again.";
+        return false;
+    }
+
+    if (!g_monoRuntimeImplForEditorBridge->scriptLoaded)
+    {
+        g_editorSceneIoStatus = "Play failed: script assembly is not loaded.";
+        return false;
+    }
+
     MonoRuntime_StartPlaySession(g_monoRuntimeImplForEditorBridge, g_editorSceneContext);
     g_editorSceneIoStatus = "Entered play mode.";
     return true;
@@ -451,6 +466,18 @@ static void EditorBridge_SetSimulationPaused(bool paused)
         : MonoRuntime::SimulationState::Play;
 
     g_editorSceneIoStatus = paused ? "Paused play mode." : "Resumed play mode.";
+}
+
+static void EditorBridge_RequestScriptAssemblyReload()
+{
+    if (!g_monoRuntimeImplForEditorBridge)
+    {
+        g_editorSceneIoStatus = "Script reload request ignored: runtime context unavailable.";
+        return;
+    }
+
+    g_monoRuntimeImplForEditorBridge->scriptReloadRequested = true;
+    g_editorSceneIoStatus = "Script assembly reload requested.";
 }
 
 static std::uint32_t EditorBridge_CreateAuxiliaryWindow(MonoString* title,
@@ -1624,6 +1651,14 @@ static void EditorBridge_SetGameViewSize(float width, float height)
         return;
 
     g_editorRendererContext->SetGameViewSize(w, h);
+}
+
+static void EditorBridge_SetEditorPreviewCamera(float x, float y, float zoom, bool enabled)
+{
+    if (!g_editorEngineContext)
+        return;
+
+    g_editorEngineContext->SetEditorPreviewCamera(x, y, zoom, enabled);
 }
 
 static std::uint64_t EditorBridge_GetGameViewTextureHandle()
