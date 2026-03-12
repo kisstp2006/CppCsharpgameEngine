@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Reflection;
 
 using Engine;
@@ -20,6 +21,7 @@ namespace EngineEditor
             Vector2,
             Vector3,
             Color,
+            AssetReference,
         }
 
         private sealed class ScriptFieldDescriptor
@@ -27,6 +29,7 @@ namespace EngineEditor
             public FieldInfo Field;
             public ScriptFieldKind Kind;
             public int ComponentCount;
+            public string[] AllowedExtensions = new string[0];
         }
 
         private static readonly string[] TransformDuplicateFieldNames =
@@ -41,6 +44,9 @@ namespace EngineEditor
 
         private static readonly Dictionary<string, ScriptFieldDescriptor[]> FieldCache = new Dictionary<string, ScriptFieldDescriptor[]>();
         private static readonly Dictionary<string, string> FieldErrors = new Dictionary<string, string>();
+        private static readonly Dictionary<string, string> AssetPickerSearchText = new Dictionary<string, string>();
+        private static readonly char[] AssetExtensionSeparators = { ',', ';', '|', ' ' };
+        private const int AssetPickerMaxResults = 512;
         private static bool _optionsRegistered = false;
         private static bool _assetContextMenuRegistered = false;
         private static bool _hideTransformDuplicateFields = true;
@@ -161,6 +167,15 @@ namespace EngineEditor
                         if (EditorUIHelpers.InputTextWithWidth(fieldName, ref updated, EditorUIHelpers.InspectorFieldWidth))
                         {
                             newRawValue = updated;
+                            changed = true;
+                        }
+                        break;
+                    }
+                case ScriptFieldKind.AssetReference:
+                    {
+                        if (DrawAssetReferenceField(entityId, descriptor, rawValue, out string assetRawValue))
+                        {
+                            newRawValue = assetRawValue;
                             changed = true;
                         }
                         break;
@@ -316,6 +331,270 @@ namespace EngineEditor
             return changed;
         }
 
+        private static bool DrawAssetReferenceField(uint entityId,
+                                                    ScriptFieldDescriptor descriptor,
+                                                    string rawValue,
+                                                    out string assetRawValue)
+        {
+            assetRawValue = rawValue ?? string.Empty;
+
+            string fieldName = descriptor.Field.Name;
+            string popupId = "AssetPicker##" + entityId.ToString(CultureInfo.InvariantCulture) + "_" + fieldName;
+            string searchKey = entityId.ToString(CultureInfo.InvariantCulture) + ":" + fieldName;
+
+            string display = string.IsNullOrWhiteSpace(assetRawValue) ? "<none>" : assetRawValue;
+            ImGui.Text(fieldName + ": " + display);
+            ImGui.SameLine();
+
+            if (ImGui.Button("Select##" + popupId))
+                ImGui.OpenPopup(popupId);
+
+            ImGui.SameLine();
+            if (ImGui.Button("Clear##" + popupId))
+            {
+                if (!string.IsNullOrEmpty(assetRawValue))
+                {
+                    assetRawValue = string.Empty;
+                    return true;
+                }
+            }
+
+            if (!ImGui.BeginPopupModal(popupId))
+                return false;
+
+            EditorUIHelpers.DrawPopupHeader("Select Asset for " + fieldName);
+
+            string searchText;
+            if (!AssetPickerSearchText.TryGetValue(searchKey, out searchText))
+                searchText = string.Empty;
+
+            if (EditorUIHelpers.InputTextWithWidth("Search##" + popupId,
+                                                   ref searchText,
+                                                   EditorUIHelpers.CompactPopupFieldWidth))
+            {
+                AssetPickerSearchText[searchKey] = searchText;
+            }
+
+            string projectPath = ProjectOperations.ActiveProjectPath;
+            string assetsRoot = ResolveProjectAssetsRoot(projectPath);
+            string[] options = CollectAssetCandidates(projectPath,
+                                                      assetsRoot,
+                                                      descriptor.AllowedExtensions,
+                                                      searchText);
+
+            if (options.Length == 0)
+            {
+                ImGui.Text("No matching files found.");
+            }
+            else
+            {
+                if (ImGui.BeginChild("##" + popupId + "_List", 0.0f, 260.0f, true))
+                {
+                    for (int i = 0; i < options.Length; ++i)
+                    {
+                        string candidate = options[i];
+                        bool selected = string.Equals(candidate, assetRawValue, StringComparison.OrdinalIgnoreCase);
+                        if (ImGui.Selectable(candidate + "##" + popupId + "_" + i.ToString(CultureInfo.InvariantCulture), selected))
+                        {
+                            assetRawValue = candidate;
+                            ImGui.CloseCurrentPopup();
+                            ImGui.EndPopup();
+                            return true;
+                        }
+                    }
+                }
+
+                ImGui.EndChild();
+            }
+
+            ImGui.Separator();
+            if (ImGui.Button("Close##" + popupId))
+                ImGui.CloseCurrentPopup();
+
+            ImGui.EndPopup();
+            return false;
+        }
+
+        private static string ResolveProjectAssetsRoot(string projectPath)
+        {
+            if (string.IsNullOrWhiteSpace(projectPath) || !Directory.Exists(projectPath))
+                return string.Empty;
+
+            string defaultAssetsRoot = Path.Combine(projectPath, "Assets");
+            string projectJsonPath = Path.Combine(projectPath, "project.json");
+            if (!File.Exists(projectJsonPath))
+                return defaultAssetsRoot;
+
+            try
+            {
+                string json = File.ReadAllText(projectJsonPath);
+                string assetsRoot = ExtractJsonString(json, "assetsRoot");
+                if (!string.IsNullOrWhiteSpace(assetsRoot))
+                {
+                    string candidate = Path.GetFullPath(Path.Combine(projectPath, assetsRoot));
+                    if (Directory.Exists(candidate))
+                        return candidate;
+                }
+            }
+            catch
+            {
+            }
+
+            return defaultAssetsRoot;
+        }
+
+        private static string[] CollectAssetCandidates(string projectPath,
+                                                       string assetsRoot,
+                                                       string[] allowedExtensions,
+                                                       string searchText)
+        {
+            if (string.IsNullOrWhiteSpace(projectPath) ||
+                string.IsNullOrWhiteSpace(assetsRoot) ||
+                !Directory.Exists(assetsRoot))
+            {
+                return new string[0];
+            }
+
+            string normalizedProjectPath;
+            try
+            {
+                normalizedProjectPath = Path.GetFullPath(projectPath);
+            }
+            catch
+            {
+                normalizedProjectPath = projectPath;
+            }
+
+            string normalizedSearch = (searchText ?? string.Empty).Trim();
+            var results = new List<string>();
+
+            string[] files;
+            try
+            {
+                files = Directory.GetFiles(assetsRoot, "*", SearchOption.AllDirectories);
+            }
+            catch
+            {
+                return new string[0];
+            }
+
+            for (int i = 0; i < files.Length; ++i)
+            {
+                string absolutePath = files[i];
+                if (!MatchesExtensionFilter(absolutePath, allowedExtensions))
+                    continue;
+
+                string relativePath = NormalizeProjectRelativeAssetPath(normalizedProjectPath, absolutePath);
+                if (string.IsNullOrWhiteSpace(relativePath))
+                    continue;
+
+                if (!string.IsNullOrEmpty(normalizedSearch) &&
+                    relativePath.IndexOf(normalizedSearch, StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    continue;
+                }
+
+                results.Add(relativePath);
+                if (results.Count >= AssetPickerMaxResults)
+                    break;
+            }
+
+            results.Sort(StringComparer.OrdinalIgnoreCase);
+            return results.ToArray();
+        }
+
+        private static bool MatchesExtensionFilter(string filePath, string[] allowedExtensions)
+        {
+            if (allowedExtensions == null || allowedExtensions.Length == 0)
+                return true;
+
+            string extension = Path.GetExtension(filePath);
+            if (string.IsNullOrWhiteSpace(extension))
+                return false;
+
+            for (int i = 0; i < allowedExtensions.Length; ++i)
+            {
+                if (string.Equals(extension, allowedExtensions[i], StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static string NormalizeProjectRelativeAssetPath(string projectPath, string absolutePath)
+        {
+            try
+            {
+                string relativePath = StringUtilities.MakeRelativePath(projectPath, absolutePath);
+                return (relativePath ?? string.Empty).Replace('\\', '/');
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
+        private static string ExtractJsonString(string json, string key)
+        {
+            if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(key))
+                return string.Empty;
+
+            string needle = "\"" + key + "\"";
+            int keyPos = json.IndexOf(needle, StringComparison.Ordinal);
+            if (keyPos < 0)
+                return string.Empty;
+
+            int colonPos = json.IndexOf(':', keyPos + needle.Length);
+            if (colonPos < 0)
+                return string.Empty;
+
+            int firstQuotePos = json.IndexOf('"', colonPos + 1);
+            if (firstQuotePos < 0)
+                return string.Empty;
+
+            var valueChars = new List<char>();
+            bool escaped = false;
+
+            for (int i = firstQuotePos + 1; i < json.Length; ++i)
+            {
+                char c = json[i];
+                if (escaped)
+                {
+                    switch (c)
+                    {
+                        case 'n':
+                            valueChars.Add('\n');
+                            break;
+                        case 'r':
+                            valueChars.Add('\r');
+                            break;
+                        case 't':
+                            valueChars.Add('\t');
+                            break;
+                        default:
+                            valueChars.Add(c);
+                            break;
+                    }
+
+                    escaped = false;
+                    continue;
+                }
+
+                if (c == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (c == '"')
+                    return new string(valueChars.ToArray());
+
+                valueChars.Add(c);
+            }
+
+            return string.Empty;
+        }
+
         private static ScriptFieldDescriptor[] GetVisibleFields(Type scriptType)
         {
             string cacheKey = scriptType.Assembly.FullName + "|" + scriptType.FullName;
@@ -337,7 +616,7 @@ namespace EngineEditor
                 if (_hideTransformDuplicateFields && IsTransformDuplicateFieldName(field.Name))
                     continue;
 
-                ScriptFieldKind kind = DetermineFieldKind(field.FieldType, out int componentCount);
+                ScriptFieldKind kind = DetermineFieldKind(field, out int componentCount, out string[] allowedExtensions);
                 if (kind == ScriptFieldKind.Unsupported)
                     continue;
 
@@ -346,6 +625,7 @@ namespace EngineEditor
                     Field = field,
                     Kind = kind,
                     ComponentCount = componentCount,
+                    AllowedExtensions = allowedExtensions,
                 });
             }
 
@@ -367,7 +647,9 @@ namespace EngineEditor
                 if (string.Equals(attributeName, "EditorFieldAttribute", StringComparison.Ordinal) ||
                     string.Equals(attributeName, "EditorField", StringComparison.Ordinal) ||
                     string.Equals(attributeName, "SerializeFieldAttribute", StringComparison.Ordinal) ||
-                    string.Equals(attributeName, "SerializeField", StringComparison.Ordinal))
+                    string.Equals(attributeName, "SerializeField", StringComparison.Ordinal) ||
+                    string.Equals(attributeName, "AssetPickerAttribute", StringComparison.Ordinal) ||
+                    string.Equals(attributeName, "AssetPicker", StringComparison.Ordinal))
                 {
                     return true;
                 }
@@ -409,9 +691,14 @@ namespace EngineEditor
             return new string(filtered, 0, writeIndex);
         }
 
-        private static ScriptFieldKind DetermineFieldKind(Type fieldType, out int componentCount)
+        private static ScriptFieldKind DetermineFieldKind(FieldInfo field, out int componentCount, out string[] allowedExtensions)
         {
             componentCount = 0;
+            allowedExtensions = new string[0];
+            if (field == null)
+                return ScriptFieldKind.Unsupported;
+
+            Type fieldType = field.FieldType;
             if (fieldType == typeof(int) ||
                 fieldType == typeof(uint) ||
                 fieldType == typeof(short) ||
@@ -431,10 +718,24 @@ namespace EngineEditor
                 return ScriptFieldKind.Bool;
 
             if (fieldType == typeof(string))
+            {
+                if (TryResolveAssetExtensions(field, fieldType, out string[] stringExtensions))
+                {
+                    allowedExtensions = stringExtensions;
+                    return ScriptFieldKind.AssetReference;
+                }
+
                 return ScriptFieldKind.String;
+            }
 
             if (fieldType.IsEnum)
                 return ScriptFieldKind.Enum;
+
+            if (TryResolveAssetExtensions(field, fieldType, out string[] typeExtensions))
+            {
+                allowedExtensions = typeExtensions;
+                return ScriptFieldKind.AssetReference;
+            }
 
             if (TryMatchColorType(fieldType, out componentCount))
                 return ScriptFieldKind.Color;
@@ -452,6 +753,155 @@ namespace EngineEditor
             }
 
             return ScriptFieldKind.Unsupported;
+        }
+
+        private static bool TryResolveAssetExtensions(FieldInfo field, Type fieldType, out string[] extensions)
+        {
+            extensions = new string[0];
+            if (field == null || fieldType == null)
+                return false;
+
+            bool attributeDefined = TryReadAssetPickerExtensions(field, out string[] attributeExtensions);
+            if (attributeDefined)
+            {
+                extensions = attributeExtensions;
+                return true;
+            }
+
+            if (!HasPathLikeStringField(fieldType))
+                return false;
+
+            if (TryReadTypeLevelAssetExtensions(fieldType, out string[] typeExtensions))
+                extensions = typeExtensions;
+
+            return true;
+        }
+
+        private static bool TryReadAssetPickerExtensions(FieldInfo field, out string[] extensions)
+        {
+            extensions = new string[0];
+            object[] attributes = field.GetCustomAttributes(false);
+
+            for (int i = 0; i < attributes.Length; ++i)
+            {
+                object attribute = attributes[i];
+                if (attribute == null)
+                    continue;
+
+                Type attributeType = attribute.GetType();
+                if (!string.Equals(attributeType.Name, "AssetPickerAttribute", StringComparison.Ordinal) &&
+                    !string.Equals(attributeType.Name, "AssetPicker", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string raw = ReadStringMember(attribute, "extensions");
+                if (string.IsNullOrWhiteSpace(raw))
+                    raw = ReadStringMember(attribute, "Extensions");
+
+                extensions = ParseExtensions(raw);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryReadTypeLevelAssetExtensions(Type fieldType, out string[] extensions)
+        {
+            extensions = new string[0];
+
+            const BindingFlags flags = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
+            string[] candidateNames =
+            {
+                "EditorFileExtensions",
+                "FileExtensions",
+                "Extensions",
+            };
+
+            for (int i = 0; i < candidateNames.Length; ++i)
+            {
+                string name = candidateNames[i];
+                FieldInfo staticField = fieldType.GetField(name, flags);
+                if (staticField != null && staticField.FieldType == typeof(string))
+                {
+                    string value = staticField.GetValue(null) as string;
+                    extensions = ParseExtensions(value);
+                    return true;
+                }
+
+                PropertyInfo staticProperty = fieldType.GetProperty(name, flags);
+                if (staticProperty != null && staticProperty.PropertyType == typeof(string) && staticProperty.GetGetMethod(true) != null)
+                {
+                    string value = staticProperty.GetValue(null, null) as string;
+                    extensions = ParseExtensions(value);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool HasPathLikeStringField(Type fieldType)
+        {
+            if (fieldType == null || fieldType == typeof(string) || fieldType.IsPrimitive || fieldType.IsEnum)
+                return false;
+
+            FieldInfo[] fields = fieldType.GetFields(BindingFlags.Instance | BindingFlags.Public);
+            for (int i = 0; i < fields.Length; ++i)
+            {
+                FieldInfo candidate = fields[i];
+                if (candidate.FieldType != typeof(string))
+                    continue;
+
+                string normalized = NormalizeFieldName(candidate.Name);
+                if (normalized == "path" || normalized == "assetpath" || normalized == "filepath")
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static string ReadStringMember(object target, string memberName)
+        {
+            if (target == null || string.IsNullOrWhiteSpace(memberName))
+                return string.Empty;
+
+            Type targetType = target.GetType();
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+            FieldInfo field = targetType.GetField(memberName, flags);
+            if (field != null && field.FieldType == typeof(string))
+                return field.GetValue(target) as string ?? string.Empty;
+
+            PropertyInfo property = targetType.GetProperty(memberName, flags);
+            if (property != null && property.PropertyType == typeof(string) && property.GetGetMethod(true) != null)
+                return property.GetValue(target, null) as string ?? string.Empty;
+
+            return string.Empty;
+        }
+
+        private static string[] ParseExtensions(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return new string[0];
+
+            string[] parts = raw.Split(AssetExtensionSeparators, StringSplitOptions.RemoveEmptyEntries);
+            var normalized = new List<string>();
+
+            for (int i = 0; i < parts.Length; ++i)
+            {
+                string token = parts[i].Trim().ToLowerInvariant();
+                if (token.Length == 0)
+                    continue;
+
+                if (token[0] != '.')
+                    token = "." + token;
+
+                if (!normalized.Contains(token))
+                    normalized.Add(token);
+            }
+
+            return normalized.ToArray();
         }
 
         private static bool TryMatchVector2Type(Type fieldType)

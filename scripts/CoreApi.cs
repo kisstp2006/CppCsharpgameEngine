@@ -49,6 +49,51 @@ namespace Engine
         }
     }
 
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class EditorFieldAttribute : Attribute
+    {
+    }
+
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class SerializeFieldAttribute : Attribute
+    {
+    }
+
+    [AttributeUsage(AttributeTargets.Field)]
+    public sealed class AssetPickerAttribute : Attribute
+    {
+        public string extensions;
+
+        public AssetPickerAttribute(string extensions = "")
+        {
+            this.extensions = extensions ?? string.Empty;
+        }
+    }
+
+    public class AssetReference
+    {
+        // Editor reads/writes this field through script field serialization.
+        public string path = string.Empty;
+
+        // Optional type-level extension hint consumed by editor flyout filtering.
+        public const string EditorFileExtensions = "";
+
+        public override string ToString()
+        {
+            return path ?? string.Empty;
+        }
+    }
+
+    public sealed class TextureAsset : AssetReference
+    {
+        public new const string EditorFileExtensions = ".png,.jpg,.jpeg,.bmp,.tga,.gif,.webp,.dds";
+    }
+
+    public sealed class ImageAsset : AssetReference
+    {
+        public new const string EditorFileExtensions = TextureAsset.EditorFileExtensions;
+    }
+
     public abstract class Component
     {
         internal uint EntityId;

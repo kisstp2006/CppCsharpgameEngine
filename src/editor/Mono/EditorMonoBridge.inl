@@ -2064,6 +2064,42 @@ static MonoClassField* FindFieldByName(MonoClass* klass, const std::string& fiel
     return nullptr;
 }
 
+static bool IsStringField(MonoClassField* field)
+{
+    if (!field)
+        return false;
+
+    MonoType* fieldType = mono_field_get_type(field);
+    if (!fieldType)
+        return false;
+
+    return mono_type_get_type(fieldType) == MONO_TYPE_STRING;
+}
+
+static MonoClassField* FindAssetPathField(MonoClass* klass)
+{
+    if (!klass)
+        return nullptr;
+
+    static const std::array<const char*, 3> preferredNames = { "path", "assetPath", "filePath" };
+
+    for (const char* preferredName : preferredNames)
+    {
+        MonoClassField* field = FindFieldByName(klass, preferredName);
+        if (IsStringField(field))
+            return field;
+    }
+
+    void* iter = nullptr;
+    while (MonoClassField* field = mono_class_get_fields(klass, &iter))
+    {
+        if (IsStringField(field))
+            return field;
+    }
+
+    return nullptr;
+}
+
 static MonoObject* FindRuntimeScriptInstance(std::uint32_t entityId)
 {
     if (!g_monoRuntimeImplForEditorBridge)
@@ -2294,6 +2330,31 @@ static bool TrySetRuntimeScriptFieldValue(MonoDomain* domain,
         mono_field_set_value(instance, field, (void*)&value);
         return true;
     }
+    case MONO_TYPE_CLASS:
+    {
+        if (!fieldClass)
+            return false;
+
+        MonoClassField* pathField = FindAssetPathField(fieldClass);
+        if (!pathField)
+            return false;
+
+        MonoObject* objectValue = nullptr;
+        mono_field_get_value(instance, field, &objectValue);
+        if (!objectValue)
+        {
+            objectValue = mono_object_new(domain, fieldClass);
+            if (!objectValue)
+                return false;
+
+            mono_runtime_object_init(objectValue);
+            mono_field_set_value(instance, field, &objectValue);
+        }
+
+        MonoString* pathValue = mono_string_new(domain, fieldValue.c_str());
+        mono_field_set_value(objectValue, pathField, &pathValue);
+        return true;
+    }
     case MONO_TYPE_I1:
     case MONO_TYPE_U1:
     case MONO_TYPE_I2:
@@ -2493,6 +2554,28 @@ static bool TryGetRuntimeScriptFieldValue(MonoDomain* domain,
         MonoString* value = nullptr;
         mono_field_get_value(instance, field, &value);
         outValue = MonoStringToUtf8(value);
+        return true;
+    }
+    case MONO_TYPE_CLASS:
+    {
+        if (!fieldClass)
+            return false;
+
+        MonoClassField* pathField = FindAssetPathField(fieldClass);
+        if (!pathField)
+            return false;
+
+        MonoObject* objectValue = nullptr;
+        mono_field_get_value(instance, field, &objectValue);
+        if (!objectValue)
+        {
+            outValue.clear();
+            return true;
+        }
+
+        MonoString* pathValue = nullptr;
+        mono_field_get_value(objectValue, pathField, &pathValue);
+        outValue = MonoStringToUtf8(pathValue);
         return true;
     }
     case MONO_TYPE_I1:
