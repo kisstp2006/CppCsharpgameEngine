@@ -491,3 +491,31 @@ int Renderer::GetViewHeight() const
 {
     return m_viewHeight;
 }
+
+int Renderer::GetCameraViewportWidth() const
+{
+    if (!m_impl)
+        return m_viewWidth;
+
+    if (m_impl->cameraViewportWidth > 0)
+        return m_impl->cameraViewportWidth;
+
+    if (m_impl->gameViewWidth > 0)
+        return m_impl->gameViewWidth;
+
+    return m_viewWidth;
+}
+
+int Renderer::GetCameraViewportHeight() const
+{
+    if (!m_impl)
+        return m_viewHeight;
+
+    if (m_impl->cameraViewportHeight > 0)
+        return m_impl->cameraViewportHeight;
+
+    if (m_impl->gameViewHeight > 0)
+        return m_impl->gameViewHeight;
+
+    return m_viewHeight;
+}

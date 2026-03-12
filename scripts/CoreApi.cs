@@ -265,6 +265,66 @@ namespace Engine
                                             viewportHeightValue);
         }
 
+        private bool GetSettingsV2(out float x,
+                                   out float y,
+                                   out float zoomValue,
+                                   out bool enabledValue,
+                                   out bool primaryValue,
+                                   out bool clearColorValue,
+                                   out uint backgroundColorValue,
+                                   out uint cullingMaskValue,
+                                   out float viewportXValue,
+                                   out float viewportYValue,
+                                   out float viewportWidthValue,
+                                   out float viewportHeightValue,
+                                   out float orthographicSizeValue)
+        {
+            return EntityManager.GetCameraSettingsV2(EntityId,
+                                                     out x,
+                                                     out y,
+                                                     out zoomValue,
+                                                     out enabledValue,
+                                                     out primaryValue,
+                                                     out clearColorValue,
+                                                     out backgroundColorValue,
+                                                     out cullingMaskValue,
+                                                     out viewportXValue,
+                                                     out viewportYValue,
+                                                     out viewportWidthValue,
+                                                     out viewportHeightValue,
+                                                     out orthographicSizeValue);
+        }
+
+        private void ApplySettingsV2(float x,
+                                     float y,
+                                     float zoomValue,
+                                     bool enabledValue,
+                                     bool primaryValue,
+                                     bool clearColorValue,
+                                     uint backgroundColorValue,
+                                     uint cullingMaskValue,
+                                     float viewportXValue,
+                                     float viewportYValue,
+                                     float viewportWidthValue,
+                                     float viewportHeightValue,
+                                     float orthographicSizeValue)
+        {
+            EntityManager.SetCameraSettingsV2(EntityId,
+                                              x,
+                                              y,
+                                              zoomValue,
+                                              enabledValue,
+                                              primaryValue,
+                                              clearColorValue,
+                                              backgroundColorValue,
+                                              cullingMaskValue,
+                                              viewportXValue,
+                                              viewportYValue,
+                                              viewportWidthValue,
+                                              viewportHeightValue,
+                                              orthographicSizeValue);
+        }
+
         public float x
         {
             get
@@ -657,6 +717,90 @@ namespace Engine
                               viewportYValue,
                               viewportWidthValue,
                               viewportHeightValue);
+            }
+        }
+
+        public float orthographicSize
+        {
+            get
+            {
+                float xValue;
+                float yValue;
+                float zoomValue;
+                bool enabledValue;
+                bool primaryValue;
+                bool clearColorValue;
+                uint backgroundColorValue;
+                uint cullingMaskValue;
+                float viewportXValue;
+                float viewportYValue;
+                float viewportWidthValue;
+                float viewportHeightValue;
+                float orthographicSizeValue;
+                if (!GetSettingsV2(out xValue,
+                                   out yValue,
+                                   out zoomValue,
+                                   out enabledValue,
+                                   out primaryValue,
+                                   out clearColorValue,
+                                   out backgroundColorValue,
+                                   out cullingMaskValue,
+                                   out viewportXValue,
+                                   out viewportYValue,
+                                   out viewportWidthValue,
+                                   out viewportHeightValue,
+                                   out orthographicSizeValue))
+                {
+                    return 0.0f;
+                }
+
+                return orthographicSizeValue;
+            }
+            set
+            {
+                float xValue;
+                float yValue;
+                float zoomValue;
+                bool enabledValue;
+                bool primaryValue;
+                bool clearColorValue;
+                uint backgroundColorValue;
+                uint cullingMaskValue;
+                float viewportXValue;
+                float viewportYValue;
+                float viewportWidthValue;
+                float viewportHeightValue;
+                float orthographicSizeValue;
+                if (!GetSettingsV2(out xValue,
+                                   out yValue,
+                                   out zoomValue,
+                                   out enabledValue,
+                                   out primaryValue,
+                                   out clearColorValue,
+                                   out backgroundColorValue,
+                                   out cullingMaskValue,
+                                   out viewportXValue,
+                                   out viewportYValue,
+                                   out viewportWidthValue,
+                                   out viewportHeightValue,
+                                   out orthographicSizeValue))
+                {
+                    return;
+                }
+
+                ApplySettingsV2(xValue,
+                                yValue,
+                                zoomValue,
+                                enabledValue,
+                                primaryValue,
+                                clearColorValue,
+                                backgroundColorValue,
+                                cullingMaskValue,
+                                viewportXValue,
+                                viewportYValue,
+                                viewportWidthValue,
+                                viewportHeightValue,
+                                value);
             }
         }
     }

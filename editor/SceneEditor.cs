@@ -1166,20 +1166,22 @@ namespace EngineEditor
             float viewportY;
             float viewportWidth;
             float viewportHeight;
+            float orthographicSize;
 
-            if (!EntityManager.GetCameraSettings(entityId,
-                                                 out camX,
-                                                 out camY,
-                                                 out camZoom,
-                                                 out enabled,
-                                                 out primary,
-                                                 out clearColor,
-                                                 out backgroundColor,
-                                                 out cullingMask,
-                                                 out viewportX,
-                                                 out viewportY,
-                                                 out viewportWidth,
-                                                 out viewportHeight))
+            if (!EntityManager.GetCameraSettingsV2(entityId,
+                                                   out camX,
+                                                   out camY,
+                                                   out camZoom,
+                                                   out enabled,
+                                                   out primary,
+                                                   out clearColor,
+                                                   out backgroundColor,
+                                                   out cullingMask,
+                                                   out viewportX,
+                                                   out viewportY,
+                                                   out viewportWidth,
+                                                   out viewportHeight,
+                                                   out orthographicSize))
             {
                 ImGui.Text("Camera data unavailable.");
                 return;
@@ -1192,8 +1194,10 @@ namespace EngineEditor
             cameraChanged |= InspectorInputs.Bool("Main Camera", ref primary);
 
             EditorUIHelpers.DrawSectionHeader("Transform");
-            cameraChanged |= InspectorInputs.Vector2("Cam Position", ref camX, ref camY, 1.0f);
+            ImGui.Text("Camera Position is controlled by the Transform component.");
             cameraChanged |= ImGui.InputFloat("Cam Zoom", ref camZoom, 0.1f);
+            cameraChanged |= ImGui.InputFloat("Orthographic Size", ref orthographicSize, 0.1f);
+            ImGui.Text("Orthographic Size > 0 overrides zoom (Unity-style). Set to 0 to use legacy zoom.");
 
             EditorUIHelpers.DrawSectionHeader("Render");
             cameraChanged |= InspectorInputs.Bool("Clear Color", ref clearColor);
@@ -1208,6 +1212,13 @@ namespace EngineEditor
             if (Math.Abs(clampedZoom - camZoom) > 0.0001f)
             {
                 camZoom = clampedZoom;
+                cameraChanged = true;
+            }
+
+            float clampedOrthographicSize = Clamp(orthographicSize, 0.0f, 100000.0f);
+            if (Math.Abs(clampedOrthographicSize - orthographicSize) > 0.0001f)
+            {
+                orthographicSize = clampedOrthographicSize;
                 cameraChanged = true;
             }
 
@@ -1247,19 +1258,20 @@ namespace EngineEditor
 
             if (cameraChanged)
             {
-                EntityManager.SetCameraSettings(entityId,
-                                                camX,
-                                                camY,
-                                                camZoom,
-                                                enabled,
-                                                primary,
-                                                clearColor,
-                                                backgroundColor,
-                                                cullingMask,
-                                                viewportX,
-                                                viewportY,
-                                                viewportWidth,
-                                                viewportHeight);
+                EntityManager.SetCameraSettingsV2(entityId,
+                                                  camX,
+                                                  camY,
+                                                  camZoom,
+                                                  enabled,
+                                                  primary,
+                                                  clearColor,
+                                                  backgroundColor,
+                                                  cullingMask,
+                                                  viewportX,
+                                                  viewportY,
+                                                  viewportWidth,
+                                                  viewportHeight,
+                                                  orthographicSize);
             }
         }
 

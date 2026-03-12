@@ -14,7 +14,7 @@
 
 namespace
 {
-    constexpr std::uint32_t kSceneFileVersion = 5;
+    constexpr std::uint32_t kSceneFileVersion = 6;
 
     enum ComponentFlags : std::uint8_t
     {
@@ -221,8 +221,11 @@ namespace
             entity.camera.y = 0.0f;
         if (!std::isfinite(entity.camera.zoom))
             entity.camera.zoom = 1.0f;
+        if (!std::isfinite(entity.camera.orthographicSize))
+            entity.camera.orthographicSize = 0.0f;
 
         entity.camera.zoom = ClampRange(entity.camera.zoom, 0.01f, 100.0f);
+        entity.camera.orthographicSize = ClampRange(entity.camera.orthographicSize, 0.0f, 100000.0f);
 
         entity.camera.viewportX = ClampRange(entity.camera.viewportX, 0.0f, 1.0f);
         entity.camera.viewportY = ClampRange(entity.camera.viewportY, 0.0f, 1.0f);
@@ -701,6 +704,7 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
                 WriteBinary(output, entity.camera.x);
                 WriteBinary(output, entity.camera.y);
                 WriteBinary(output, entity.camera.zoom);
+                WriteBinary(output, entity.camera.orthographicSize);
                 const std::uint8_t enabled = entity.camera.enabled ? 1 : 0;
                 const std::uint8_t primary = entity.camera.primary ? 1 : 0;
                 const std::uint8_t clearColor = entity.camera.clearColor ? 1 : 0;
@@ -800,6 +804,7 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             cameraObject.AddMember("x", entity.camera.x, allocator);
             cameraObject.AddMember("y", entity.camera.y, allocator);
             cameraObject.AddMember("zoom", entity.camera.zoom, allocator);
+            cameraObject.AddMember("orthographicSize", entity.camera.orthographicSize, allocator);
             cameraObject.AddMember("enabled", entity.camera.enabled, allocator);
             cameraObject.AddMember("primary", entity.camera.primary, allocator);
             cameraObject.AddMember("clearColor", entity.camera.clearColor, allocator);
@@ -998,6 +1003,15 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                 {
                     m_lastIoError = "Failed to read binary camera component.";
                     return false;
+                }
+
+                if (fileVersion >= 6)
+                {
+                    if (!ReadBinary(input, entity.camera.orthographicSize))
+                    {
+                        m_lastIoError = "Failed to read binary camera orthographic size.";
+                        return false;
+                    }
                 }
 
                 if (fileVersion >= 5)
@@ -1224,6 +1238,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                     if (!ReadOptionalFloat(camera, "x", entity.camera.x, parseError) ||
                         !ReadOptionalFloat(camera, "y", entity.camera.y, parseError) ||
                         !ReadOptionalFloat(camera, "zoom", entity.camera.zoom, parseError) ||
+                        !ReadOptionalFloat(camera, "orthographicSize", entity.camera.orthographicSize, parseError) ||
                         !ReadOptionalBool(camera, "enabled", entity.camera.enabled, parseError) ||
                         !ReadOptionalBool(camera, "primary", entity.camera.primary, parseError) ||
                         !ReadOptionalBool(camera, "clearColor", entity.camera.clearColor, parseError) ||

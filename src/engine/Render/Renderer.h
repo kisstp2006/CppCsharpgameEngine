@@ -42,6 +42,8 @@ public:
 
     int GetViewWidth() const;
     int GetViewHeight() const;
+    int GetCameraViewportWidth() const;
+    int GetCameraViewportHeight() const;
 
 private:
     int m_viewWidth = 0;

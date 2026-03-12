@@ -197,6 +197,38 @@ namespace Engine
                                 float viewportHeight);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool GetCameraSettingsV2(uint entityId,
+                                                                                                    out float x,
+                                                                                                    out float y,
+                                                                                                    out float zoom,
+                                                                                                    out bool enabled,
+                                                                                                    out bool primary,
+                                                                                                    out bool clearColor,
+                                                                                                    out uint backgroundColor,
+                                                                                                    out uint cullingMask,
+                                                                                                    out float viewportX,
+                                                                                                    out float viewportY,
+                                                                                                    out float viewportWidth,
+                                                                                                    out float viewportHeight,
+                                                                                                    out float orthographicSize);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetCameraSettingsV2(uint entityId,
+                                                                                                    float x,
+                                                                                                    float y,
+                                                                                                    float zoom,
+                                                                                                    bool enabled,
+                                                                                                    bool primary,
+                                                                                                    bool clearColor,
+                                                                                                    uint backgroundColor,
+                                                                                                    uint cullingMask,
+                                                                                                    float viewportX,
+                                                                                                    float viewportY,
+                                                                                                    float viewportWidth,
+                                                                                                    float viewportHeight,
+                                                                                                    float orthographicSize);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void RemoveCamera(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]

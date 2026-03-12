@@ -167,8 +167,11 @@ static void NormalizeCameraValues(CameraComponent& camera)
         camera.y = 0.0f;
     if (!std::isfinite(camera.zoom))
         camera.zoom = 1.0f;
+    if (!std::isfinite(camera.orthographicSize))
+        camera.orthographicSize = 0.0f;
 
     camera.zoom = ClampFloatRange(camera.zoom, 0.01f, 100.0f);
+    camera.orthographicSize = ClampFloatRange(camera.orthographicSize, 0.0f, 100000.0f);
 
     camera.viewportX = ClampFloatRange(camera.viewportX, 0.0f, 1.0f);
     camera.viewportY = ClampFloatRange(camera.viewportY, 0.0f, 1.0f);
@@ -180,6 +183,50 @@ static void NormalizeCameraValues(CameraComponent& camera)
 
     if (camera.viewportY + camera.viewportHeight > 1.0f)
         camera.viewportHeight = ClampFloatRange(1.0f - camera.viewportY, 0.01f, 1.0f);
+}
+
+static TransformComponent* EnsureTransformComponent(Scene* scene, entt::entity entity)
+{
+    if (!scene)
+        return nullptr;
+
+    if (TransformComponent* existing = scene->TryGetTransform(entity))
+        return existing;
+
+    auto& created = scene->AddTransform(entity);
+    created.x = 0.0f;
+    created.y = 0.0f;
+    created.width = 100.0f;
+    created.height = 100.0f;
+    return &created;
+}
+
+static void ResolveCameraPosition(const Scene* scene, entt::entity entity, const CameraComponent& camera, float& outX, float& outY)
+{
+    outX = camera.x;
+    outY = camera.y;
+
+    if (!scene)
+        return;
+
+    if (const TransformComponent* transform = scene->TryGetTransform(entity))
+    {
+        outX = transform->x;
+        outY = transform->y;
+    }
+}
+
+static void ApplyCameraPosition(Scene* scene, entt::entity entity, CameraComponent& camera, float x, float y)
+{
+    camera.x = x;
+    camera.y = y;
+
+    TransformComponent* transform = EnsureTransformComponent(scene, entity);
+    if (transform)
+    {
+        transform->x = x;
+        transform->y = y;
+    }
 }
 
 static std::uint32_t EntityManager_CreateEntityInternal()
@@ -359,9 +406,11 @@ static void EntityManager_AddComponentInternal(std::uint32_t entityId, int compo
             return;
         {
             auto& camera = scene->AddCamera(entity);
-            camera.x = 0.0f;
-            camera.y = 0.0f;
+            TransformComponent* transform = EnsureTransformComponent(scene, entity);
+            camera.x = transform ? transform->x : 0.0f;
+            camera.y = transform ? transform->y : 0.0f;
             camera.zoom = 1.0f;
+            camera.orthographicSize = 0.0f;
             camera.enabled = true;
             camera.primary = true;
             camera.clearColor = true;
@@ -495,10 +544,13 @@ static bool EntityManager_GetCameraInternal(std::uint32_t entityId, float* x, fl
 
     NormalizeCameraValues(*camera);
 
+    float resolvedX = camera->x;
+    float resolvedY = camera->y;
+    ResolveCameraPosition(scene, entity, *camera, resolvedX, resolvedY);
     if (x)
-        *x = camera->x;
+        *x = resolvedX;
     if (y)
-        *y = camera->y;
+        *y = resolvedY;
     if (zoom)
         *zoom = camera->zoom;
     return true;
@@ -515,8 +567,7 @@ static void EntityManager_SetCameraInternal(std::uint32_t entityId, float x, flo
     if (!camera)
         return;
 
-    camera->x = x;
-    camera->y = y;
+    ApplyCameraPosition(scene, entity, *camera, x, y);
     camera->zoom = zoom;
     NormalizeCameraValues(*camera);
 }
@@ -546,10 +597,13 @@ static bool EntityManager_GetCameraSettingsInternal(std::uint32_t entityId,
 
     NormalizeCameraValues(*camera);
 
+    float resolvedX = camera->x;
+    float resolvedY = camera->y;
+    ResolveCameraPosition(scene, entity, *camera, resolvedX, resolvedY);
     if (x)
-        *x = camera->x;
+        *x = resolvedX;
     if (y)
-        *y = camera->y;
+        *y = resolvedY;
     if (zoom)
         *zoom = camera->zoom;
     if (enabled)
@@ -597,8 +651,7 @@ static void EntityManager_SetCameraSettingsInternal(std::uint32_t entityId,
     if (!camera)
         return;
 
-    camera->x = x;
-    camera->y = y;
+    ApplyCameraPosition(scene, entity, *camera, x, y);
     camera->zoom = zoom;
     camera->enabled = enabled;
     camera->primary = primary;
@@ -609,6 +662,104 @@ static void EntityManager_SetCameraSettingsInternal(std::uint32_t entityId,
     camera->viewportY = viewportY;
     camera->viewportWidth = viewportWidth;
     camera->viewportHeight = viewportHeight;
+    NormalizeCameraValues(*camera);
+}
+
+static bool EntityManager_GetCameraSettingsV2Internal(std::uint32_t entityId,
+                                                      float* x,
+                                                      float* y,
+                                                      float* zoom,
+                                                      bool* enabled,
+                                                      bool* primary,
+                                                      bool* clearColor,
+                                                      std::uint32_t* backgroundColor,
+                                                      std::uint32_t* cullingMask,
+                                                      float* viewportX,
+                                                      float* viewportY,
+                                                      float* viewportWidth,
+                                                      float* viewportHeight,
+                                                      float* orthographicSize)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    CameraComponent* camera = scene->TryGetCamera(entity);
+    if (!camera)
+        return false;
+
+    NormalizeCameraValues(*camera);
+
+    float resolvedX = camera->x;
+    float resolvedY = camera->y;
+    ResolveCameraPosition(scene, entity, *camera, resolvedX, resolvedY);
+    if (x)
+        *x = resolvedX;
+    if (y)
+        *y = resolvedY;
+    if (zoom)
+        *zoom = camera->zoom;
+    if (enabled)
+        *enabled = camera->enabled;
+    if (primary)
+        *primary = camera->primary;
+    if (clearColor)
+        *clearColor = camera->clearColor;
+    if (backgroundColor)
+        *backgroundColor = camera->backgroundColor;
+    if (cullingMask)
+        *cullingMask = camera->cullingMask;
+    if (viewportX)
+        *viewportX = camera->viewportX;
+    if (viewportY)
+        *viewportY = camera->viewportY;
+    if (viewportWidth)
+        *viewportWidth = camera->viewportWidth;
+    if (viewportHeight)
+        *viewportHeight = camera->viewportHeight;
+    if (orthographicSize)
+        *orthographicSize = camera->orthographicSize;
+
+    return true;
+}
+
+static void EntityManager_SetCameraSettingsV2Internal(std::uint32_t entityId,
+                                                      float x,
+                                                      float y,
+                                                      float zoom,
+                                                      bool enabled,
+                                                      bool primary,
+                                                      bool clearColor,
+                                                      std::uint32_t backgroundColor,
+                                                      std::uint32_t cullingMask,
+                                                      float viewportX,
+                                                      float viewportY,
+                                                      float viewportWidth,
+                                                      float viewportHeight,
+                                                      float orthographicSize)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    CameraComponent* camera = scene->TryGetCamera(entity);
+    if (!camera)
+        return;
+
+    ApplyCameraPosition(scene, entity, *camera, x, y);
+    camera->zoom = zoom;
+    camera->enabled = enabled;
+    camera->primary = primary;
+    camera->clearColor = clearColor;
+    camera->backgroundColor = backgroundColor;
+    camera->cullingMask = cullingMask;
+    camera->viewportX = viewportX;
+    camera->viewportY = viewportY;
+    camera->viewportWidth = viewportWidth;
+    camera->viewportHeight = viewportHeight;
+    camera->orthographicSize = orthographicSize;
     NormalizeCameraValues(*camera);
 }
 
@@ -1548,9 +1699,21 @@ static void EditorBridge_AddComponent(std::uint32_t entityId, int componentType)
             return;
         {
             auto& camera = g_editorSceneContext->AddCamera(entity);
-            camera.x = 0.0f;
-            camera.y = 0.0f;
+            TransformComponent* transform = EnsureTransformComponent(g_editorSceneContext, entity);
+            camera.x = transform ? transform->x : 0.0f;
+            camera.y = transform ? transform->y : 0.0f;
             camera.zoom = 1.0f;
+            camera.orthographicSize = 0.0f;
+            camera.enabled = true;
+            camera.primary = true;
+            camera.clearColor = true;
+            camera.backgroundColor = 0x14141AFFu;
+            camera.cullingMask = 0xFFFFFFFFu;
+            camera.viewportX = 0.0f;
+            camera.viewportY = 0.0f;
+            camera.viewportWidth = 1.0f;
+            camera.viewportHeight = 1.0f;
+            NormalizeCameraValues(camera);
         }
         return;
     case EditorComponentType::Sprite:
@@ -2721,9 +2884,11 @@ static void EditorBridge_AddCamera(std::uint32_t entityId)
         return;
 
     auto& camera = g_editorSceneContext->AddCamera(entity);
-    camera.x = 0.0f;
-    camera.y = 0.0f;
+    TransformComponent* transform = EnsureTransformComponent(g_editorSceneContext, entity);
+    camera.x = transform ? transform->x : 0.0f;
+    camera.y = transform ? transform->y : 0.0f;
     camera.zoom = 1.0f;
+    camera.orthographicSize = 0.0f;
     camera.enabled = true;
     camera.primary = true;
     camera.clearColor = true;
@@ -2748,10 +2913,13 @@ static bool EditorBridge_GetCamera(std::uint32_t entityId, float* x, float* y, f
 
     NormalizeCameraValues(*camera);
 
+    float resolvedX = camera->x;
+    float resolvedY = camera->y;
+    ResolveCameraPosition(g_editorSceneContext, entity, *camera, resolvedX, resolvedY);
     if (x)
-        *x = camera->x;
+        *x = resolvedX;
     if (y)
-        *y = camera->y;
+        *y = resolvedY;
     if (zoom)
         *zoom = camera->zoom;
     return true;
@@ -2767,8 +2935,7 @@ static void EditorBridge_SetCamera(std::uint32_t entityId, float x, float y, flo
     if (!camera)
         return;
 
-    camera->x = x;
-    camera->y = y;
+    ApplyCameraPosition(g_editorSceneContext, entity, *camera, x, y);
     camera->zoom = zoom;
     NormalizeCameraValues(*camera);
 }
@@ -2797,10 +2964,13 @@ static bool EditorBridge_GetCameraSettings(std::uint32_t entityId,
 
     NormalizeCameraValues(*camera);
 
+    float resolvedX = camera->x;
+    float resolvedY = camera->y;
+    ResolveCameraPosition(g_editorSceneContext, entity, *camera, resolvedX, resolvedY);
     if (x)
-        *x = camera->x;
+        *x = resolvedX;
     if (y)
-        *y = camera->y;
+        *y = resolvedY;
     if (zoom)
         *zoom = camera->zoom;
     if (enabled)
@@ -2847,8 +3017,7 @@ static void EditorBridge_SetCameraSettings(std::uint32_t entityId,
     if (!camera)
         return;
 
-    camera->x = x;
-    camera->y = y;
+    ApplyCameraPosition(g_editorSceneContext, entity, *camera, x, y);
     camera->zoom = zoom;
     camera->enabled = enabled;
     camera->primary = primary;
@@ -2859,6 +3028,102 @@ static void EditorBridge_SetCameraSettings(std::uint32_t entityId,
     camera->viewportY = viewportY;
     camera->viewportWidth = viewportWidth;
     camera->viewportHeight = viewportHeight;
+    NormalizeCameraValues(*camera);
+}
+
+static bool EditorBridge_GetCameraSettingsV2(std::uint32_t entityId,
+                                             float* x,
+                                             float* y,
+                                             float* zoom,
+                                             bool* enabled,
+                                             bool* primary,
+                                             bool* clearColor,
+                                             std::uint32_t* backgroundColor,
+                                             std::uint32_t* cullingMask,
+                                             float* viewportX,
+                                             float* viewportY,
+                                             float* viewportWidth,
+                                             float* viewportHeight,
+                                             float* orthographicSize)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    CameraComponent* camera = g_editorSceneContext->TryGetCamera(entity);
+    if (!camera)
+        return false;
+
+    NormalizeCameraValues(*camera);
+
+    float resolvedX = camera->x;
+    float resolvedY = camera->y;
+    ResolveCameraPosition(g_editorSceneContext, entity, *camera, resolvedX, resolvedY);
+    if (x)
+        *x = resolvedX;
+    if (y)
+        *y = resolvedY;
+    if (zoom)
+        *zoom = camera->zoom;
+    if (enabled)
+        *enabled = camera->enabled;
+    if (primary)
+        *primary = camera->primary;
+    if (clearColor)
+        *clearColor = camera->clearColor;
+    if (backgroundColor)
+        *backgroundColor = camera->backgroundColor;
+    if (cullingMask)
+        *cullingMask = camera->cullingMask;
+    if (viewportX)
+        *viewportX = camera->viewportX;
+    if (viewportY)
+        *viewportY = camera->viewportY;
+    if (viewportWidth)
+        *viewportWidth = camera->viewportWidth;
+    if (viewportHeight)
+        *viewportHeight = camera->viewportHeight;
+    if (orthographicSize)
+        *orthographicSize = camera->orthographicSize;
+
+    return true;
+}
+
+static void EditorBridge_SetCameraSettingsV2(std::uint32_t entityId,
+                                             float x,
+                                             float y,
+                                             float zoom,
+                                             bool enabled,
+                                             bool primary,
+                                             bool clearColor,
+                                             std::uint32_t backgroundColor,
+                                             std::uint32_t cullingMask,
+                                             float viewportX,
+                                             float viewportY,
+                                             float viewportWidth,
+                                             float viewportHeight,
+                                             float orthographicSize)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    CameraComponent* camera = g_editorSceneContext->TryGetCamera(entity);
+    if (!camera)
+        return;
+
+    ApplyCameraPosition(g_editorSceneContext, entity, *camera, x, y);
+    camera->zoom = zoom;
+    camera->enabled = enabled;
+    camera->primary = primary;
+    camera->clearColor = clearColor;
+    camera->backgroundColor = backgroundColor;
+    camera->cullingMask = cullingMask;
+    camera->viewportX = viewportX;
+    camera->viewportY = viewportY;
+    camera->viewportWidth = viewportWidth;
+    camera->viewportHeight = viewportHeight;
+    camera->orthographicSize = orthographicSize;
     NormalizeCameraValues(*camera);
 }
 

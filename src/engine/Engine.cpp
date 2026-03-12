@@ -18,6 +18,7 @@
 
 #include <SDL.h>
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
@@ -430,6 +431,7 @@ void Engine::Run()
             float cameraViewportY = 0.0f;
             float cameraViewportWidth = 1.0f;
             float cameraViewportHeight = 1.0f;
+            float cameraOrthographicSize = 0.0f;
             std::uint32_t cameraCullingMask = 0xFFFFFFFFu;
             std::uint32_t cameraBackgroundColor = 0x14141AFFu;
             bool clearCameraViewport = false;
@@ -461,13 +463,22 @@ void Engine::Run()
                     if (activeCamera && activeCamera->enabled)
                     {
                         hasActiveSceneCamera = true;
-                        cameraX = activeCamera->x;
-                        cameraY = activeCamera->y;
+                        if (const TransformComponent* cameraTransform = m_scene->TryGetTransform(cameraEntity))
+                        {
+                            cameraX = cameraTransform->x;
+                            cameraY = cameraTransform->y;
+                        }
+                        else
+                        {
+                            cameraX = activeCamera->x;
+                            cameraY = activeCamera->y;
+                        }
                         cameraZoom = activeCamera->zoom;
                         cameraViewportX = activeCamera->viewportX;
                         cameraViewportY = activeCamera->viewportY;
                         cameraViewportWidth = activeCamera->viewportWidth;
                         cameraViewportHeight = activeCamera->viewportHeight;
+                        cameraOrthographicSize = activeCamera->orthographicSize;
                         cameraCullingMask = activeCamera->cullingMask;
                         cameraBackgroundColor = activeCamera->backgroundColor;
                         clearCameraViewport = activeCamera->clearColor;
@@ -480,6 +491,14 @@ void Engine::Run()
                                                    cameraViewportY,
                                                    cameraViewportWidth,
                                                    cameraViewportHeight);
+
+            if (hasActiveSceneCamera && cameraOrthographicSize > 0.0001f)
+            {
+                const int viewportPixelHeight = m_renderer->GetCameraViewportHeight();
+                const float derivedZoom = (static_cast<float>(viewportPixelHeight) * 0.5f) / cameraOrthographicSize;
+                if (std::isfinite(derivedZoom) && derivedZoom > 0.0001f)
+                    cameraZoom = derivedZoom;
+            }
 
             if (clearCameraViewport)
             {

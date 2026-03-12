@@ -18,6 +18,7 @@ struct CameraComponent
     float x = 0.0f;
     float y = 0.0f;
     float zoom = 1.0f;
+    float orthographicSize = 0.0f;
     bool enabled = true;
     bool primary = true;
     bool clearColor = true;

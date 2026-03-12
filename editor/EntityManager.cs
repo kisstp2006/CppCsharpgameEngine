@@ -165,6 +165,68 @@ namespace Engine
                                            viewportHeight);
         }
 
+        public static bool GetCameraSettingsV2(uint entityId,
+                                               out float x,
+                                               out float y,
+                                               out float zoom,
+                                               out bool enabled,
+                                               out bool primary,
+                                               out bool clearColor,
+                                               out uint backgroundColor,
+                                               out uint cullingMask,
+                                               out float viewportX,
+                                               out float viewportY,
+                                               out float viewportWidth,
+                                               out float viewportHeight,
+                                               out float orthographicSize)
+        {
+            return EditorBridge.GetCameraSettingsV2(entityId,
+                                                    out x,
+                                                    out y,
+                                                    out zoom,
+                                                    out enabled,
+                                                    out primary,
+                                                    out clearColor,
+                                                    out backgroundColor,
+                                                    out cullingMask,
+                                                    out viewportX,
+                                                    out viewportY,
+                                                    out viewportWidth,
+                                                    out viewportHeight,
+                                                    out orthographicSize);
+        }
+
+        public static void SetCameraSettingsV2(uint entityId,
+                                               float x,
+                                               float y,
+                                               float zoom,
+                                               bool enabled,
+                                               bool primary,
+                                               bool clearColor,
+                                               uint backgroundColor,
+                                               uint cullingMask,
+                                               float viewportX,
+                                               float viewportY,
+                                               float viewportWidth,
+                                               float viewportHeight,
+                                               float orthographicSize)
+        {
+            EditorBridge.SetCameraSettingsV2(entityId,
+                                             x,
+                                             y,
+                                             zoom,
+                                             enabled,
+                                             primary,
+                                             clearColor,
+                                             backgroundColor,
+                                             cullingMask,
+                                             viewportX,
+                                             viewportY,
+                                             viewportWidth,
+                                             viewportHeight,
+                                             orthographicSize);
+        }
+
         public static void RemoveCamera(uint entityId)
         {
             EditorBridge.RemoveCamera(entityId);

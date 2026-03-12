@@ -594,6 +594,8 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::SetCamera", (const void*)&EditorBridge_SetCamera);
         mono_add_internal_call("Engine.EditorBridge::GetCameraSettings", (const void*)&EditorBridge_GetCameraSettings);
         mono_add_internal_call("Engine.EditorBridge::SetCameraSettings", (const void*)&EditorBridge_SetCameraSettings);
+        mono_add_internal_call("Engine.EditorBridge::GetCameraSettingsV2", (const void*)&EditorBridge_GetCameraSettingsV2);
+        mono_add_internal_call("Engine.EditorBridge::SetCameraSettingsV2", (const void*)&EditorBridge_SetCameraSettingsV2);
         mono_add_internal_call("Engine.EditorBridge::RemoveCamera", (const void*)&EditorBridge_RemoveCamera);
         mono_add_internal_call("Engine.EditorBridge::HasSprite", (const void*)&EditorBridge_HasSprite);
         mono_add_internal_call("Engine.EditorBridge::AddSprite", (const void*)&EditorBridge_AddSprite);
@@ -662,6 +664,8 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.EntityManager::SetCameraInternal", (const void*)&EntityManager_SetCameraInternal);
     mono_add_internal_call("Engine.EntityManager::GetCameraSettingsInternal", (const void*)&EntityManager_GetCameraSettingsInternal);
     mono_add_internal_call("Engine.EntityManager::SetCameraSettingsInternal", (const void*)&EntityManager_SetCameraSettingsInternal);
+    mono_add_internal_call("Engine.EntityManager::GetCameraSettingsV2Internal", (const void*)&EntityManager_GetCameraSettingsV2Internal);
+    mono_add_internal_call("Engine.EntityManager::SetCameraSettingsV2Internal", (const void*)&EntityManager_SetCameraSettingsV2Internal);
     mono_add_internal_call("Engine.EntityManager::RemoveCameraInternal", (const void*)&EntityManager_RemoveCameraInternal);
     mono_add_internal_call("Engine.EntityManager::HasSpriteInternal", (const void*)&EntityManager_HasSpriteInternal);
     mono_add_internal_call("Engine.EntityManager::AddSpriteInternal", (const void*)&EntityManager_AddSpriteInternal);
