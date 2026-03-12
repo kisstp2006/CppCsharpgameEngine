@@ -31,11 +31,17 @@ namespace GameScripts
 
     public sealed class SpinnerScript
     {
-        private float _accumulator;
+        private float _moveSpeed = 200.0f;
+        private float _logAccumulator;
 
         public void OnCreate(uint entityId)
         {
-            Debug.Log("[GameScripts] SpinnerScript created for entity " + entityId + ".");
+            if (!EntityManager.HasTransform(entityId))
+            {
+                EntityManager.AddTransform(entityId);
+            }
+
+            Debug.Log("[GameScripts] SpinnerScript created for entity " + entityId + ". WASD movement enabled.");
         }
 
         public void OnEnable(uint entityId)
@@ -50,11 +56,43 @@ namespace GameScripts
 
         public void OnUpdate(uint entityId, float deltaTime)
         {
-            _accumulator += deltaTime;
-            if (_accumulator >= 2.0f)
+            float x;
+            float y;
+            float width;
+            float height;
+            if (!EntityManager.GetTransform(entityId, out x, out y, out width, out height))
+                return;
+
+            float moveX = 0.0f;
+            float moveY = 0.0f;
+
+            if (Input.GetKey(KeyCode.W))
+                moveY += _moveSpeed * deltaTime;
+            if (Input.GetKey(KeyCode.S))
+                moveY -= _moveSpeed * deltaTime;
+            if (Input.GetKey(KeyCode.A))
+                moveX -= _moveSpeed * deltaTime;
+            if (Input.GetKey(KeyCode.D))
+                moveX += _moveSpeed * deltaTime;
+
+            if (moveX == 0.0f && moveY == 0.0f)
+                return;
+
+            EntityManager.SetTransform(entityId, x + moveX, y + moveY, width, height);
+
+            _logAccumulator += deltaTime;
+            if (_logAccumulator >= 0.2f)
             {
-                _accumulator = 0.0f;
-                Debug.Log("[GameScripts] SpinnerScript update on entity " + entityId + ".");
+                _logAccumulator = 0.0f;
+
+                float newX;
+                float newY;
+                float newWidth;
+                float newHeight;
+                if (EntityManager.GetTransform(entityId, out newX, out newY, out newWidth, out newHeight))
+                {
+                    Debug.Log("[GameScripts] Entity " + entityId + " moved to (" + newX + ", " + newY + ")");
+                }
             }
         }
 
