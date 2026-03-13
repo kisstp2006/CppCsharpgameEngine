@@ -18,6 +18,8 @@ public:
     void SetTitle(const std::string& title);
     void Center();
     void Maximize();
+    void SetResizable(bool enabled);
+    void SetBorderless(bool enabled);
 
     SDL_Window* GetSDL_Window() const { return m_window; }
     SDL_GLContext GetGLContext() const { return m_glContext; }

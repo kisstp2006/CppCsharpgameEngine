@@ -20,6 +20,9 @@ namespace EngineEditor
         private static string _playSnapshotPath = string.Empty;
         private static float _compileProgressPulse = 0.0f;
         private static bool _compileDialogOpen;
+        private static bool _menuItemsRegistered;
+        private static bool _backgroundSplashInitialized;
+        private static bool _backgroundSplashReady;
 
         private static BootStage _bootStage = BootStage.ProjectSelector;
         private static float _loadingTimer = 0.0f;
@@ -27,6 +30,7 @@ namespace EngineEditor
 
         private const float LoadingMinDuration = 1.0f;
         private const string CompilePopupId = "##ScriptCompileBlockingModal";
+        private const string SplashLogoRelativePath = "assets/editor/splash_logo.png";
 
         public static string StatusMessage => _statusMessage;
 
@@ -40,7 +44,6 @@ namespace EngineEditor
             ProjectManager.Initialize(_editorConfigDir);
             ProjectOperations.Initialize(_editorConfigDir);
             ScriptComponentValidation.Initialize(_editorConfigDir);
-            ProjectOperations.OpenLastProjectSilently();
 
             AssetPanel.RegisterEditorOptions();
             AssetPanel.RegisterAssetContextMenu();
@@ -50,16 +53,14 @@ namespace EngineEditor
             ScriptFieldInspector.RegisterEditorOptions();
             ScriptFieldInspector.RegisterAssetContextMenu();
 
-            if (ProjectOperations.HasOpenProject())
-            {
-                _loadingProjectName = Path.GetFileName(ProjectOperations.ActiveProjectPath);
-                _loadingTimer = 0.0f;
-                _bootStage = BootStage.Loading;
-            }
-            else
-            {
-                _bootStage = BootStage.ProjectSelector;
-            }
+            _backgroundSplashInitialized = false;
+            _backgroundSplashReady = false;
+            EditorBridge.SetWindowBackgroundVisible(false);
+
+            RegisterMenuItems();
+
+            _bootStage = BootStage.ProjectSelector;
+            EditorBridge.SetWindowBackgroundVisible(false);
 
             _showProjectManagerView = true;
             _statusMessage = "No project loaded.";
@@ -68,6 +69,9 @@ namespace EngineEditor
 
         public static void OnEditorUpdate(float deltaTime)
         {
+            EnsureBackgroundSplashInitialized();
+            ApplyWindowStyleForBootStage();
+
             switch (_bootStage)
             {
                 case BootStage.ProjectSelector:
@@ -114,7 +118,7 @@ namespace EngineEditor
 
         private static void DrawLoadingSplash(float deltaTime)
         {
-            if (ImGui.Begin("##LoadingSplash"))
+            if (ImGui.BeginCenteredFixed("##LoadingSplash", 560.0f, 270.0f, true))
             {
                 ImGui.Text("");
                 ImGui.Text("          CppCSharp Engine");
@@ -145,6 +149,63 @@ namespace EngineEditor
             ImGui.End();
         }
 
+        private static void EnsureBackgroundSplashInitialized()
+        {
+            if (_backgroundSplashInitialized)
+                return;
+
+            _backgroundSplashInitialized = true;
+
+            string splashLogoPath = ResolveSplashLogoPath();
+            _backgroundSplashReady = EditorBridge.SetWindowBackgroundImage(splashLogoPath);
+
+            if (_bootStage == BootStage.Loading && _backgroundSplashReady)
+                EditorBridge.SetWindowBackgroundVisible(true);
+        }
+
+        private static void ApplyWindowStyleForBootStage()
+        {
+            if (_bootStage == BootStage.Loading)
+            {
+                EditorBridge.SetMainWindowResizable(false);
+                EditorBridge.SetMainWindowBorderless(true);
+                return;
+            }
+
+            EditorBridge.SetMainWindowBorderless(false);
+            EditorBridge.SetMainWindowResizable(true);
+        }
+
+        private static string ResolveSplashLogoPath()
+        {
+            // Try the current working directory first (normal editor start path).
+            string cwdCandidate = Path.Combine(Directory.GetCurrentDirectory(), SplashLogoRelativePath);
+            if (File.Exists(cwdCandidate))
+                return cwdCandidate;
+
+            // Fallback: walk upward from managed assembly base directory to find workspace root.
+            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            try
+            {
+                DirectoryInfo current = new DirectoryInfo(baseDirectory);
+                for (int i = 0; i < 10 && current != null; ++i)
+                {
+                    string candidate = Path.Combine(current.FullName, SplashLogoRelativePath);
+                    if (File.Exists(candidate))
+                        return candidate;
+
+                    current = current.Parent;
+                }
+            }
+            catch
+            {
+                // Keep startup robust even if directory probing fails.
+            }
+
+            // Return the canonical relative fallback; engine-side loader will fail silently.
+            return SplashLogoRelativePath;
+        }
+
         // ----- Stage transitions -----
         private static void TransitionToLoading()
         {
@@ -152,6 +213,9 @@ namespace EngineEditor
             _loadingTimer = 0.0f;
             _compileProgressPulse = 0.0f;
             _bootStage = BootStage.Loading;
+            EditorBridge.SetMainWindowResizable(false);
+            EditorBridge.SetMainWindowBorderless(true);
+            EditorBridge.SetWindowBackgroundVisible(_backgroundSplashReady);
             Console.WriteLine("[Editor] Boot transition -> Loading (" + _loadingProjectName + ")");
         }
 
@@ -165,6 +229,9 @@ namespace EngineEditor
                 projectName = "Untitled";
 
             EditorBridge.SetDockspaceEnabled(true);
+            EditorBridge.SetMainWindowBorderless(false);
+            EditorBridge.SetMainWindowResizable(true);
+            EditorBridge.SetWindowBackgroundVisible(false);
             EditorBridge.SetMainWindowTitle("CppCSharp Editor \u2014 " + projectName);
             EditorBridge.MaximizeMainWindow();
 
@@ -182,7 +249,7 @@ namespace EngineEditor
                 return;
 
             if (hasOpenProject)
-                DrawTopBar();
+                DrawMenuBar();
 
             if (!hasOpenProject)
             {
@@ -275,111 +342,228 @@ namespace EngineEditor
             return value;
         }
 
-        private static void DrawTopBar()
+        private static void RegisterMenuItems()
         {
-            float topBarHeight = _showProjectManagerView ? 30.0f : 40.0f;
-            if (!ImGui.BeginTopBar("##EditorTopBar", topBarHeight))
+            if (_menuItemsRegistered)
                 return;
 
-            string activeProjectName = Path.GetFileName(ProjectOperations.ActiveProjectPath);
-            if (string.IsNullOrEmpty(activeProjectName))
-                activeProjectName = "<none>";
+            _menuItemsRegistered = true;
+            MenuRegistry.Clear();
 
-            ImGui.Text("CppCSharp Editor");
-            EditorUIHelpers.DrawInlineDivider();
-            if (ImGui.Button("Project Manager"))
-                _showProjectManagerView = true;
+            MenuRegistry.Register("menu.file.newScene",
+                                  "File/New Scene",
+                                  () => SceneEditor.NewScene(),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  10);
 
-            ImGui.SameLine();
-            if (ImGui.Button("Scene Workspace"))
-                _showProjectManagerView = false;
+            MenuRegistry.Register("menu.file.openScene",
+                                  "File/Open Scene",
+                                  () => SceneEditor.LoadSceneFromPicker(),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  20);
 
-            EditorUIHelpers.DrawInlineDivider();
-            if (ImGui.Button("Editor Options"))
-                EditorOptionsWindow.Toggle();
+            MenuRegistry.Register("menu.file.saveScene",
+                                  "File/Save Scene",
+                                  () => SceneEditor.SaveScene(),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  30);
 
-            ImGui.SameLine();
-            if (ImGui.Button("Console"))
-                EditorConsoleWindow.Toggle();
+            MenuRegistry.Register("menu.file.saveSceneAsJson",
+                                  "File/Save Scene As/JSON",
+                                  () => SceneEditor.SaveSceneAsJson(),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  40);
 
-            if (!_showProjectManagerView)
+            MenuRegistry.Register("menu.file.saveSceneAsBinary",
+                                  "File/Save Scene As/Binary",
+                                  () => SceneEditor.SaveSceneAsBinary(),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  50);
+
+            MenuRegistry.Register("menu.edit.play",
+                                  "Edit/Play/Play",
+                                  () => EnterPlayMode(),
+                                  () => CanEnterPlayMode(),
+                                  10);
+
+            MenuRegistry.Register("menu.edit.pauseToggle",
+                                  "Edit/Play/Toggle Pause",
+                                  () => TogglePauseState(),
+                                  () => CanTogglePauseState(),
+                                  20);
+
+            MenuRegistry.Register("menu.edit.stop",
+                                  "Edit/Play/Stop",
+                                  () => StopPlayMode(),
+                                  () => CanStopPlayMode(),
+                                  30);
+
+            MenuRegistry.Register("menu.assets.refreshProjects",
+                                  "Assets/Refresh Project List",
+                                  () => ProjectManager.RefreshProjectList(),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  10);
+
+            MenuRegistry.Register("menu.assets.rebuildScripts",
+                                  "Assets/Rebuild Scripts",
+                                  () => ScriptComponentValidation.RequestImmediateBuildForActiveProject(),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  20);
+
+            MenuRegistry.Register("menu.gameObject.createEmpty",
+                                  "GameObject/Create Empty",
+                                  () => SceneEditor.CreateEntityAndSelect(),
+                                  () => IsSceneWorkspaceActive(),
+                                  10);
+
+            MenuRegistry.Register("menu.component.addScript",
+                                  "Component/Add Script",
+                                  () => ProjectOperations.SetStatusMessage("Use Inspector -> Add Component -> Script."),
+                                  () => IsSceneWorkspaceActive(),
+                                  10);
+
+            MenuRegistry.Register("menu.window.scene",
+                                  "Window/Scene",
+                                  () => SetShowProjectManagerView(false),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  10);
+
+            MenuRegistry.Register("menu.window.console",
+                                  "Window/Console",
+                                  () => EditorConsoleWindow.Toggle(),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  20);
+
+            MenuRegistry.Register("menu.window.inspector",
+                                  "Window/Inspector",
+                                  () => SetShowProjectManagerView(false),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  30);
+
+            MenuRegistry.Register("menu.window.project",
+                                  "Window/Project",
+                                  () => SetShowProjectManagerView(false),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  40);
+
+            MenuRegistry.Register("menu.window.projectManager",
+                                  "Window/Project Manager",
+                                  () => SetShowProjectManagerView(true),
+                                  () => ProjectOperations.HasOpenProject(),
+                                  50);
+
+            MenuRegistry.Register("menu.window.editorOptions",
+                                  "Window/Editor Options",
+                                  () => EditorOptionsWindow.Toggle(),
+                                  60);
+
+            MenuRegistry.Register("menu.help.about",
+                                  "Help/About",
+                                  new DelegateMenuCommand(() =>
+                                  {
+                                      ProjectOperations.SetStatusMessage("CppCSharp Editor: dynamic menu registry active.");
+                                  }),
+                                  10);
+        }
+
+        private static bool IsSceneWorkspaceActive()
+        {
+            return ProjectOperations.HasOpenProject() && !_showProjectManagerView;
+        }
+
+        private static bool CanEnterPlayMode()
+        {
+            if (!IsSceneWorkspaceActive())
+                return false;
+
+            return EditorBridge.GetSimulationState() != EditorBridge.SimulationPlay;
+        }
+
+        private static bool CanTogglePauseState()
+        {
+            if (!IsSceneWorkspaceActive())
+                return false;
+
+            int simulationState = EditorBridge.GetSimulationState();
+            return simulationState == EditorBridge.SimulationPlay || simulationState == EditorBridge.SimulationPause;
+        }
+
+        private static bool CanStopPlayMode()
+        {
+            if (!IsSceneWorkspaceActive())
+                return false;
+
+            return EditorBridge.GetSimulationState() != EditorBridge.SimulationEdit;
+        }
+
+        private static void TogglePauseState()
+        {
+            int simulationState = EditorBridge.GetSimulationState();
+            if (simulationState == EditorBridge.SimulationPlay)
             {
-                EditorUIHelpers.DrawInlineDivider();
-                if (ImGui.Button("Save Scene"))
-                    SceneEditor.SaveScene();
+                EditorBridge.SetSimulationPaused(true);
+                ProjectOperations.SetStatusMessage("Paused play mode.");
+            }
+            else if (simulationState == EditorBridge.SimulationPause)
+            {
+                EditorBridge.SetSimulationPaused(false);
+                ProjectOperations.SetStatusMessage("Resumed play mode.");
+            }
+        }
 
-                ImGui.SameLine();
-                if (ImGui.Button("Create Entity"))
-                    SceneEditor.CreateEntityAndSelect();
+        private static void DrawMenuBar()
+        {
+            if (!ImGui.BeginTopBar("##EditorMenuBar", 34.0f))
+                return;
 
-                EditorUIHelpers.DrawInlineDivider();
-                DrawPlayModeControls();
-
-                EditorUIHelpers.DrawInlineDivider();
-                int selectedEntityId = SceneEditor.SelectedEntityId;
-                if (selectedEntityId >= 0)
-                    ImGui.Text("Selected: Entity " + selectedEntityId);
-                else
-                    ImGui.Text("Selected: <none>");
-
-                EditorUIHelpers.DrawInlineDivider();
-                string activeScenePath = SceneEditor.ActiveScenePath;
-                if (string.IsNullOrEmpty(activeScenePath))
-                    ImGui.Text("Scene: <unsaved>");
-                else
-                    ImGui.Text("Scene: " + Path.GetFileName(activeScenePath));
+            MenuRegistry.MenuNode[] roots = MenuRegistry.GetRootNodes();
+            for (int i = 0; i < roots.Length; ++i)
+            {
+                DrawMenuNode(roots[i]);
             }
 
-            EditorUIHelpers.DrawInlineDivider();
-            ImGui.Text("Project: " + activeProjectName);
-
-            EditorUIHelpers.DrawInlineDivider();
-            ImGui.Text("Status: " + ProjectOperations.StatusMessage);
+            ImGui.SameLine();
+            string status = ProjectOperations.StatusMessage;
+            if (string.IsNullOrEmpty(status))
+                status = _statusMessage;
+            ImGui.Text(status);
 
             ImGui.EndTopBar();
         }
 
-        private static void DrawPlayModeControls()
+        private static void DrawMenuNode(MenuRegistry.MenuNode node)
         {
-            int simulationState = EditorBridge.GetSimulationState();
-            bool playing = simulationState == EditorBridge.SimulationPlay;
-            bool paused = simulationState == EditorBridge.SimulationPause;
+            if (node == null || string.IsNullOrEmpty(node.Label))
+                return;
 
-            string playLabel = paused ? "Resume" : "Play";
-            if (ImGui.Button(playLabel))
+            if (node.HasChildren)
             {
-                if (paused)
+                if (ImGui.BeginMenu(node.Label))
                 {
-                    EditorBridge.SetSimulationPaused(false);
-                    ProjectOperations.SetStatusMessage("Resumed play mode.");
+                    for (int i = 0; i < node.Children.Count; ++i)
+                        DrawMenuNode(node.Children[i]);
+
+                    ImGui.EndMenu();
                 }
-                else
-                {
-                    EnterPlayMode();
-                }
+
+                return;
             }
 
-            ImGui.SameLine();
-            if (ImGui.Button("Pause"))
+            bool enabled = node.Command != null && node.Command.IsEnabled();
+            if (!ImGui.MenuItem(node.Label, enabled))
+                return;
+
+            if (node.Command == null)
+                return;
+
+            try
             {
-                if (playing)
-                {
-                    EditorBridge.SetSimulationPaused(true);
-                    ProjectOperations.SetStatusMessage("Paused play mode.");
-                }
+                node.Command.Execute();
             }
-
-            ImGui.SameLine();
-            if (ImGui.Button("Stop"))
-                StopPlayMode();
-
-            ImGui.SameLine();
-            if (playing)
-                ImGui.Text("Mode: Playing");
-            else if (paused)
-                ImGui.Text("Mode: Paused");
-            else
-                ImGui.Text("Mode: Edit");
+            catch (Exception ex)
+            {
+                ProjectOperations.SetStatusMessage("Menu action failed: " + ex.Message);
+            }
         }
 
         private static bool EnterPlayMode()
@@ -467,6 +651,9 @@ namespace EngineEditor
 
         public static void OnEditorShutdown()
         {
+            EditorBridge.SetWindowBackgroundVisible(false);
+            EditorBridge.SetMainWindowBorderless(false);
+            EditorBridge.SetMainWindowResizable(true);
             StopPlayMode();
             Console.WriteLine("[Editor] OnEditorShutdown called.");
         }

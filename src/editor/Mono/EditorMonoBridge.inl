@@ -5,6 +5,7 @@ static Engine* g_editorEngineContext = nullptr;
 static Scene* g_runtimeSceneForScriptApi = nullptr;
 static bool g_editorTopBarStylePushed = false;
 static std::string g_editorSceneIoStatus = "Ready.";
+static std::unordered_map<std::string, std::unique_ptr<Texture>> g_editorUiTextureCache;
 
 enum class EngineLogLevel : std::int32_t
 {
@@ -3002,12 +3003,52 @@ static void EditorBridge_MaximizeMainWindow()
     g_editorEngineContext->MaximizeMainWindow();
 }
 
+static void EditorBridge_SetMainWindowResizable(bool enabled)
+{
+    if (!g_editorEngineContext)
+        return;
+
+    g_editorEngineContext->SetMainWindowResizable(enabled);
+}
+
+static void EditorBridge_SetMainWindowBorderless(bool enabled)
+{
+    if (!g_editorEngineContext)
+        return;
+
+    g_editorEngineContext->SetMainWindowBorderless(enabled);
+}
+
 static void EditorBridge_SetDockspaceEnabled(bool enabled)
 {
     if (!g_editorEngineContext)
         return;
 
     g_editorEngineContext->SetDockspaceEnabled(enabled);
+}
+
+static bool EditorBridge_SetWindowBackgroundImage(MonoString* imagePath)
+{
+    if (!g_editorEngineContext)
+        return false;
+
+    return g_editorEngineContext->SetWindowBackgroundImage(MonoStringToUtf8(imagePath));
+}
+
+static void EditorBridge_ClearWindowBackgroundImage()
+{
+    if (!g_editorEngineContext)
+        return;
+
+    g_editorEngineContext->ClearWindowBackgroundImage();
+}
+
+static void EditorBridge_SetWindowBackgroundVisible(bool visible)
+{
+    if (!g_editorEngineContext)
+        return;
+
+    g_editorEngineContext->SetWindowBackgroundVisible(visible);
 }
 
 static void EditorDebugDraw_Line(float x0, float y0, float x1, float y1,
@@ -3651,6 +3692,35 @@ static bool EditorImGui_Begin(MonoString* title)
     return ImGui::Begin(windowTitle);
 }
 
+static bool EditorImGui_BeginCenteredFixed(MonoString* title, float width, float height, bool noCollapse)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    if (width < 1.0f)
+        width = 1.0f;
+    if (height < 1.0f)
+        height = 1.0f;
+
+    const std::string text = MonoStringToUtf8(title);
+    const char* windowTitle = text.empty() ? "C# Window" : text.c_str();
+
+    const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+    const ImVec2 windowSize(width, height);
+    const ImVec2 windowPos((displaySize.x - windowSize.x) * 0.5f,
+                           (displaySize.y - windowSize.y) * 0.5f);
+
+    ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
+    ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
+    ImGui::SetNextWindowBgAlpha(0.74f);
+
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
+    if (noCollapse)
+        flags |= ImGuiWindowFlags_NoCollapse;
+
+    return ImGui::Begin(windowTitle, nullptr, flags);
+}
+
 static bool EditorImGui_BeginTopBar(MonoString* id, float height)
 {
     if (!ImGui::GetCurrentContext())
@@ -3690,6 +3760,32 @@ static void EditorImGui_EndTopBar()
         ImGui::PopStyleVar();
         g_editorTopBarStylePushed = false;
     }
+}
+
+static bool EditorImGui_BeginMenu(MonoString* label)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string text = MonoStringToUtf8(label);
+    const char* menuLabel = text.empty() ? "Menu" : text.c_str();
+    return ImGui::BeginMenu(menuLabel);
+}
+
+static void EditorImGui_EndMenu()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::EndMenu();
+}
+
+static bool EditorImGui_MenuItem(MonoString* label, bool enabled)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string text = MonoStringToUtf8(label);
+    const char* itemLabel = text.empty() ? "Item" : text.c_str();
+    return ImGui::MenuItem(itemLabel, nullptr, false, enabled);
 }
 
 static bool EditorImGui_BeginChild(MonoString* id, float width, float height, bool border)
@@ -4006,6 +4102,33 @@ static float EditorImGui_GetCursorScreenPosX()
 static float EditorImGui_GetCursorScreenPosY()
 {
     return ImGui::GetCurrentContext() ? ImGui::GetCursorScreenPos().y : 0.0f;
+}
+
+static std::uint64_t EditorImGui_GetImageHandle(MonoString* path)
+{
+    std::string imagePath = MonoStringToUtf8(path);
+    if (imagePath.empty())
+        return 0;
+
+    std::filesystem::path resolvedPath(imagePath);
+    if (resolvedPath.is_relative())
+        resolvedPath = std::filesystem::current_path() / resolvedPath;
+
+    std::error_code canonicalError;
+    const std::filesystem::path canonicalPath = std::filesystem::weakly_canonical(resolvedPath, canonicalError);
+    const std::string cacheKey = (canonicalError ? resolvedPath.lexically_normal() : canonicalPath).string();
+
+    auto found = g_editorUiTextureCache.find(cacheKey);
+    if (found != g_editorUiTextureCache.end())
+        return static_cast<std::uint64_t>(found->second->GetHandle());
+
+    auto texture = std::make_unique<Texture>();
+    if (!texture->CreateFromFile(cacheKey))
+        return 0;
+
+    const std::uint64_t handle = static_cast<std::uint64_t>(texture->GetHandle());
+    g_editorUiTextureCache.emplace(cacheKey, std::move(texture));
+    return handle;
 }
 
 static void EditorImGui_Image(std::uint64_t textureHandle, float width, float height)

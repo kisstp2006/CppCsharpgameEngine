@@ -97,3 +97,15 @@ void SDLWindow::Maximize()
     if (m_window)
         SDL_MaximizeWindow(m_window);
 }
+
+void SDLWindow::SetResizable(bool enabled)
+{
+    if (m_window)
+        SDL_SetWindowResizable(m_window, enabled ? SDL_TRUE : SDL_FALSE);
+}
+
+void SDLWindow::SetBorderless(bool enabled)
+{
+    if (m_window)
+        SDL_SetWindowBordered(m_window, enabled ? SDL_FALSE : SDL_TRUE);
+}

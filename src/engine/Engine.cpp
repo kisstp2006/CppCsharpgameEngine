@@ -19,6 +19,7 @@
 
 #include <SDL.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -274,9 +275,58 @@ void Engine::MaximizeMainWindow()
         m_window->Maximize();
 }
 
+void Engine::SetMainWindowResizable(bool enabled)
+{
+    if (m_window)
+        m_window->SetResizable(enabled);
+}
+
+void Engine::SetMainWindowBorderless(bool enabled)
+{
+    if (m_window)
+        m_window->SetBorderless(enabled);
+}
+
 void Engine::SetDockspaceEnabled(bool enabled)
 {
     m_dockspaceEnabled = enabled;
+}
+
+bool Engine::SetWindowBackgroundImage(const std::string& imagePath)
+{
+    if (imagePath.empty())
+        return false;
+
+    std::filesystem::path resolvedPath(imagePath);
+    if (resolvedPath.is_relative())
+        resolvedPath = std::filesystem::current_path() / resolvedPath;
+
+    resolvedPath = resolvedPath.lexically_normal();
+    if (!std::filesystem::exists(resolvedPath))
+    {
+        EngineLogger::Warningf("Editor", "Window background image not found: ", resolvedPath.string());
+        return false;
+    }
+
+    auto texture = std::make_unique<Texture>();
+    if (!texture->CreateFromFile(resolvedPath.string()))
+    {
+        EngineLogger::Warningf("Editor", "Failed to load window background image: ", resolvedPath.string());
+        return false;
+    }
+
+    m_windowBackgroundTexture = std::move(texture);
+    return true;
+}
+
+void Engine::ClearWindowBackgroundImage()
+{
+    m_windowBackgroundTexture.reset();
+}
+
+void Engine::SetWindowBackgroundVisible(bool visible)
+{
+    m_windowBackgroundVisible = visible;
 }
 
 void Engine::SetEditorMode(bool enabled)
@@ -417,6 +467,26 @@ void Engine::Run()
         SDLInputState::EndFrame();
 
         m_renderer->BeginFrame();
+
+        if (m_windowBackgroundVisible && m_windowBackgroundTexture)
+        {
+            const float viewWidth = static_cast<float>(m_renderer->GetViewWidth());
+            const float viewHeight = static_cast<float>(m_renderer->GetViewHeight());
+            const float textureWidth = static_cast<float>(m_windowBackgroundTexture->GetWidth());
+            const float textureHeight = static_cast<float>(m_windowBackgroundTexture->GetHeight());
+
+            if (viewWidth > 1.0f && viewHeight > 1.0f && textureWidth > 1.0f && textureHeight > 1.0f)
+            {
+                const float fitScale = std::min(viewWidth / textureWidth, viewHeight / textureHeight);
+                const float drawWidth = textureWidth * fitScale;
+                const float drawHeight = textureHeight * fitScale;
+                const float drawX = (viewWidth - drawWidth) * 0.5f;
+                const float drawY = (viewHeight - drawHeight) * 0.5f;
+
+                m_renderer->SetCameraProjection(viewWidth * 0.5f, viewHeight * 0.5f, 1.0f);
+                m_renderer->DrawSprite(*m_windowBackgroundTexture, drawX, drawY, drawWidth, drawHeight);
+            }
+        }
 
         // Keep ImGui frame active so C# editor code can draw managed panels.
         ImGui_ImplOpenGL3_NewFrame();
@@ -690,6 +760,7 @@ void Engine::Shutdown()
 
     m_scene.reset();
     m_spriteTextureCache.clear();
+    m_windowBackgroundTexture.reset();
 
     if (m_assetDatabase)
         m_assetDatabase->Save();

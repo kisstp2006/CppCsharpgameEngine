@@ -12,6 +12,7 @@ public:
     bool CreateFromFile(const std::string& path);
 
     void Bind(unsigned int slot = 0) const;
+    unsigned int GetHandle() const { return m_handle; }
 
     int GetWidth() const { return m_width; }
     int GetHeight() const { return m_height; }

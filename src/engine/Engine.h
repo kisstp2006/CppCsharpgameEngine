@@ -72,8 +72,13 @@ public:
     void SetMainWindowTitle(const std::string& title);
     void CenterMainWindow();
     void MaximizeMainWindow();
+    void SetMainWindowResizable(bool enabled);
+    void SetMainWindowBorderless(bool enabled);
     void SetDockspaceEnabled(bool enabled);
     bool IsDockspaceEnabled() const { return m_dockspaceEnabled; }
+    bool SetWindowBackgroundImage(const std::string& imagePath);
+    void ClearWindowBackgroundImage();
+    void SetWindowBackgroundVisible(bool visible);
 
 private:
     bool InitializeImGui();
@@ -92,9 +97,11 @@ private:
     bool m_editorMode = false;
     bool m_running = false;
     bool m_dockspaceEnabled = true;
+    bool m_windowBackgroundVisible = false;
     bool m_editorPreviewCameraEnabled = false;
     float m_editorPreviewCameraX = 0.0f;
     float m_editorPreviewCameraY = 0.0f;
     float m_editorPreviewCameraZoom = 1.0f;
     std::string m_lastSceneIoError;
+    std::unique_ptr<Texture> m_windowBackgroundTexture;
 };

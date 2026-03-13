@@ -8,10 +8,22 @@ namespace Engine
         public static extern bool Begin(string title);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool BeginCenteredFixed(string title, float width, float height, bool noCollapse);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool BeginTopBar(string id, float height);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void EndTopBar();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool BeginMenu(string label);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void EndMenu();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool MenuItem(string label, bool enabled);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool BeginChild(string id, float width, float height, bool border);
@@ -125,6 +137,9 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern float GetCursorScreenPosY();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern ulong GetImageHandle(string path);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void Image(ulong textureHandle, float width, float height);

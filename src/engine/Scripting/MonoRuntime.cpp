@@ -9,6 +9,7 @@
 #include "engine/Platform/SDLInputState.h"
 #include "engine/Render/DebugDraw.h"
 #include "engine/Render/Renderer.h"
+#include "engine/Render/Texture.h"
 
 #include <filesystem>
 #include <cstdlib>
@@ -824,7 +825,12 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::SetMainWindowTitle", (const void*)&EditorBridge_SetMainWindowTitle);
         mono_add_internal_call("Engine.EditorBridge::CenterMainWindow", (const void*)&EditorBridge_CenterMainWindow);
         mono_add_internal_call("Engine.EditorBridge::MaximizeMainWindow", (const void*)&EditorBridge_MaximizeMainWindow);
+        mono_add_internal_call("Engine.EditorBridge::SetMainWindowResizable", (const void*)&EditorBridge_SetMainWindowResizable);
+        mono_add_internal_call("Engine.EditorBridge::SetMainWindowBorderless", (const void*)&EditorBridge_SetMainWindowBorderless);
         mono_add_internal_call("Engine.EditorBridge::SetDockspaceEnabled", (const void*)&EditorBridge_SetDockspaceEnabled);
+        mono_add_internal_call("Engine.EditorBridge::SetWindowBackgroundImage", (const void*)&EditorBridge_SetWindowBackgroundImage);
+        mono_add_internal_call("Engine.EditorBridge::ClearWindowBackgroundImage", (const void*)&EditorBridge_ClearWindowBackgroundImage);
+        mono_add_internal_call("Engine.EditorBridge::SetWindowBackgroundVisible", (const void*)&EditorBridge_SetWindowBackgroundVisible);
     }
 
     mono_add_internal_call("Engine.DebugDraw::LineInternal", (const void*)&EditorDebugDraw_Line);
@@ -901,8 +907,12 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.Explorer::PickFilesInternal", (const void*)&EditorExplorer_PickFiles);
 
         mono_add_internal_call("Engine.ImGui::Begin", (const void*)&EditorImGui_Begin);
+        mono_add_internal_call("Engine.ImGui::BeginCenteredFixed", (const void*)&EditorImGui_BeginCenteredFixed);
         mono_add_internal_call("Engine.ImGui::BeginTopBar", (const void*)&EditorImGui_BeginTopBar);
         mono_add_internal_call("Engine.ImGui::EndTopBar", (const void*)&EditorImGui_EndTopBar);
+        mono_add_internal_call("Engine.ImGui::BeginMenu", (const void*)&EditorImGui_BeginMenu);
+        mono_add_internal_call("Engine.ImGui::EndMenu", (const void*)&EditorImGui_EndMenu);
+        mono_add_internal_call("Engine.ImGui::MenuItem", (const void*)&EditorImGui_MenuItem);
         mono_add_internal_call("Engine.ImGui::BeginChild", (const void*)&EditorImGui_BeginChild);
         mono_add_internal_call("Engine.ImGui::End", (const void*)&EditorImGui_End);
         mono_add_internal_call("Engine.ImGui::EndChild", (const void*)&EditorImGui_EndChild);
@@ -939,6 +949,7 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.ImGui::GetContentRegionAvailY", (const void*)&EditorImGui_GetContentRegionAvailY);
         mono_add_internal_call("Engine.ImGui::GetCursorScreenPosX", (const void*)&EditorImGui_GetCursorScreenPosX);
         mono_add_internal_call("Engine.ImGui::GetCursorScreenPosY", (const void*)&EditorImGui_GetCursorScreenPosY);
+        mono_add_internal_call("Engine.ImGui::GetImageHandle", (const void*)&EditorImGui_GetImageHandle);
         mono_add_internal_call("Engine.ImGui::Image", (const void*)&EditorImGui_Image);
         mono_add_internal_call("Engine.ImGui::InvisibleButton", (const void*)&EditorImGui_InvisibleButton);
         mono_add_internal_call("Engine.ImGui::IsItemHovered", (const void*)&EditorImGui_IsItemHovered);

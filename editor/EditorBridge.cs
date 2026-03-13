@@ -141,7 +141,22 @@ namespace Engine
         public static extern void MaximizeMainWindow();
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetMainWindowResizable(bool enabled);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetMainWindowBorderless(bool enabled);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void SetDockspaceEnabled(bool enabled);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool SetWindowBackgroundImage(string imagePath);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void ClearWindowBackgroundImage();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetWindowBackgroundVisible(bool visible);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern int GetScriptedEntityCount();
