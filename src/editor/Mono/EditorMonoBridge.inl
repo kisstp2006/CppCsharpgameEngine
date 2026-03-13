@@ -2100,6 +2100,69 @@ static MonoClassField* FindAssetPathField(MonoClass* klass)
     return nullptr;
 }
 
+// Cache for temporary probe instances used to read C# default field values
+// in Edit mode when no runtime instance exists.
+struct DefaultValueProbe
+{
+    std::string classNamespace;
+    std::string className;
+    MonoObject* instance = nullptr;
+    std::uint32_t gcHandle = 0;
+};
+
+static std::unordered_map<std::string, DefaultValueProbe> g_defaultValueProbeCache;
+
+static void ClearDefaultValueProbeCache()
+{
+    for (auto& [key, probe] : g_defaultValueProbeCache)
+    {
+        if (probe.gcHandle != 0)
+        {
+            mono_gchandle_free(probe.gcHandle);
+            probe.gcHandle = 0;
+        }
+        probe.instance = nullptr;
+    }
+    g_defaultValueProbeCache.clear();
+}
+
+static MonoObject* GetOrCreateDefaultValueProbe(const std::string& classNamespace, const std::string& className)
+{
+    if (!g_monoRuntimeImplForEditorBridge || !g_monoRuntimeImplForEditorBridge->image)
+        return nullptr;
+
+    const std::string cacheKey = classNamespace + "." + className;
+    auto it = g_defaultValueProbeCache.find(cacheKey);
+    if (it != g_defaultValueProbeCache.end() && it->second.instance)
+        return it->second.instance;
+
+    MonoClass* klass = mono_class_from_name(
+        g_monoRuntimeImplForEditorBridge->image,
+        classNamespace.c_str(),
+        className.c_str());
+    if (!klass)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    if (!domain)
+        return nullptr;
+
+    MonoObject* probe = mono_object_new(domain, klass);
+    if (!probe)
+        return nullptr;
+
+    mono_runtime_object_init(probe);
+
+    DefaultValueProbe entry;
+    entry.classNamespace = classNamespace;
+    entry.className = className;
+    entry.instance = probe;
+    entry.gcHandle = mono_gchandle_new(probe, false);
+    g_defaultValueProbeCache[cacheKey] = entry;
+
+    return probe;
+}
+
 static MonoObject* FindRuntimeScriptInstance(std::uint32_t entityId)
 {
     if (!g_monoRuntimeImplForEditorBridge)
@@ -2811,6 +2874,8 @@ static MonoString* EditorBridge_GetScriptFieldValue(std::uint32_t entityId, Mono
         return nullptr;
 
     std::string value;
+
+    // 1) Try live runtime instance (available during Play mode)
     if (MonoObject* instance = FindRuntimeScriptInstance(entityId))
     {
         MonoClass* klass = mono_object_get_class(instance);
@@ -2822,12 +2887,27 @@ static MonoString* EditorBridge_GetScriptFieldValue(std::uint32_t entityId, Mono
         }
     }
 
+    // 2) Try persisted serialized state (values saved in the scene/component)
     const std::optional<std::string> persisted = FindSerializedScriptFieldState(*script, fieldNameUtf8);
-    if (!persisted.has_value())
-        return nullptr;
+    if (persisted.has_value())
+    {
+        MonoDomain* currentDomain = mono_domain_get();
+        return currentDomain ? mono_string_new(currentDomain, persisted->c_str()) : nullptr;
+    }
 
-    MonoDomain* currentDomain = mono_domain_get();
-    return currentDomain ? mono_string_new(currentDomain, persisted->c_str()) : nullptr;
+    // 3) Fallback: use a cached probe instance to read the C# default value.
+    //    This is needed in Edit mode when no runtime instance exists and
+    //    the field has never been edited (so no serialized state). Without this,
+    //    fields with defaults like `float _speed = 260.0f` would show 0.
+    if (MonoObject* probe = GetOrCreateDefaultValueProbe(script->classNamespace, script->className))
+    {
+        MonoDomain* domain = mono_domain_get();
+        MonoClass* klass = mono_object_get_class(probe);
+        if (domain && klass && TryGetRuntimeScriptFieldValue(domain, probe, klass, fieldNameUtf8, value))
+            return mono_string_new(domain, value.c_str());
+    }
+
+    return nullptr;
 }
 
 static bool EditorBridge_SetScriptFieldValue(std::uint32_t entityId, MonoString* fieldName, MonoString* fieldValue)

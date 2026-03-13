@@ -256,6 +256,8 @@ static void MonoRuntime_ClearManagedAssemblyState(MonoRuntime::Impl* impl)
     if (!impl)
         return;
 
+    ClearDefaultValueProbeCache();
+
     impl->assembly = nullptr;
     impl->image = nullptr;
     impl->scriptClass = nullptr;
