@@ -2,14 +2,6 @@ using System.Runtime.CompilerServices;
 
 namespace Engine
 {
-    public static class ComponentType
-    {
-        public const int Transform = 0;
-        public const int Camera = 1;
-        public const int Sprite = 2;
-        public const int Script = 3;
-    }
-
     public static class EditorBridge
     {
         public const int SimulationEdit = 0;

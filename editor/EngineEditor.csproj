@@ -8,4 +8,12 @@
   <ItemGroup>
     <ProjectReference Include="..\scripts\EngineManagedApi.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Camera2D.cs" />
+    <Compile Remove="Debug.cs" />
+    <Compile Remove="DebugDraw.cs" />
+    <Compile Remove="EntityManager.cs" />
+    <Compile Remove="Input.cs" />
+    <Compile Remove="ImGuizmo.cs" />
+  </ItemGroup>
 </Project>

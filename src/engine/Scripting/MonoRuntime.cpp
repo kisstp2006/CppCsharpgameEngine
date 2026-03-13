@@ -35,9 +35,10 @@
 #include <imgui.h>
 #include <ImGuizmo.h>
 
-#if !defined(__INTELLISENSE__) && !defined(ENGINE_MONO_DISABLED) && __has_include(<mono/jit/jit.h>) && __has_include(<mono/metadata/assembly.h>) && __has_include(<mono/metadata/class.h>) && __has_include(<mono/metadata/debug-helpers.h>) && __has_include(<mono/metadata/mono-config.h>) && __has_include(<mono/metadata/object.h>)
+#if !defined(__INTELLISENSE__) && !defined(ENGINE_MONO_DISABLED) && __has_include(<mono/jit/jit.h>) && __has_include(<mono/metadata/appdomain.h>) && __has_include(<mono/metadata/assembly.h>) && __has_include(<mono/metadata/class.h>) && __has_include(<mono/metadata/debug-helpers.h>) && __has_include(<mono/metadata/mono-config.h>) && __has_include(<mono/metadata/object.h>)
 #define ENGINE_MONO_RUNTIME_AVAILABLE 1
 #include <mono/jit/jit.h>
+#include <mono/metadata/appdomain.h>
 #include <mono/metadata/assembly.h>
 #include <mono/metadata/class.h>
 #include <mono/metadata/debug-helpers.h>
@@ -50,6 +51,7 @@
 struct MonoRuntime::Impl
 {
 #if ENGINE_MONO_RUNTIME_AVAILABLE
+    MonoDomain* rootDomain = nullptr;
     MonoDomain* domain = nullptr;
     MonoAssembly* assembly = nullptr;
     MonoImage* image = nullptr;
@@ -111,7 +113,9 @@ struct MonoRuntime::Impl
 static MonoRuntime::Impl* g_monoRuntimeImplForEditorBridge = nullptr;
 static bool MonoRuntime_ShouldRunGameplay(const MonoRuntime::Impl* impl);
 static void MonoRuntime_StopActiveScriptInstances(MonoRuntime::Impl* impl, Scene* scene);
-static void MonoRuntime_InvalidateScriptRuntimeState(MonoRuntime::Impl* impl, Scene* scene);
+static bool MonoRuntime_CreateManagedAppDomain(MonoRuntime::Impl* impl);
+static bool MonoRuntime_RecreateManagedAppDomain(MonoRuntime::Impl* impl, Scene* scene);
+static bool MonoRuntime_LoadEditorAssemblyInCurrentDomain(MonoRuntime::Impl* impl, bool invokeOnStart);
 static void MonoRuntime_StartPlaySession(MonoRuntime::Impl* impl, Scene* scene);
 static void MonoRuntime_StopPlaySession(MonoRuntime::Impl* impl, Scene* scene);
 static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Scene* scene, bool forceReload);
@@ -207,17 +211,10 @@ static void MonoRuntime_StopActiveScriptInstances(MonoRuntime::Impl* impl, Scene
     impl->entityScripts.clear();
 }
 
-static void MonoRuntime_InvalidateScriptRuntimeState(MonoRuntime::Impl* impl, Scene* scene)
+static void MonoRuntime_ClearManagedAssemblyState(MonoRuntime::Impl* impl)
 {
     if (!impl)
         return;
-
-    MonoRuntime_StopActiveScriptInstances(impl, scene);
-
-    if (impl->gameplaySessionActive && impl->scriptLoaded && impl->onShutdown)
-        mono_runtime_invoke(impl->onShutdown, nullptr, nullptr, nullptr);
-
-    impl->gameplaySessionActive = false;
 
     impl->assembly = nullptr;
     impl->image = nullptr;
@@ -227,13 +224,87 @@ static void MonoRuntime_InvalidateScriptRuntimeState(MonoRuntime::Impl* impl, Sc
     impl->onShutdown = nullptr;
     impl->scriptLoaded = false;
 
+    impl->editorAssembly = nullptr;
+    impl->editorImage = nullptr;
+    impl->editorClass = nullptr;
+    impl->editorOnStart = nullptr;
+    impl->editorOnUpdate = nullptr;
+    impl->editorOnShutdown = nullptr;
+    impl->editorLoaded = false;
+
     impl->resolvedScriptAssemblyPath.clear();
+    impl->resolvedEditorAssemblyPath.clear();
+
     impl->scriptAssemblyWriteTime = {};
+    impl->editorAssemblyWriteTime = {};
     impl->scriptAssemblyFileSize = 0;
+
     impl->hasScriptAssemblyWriteTime = false;
+    impl->hasEditorAssemblyWriteTime = false;
     impl->hasScriptAssemblyFileSize = false;
-    impl->scriptReloadRequested = false;
-    impl->scriptReloadDeferredUntilEdit = false;
+
+    impl->gameplaySessionActive = false;
+}
+
+static bool MonoRuntime_CreateManagedAppDomain(MonoRuntime::Impl* impl)
+{
+    if (!impl || !impl->rootDomain)
+        return false;
+
+    static std::uint64_t domainCounter = 0;
+    ++domainCounter;
+
+    const std::string domainName = "CppCSharpGameEngine.ScriptDomain." + std::to_string(domainCounter);
+    MonoDomain* appDomain = mono_domain_create_appdomain(const_cast<char*>(domainName.c_str()), nullptr);
+    if (!appDomain)
+    {
+        EngineLogger::Error("Mono", "Failed to create managed script AppDomain.");
+        return false;
+    }
+
+    if (mono_domain_set(appDomain, false) == 0)
+    {
+        EngineLogger::Error("Mono", "Failed to switch to managed script AppDomain.");
+        mono_domain_unload(appDomain);
+        return false;
+    }
+
+    impl->domain = appDomain;
+    return true;
+}
+
+static bool MonoRuntime_RecreateManagedAppDomain(MonoRuntime::Impl* impl, Scene* scene)
+{
+    if (!impl)
+        return false;
+
+    MonoRuntime_StopActiveScriptInstances(impl, scene);
+
+    if (impl->gameplaySessionActive && impl->scriptLoaded && impl->onShutdown)
+        mono_runtime_invoke(impl->onShutdown, nullptr, nullptr, nullptr);
+
+    if (impl->editorMode && impl->editorLoaded && impl->editorOnShutdown)
+    {
+        Scene* previousScene = g_editorSceneContext;
+        g_editorSceneContext = scene;
+        mono_runtime_invoke(impl->editorOnShutdown, nullptr, nullptr, nullptr);
+        g_editorSceneContext = previousScene;
+    }
+
+    MonoRuntime_ClearManagedAssemblyState(impl);
+
+    if (impl->domain)
+    {
+        MonoDomain* domainToUnload = impl->domain;
+        impl->domain = nullptr;
+
+        if (impl->rootDomain)
+            mono_domain_set(impl->rootDomain, false);
+
+        mono_domain_unload(domainToUnload);
+    }
+
+    return MonoRuntime_CreateManagedAppDomain(impl);
 }
 
 static void MonoRuntime_StartPlaySession(MonoRuntime::Impl* impl, Scene* scene)
@@ -383,10 +454,58 @@ static void ReportAssemblyAvailability(const std::filesystem::path& assemblyPath
 #include "editor/Mono/EditorMonoAssembly.inl"
 
 #if ENGINE_MONO_RUNTIME_AVAILABLE
+static bool MonoRuntime_LoadEditorAssemblyInCurrentDomain(MonoRuntime::Impl* impl, bool invokeOnStart)
+{
+    if (!impl || !impl->editorMode)
+        return true;
+
+    const auto editorPath = FindEditorAssemblyPath();
+    if (editorPath.empty())
+    {
+        impl->editorAssembly = nullptr;
+        impl->editorImage = nullptr;
+        impl->editorClass = nullptr;
+        impl->editorOnStart = nullptr;
+        impl->editorOnUpdate = nullptr;
+        impl->editorOnShutdown = nullptr;
+        impl->editorLoaded = false;
+        impl->resolvedEditorAssemblyPath.clear();
+        impl->editorAssemblyWriteTime = {};
+        impl->hasEditorAssemblyWriteTime = false;
+        return true;
+    }
+
+    EditorAssemblyBindings editorBindings;
+    if (!TryLoadEditorAssemblyBindings(impl->domain, impl->shadowCopyDirectory, editorPath, editorBindings))
+        return false;
+
+    impl->editorAssembly = editorBindings.assembly;
+    impl->editorImage = editorBindings.image;
+    impl->editorClass = editorBindings.editorClass;
+    impl->editorOnStart = editorBindings.onStart;
+    impl->editorOnUpdate = editorBindings.onUpdate;
+    impl->editorOnShutdown = editorBindings.onShutdown;
+    impl->editorLoaded = true;
+
+    impl->resolvedEditorAssemblyPath = editorPath;
+    impl->hasEditorAssemblyWriteTime = TryGetFileWriteTime(editorPath, impl->editorAssemblyWriteTime);
+
+    if (invokeOnStart && impl->editorOnStart)
+        mono_runtime_invoke(impl->editorOnStart, nullptr, nullptr, nullptr);
+
+    return true;
+}
+
 static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Scene* scene, bool forceReload)
 {
     if (!impl)
         return false;
+
+    if (!impl->domain)
+    {
+        if (!MonoRuntime_CreateManagedAppDomain(impl))
+            return false;
+    }
 
     const auto scriptPath = FindScriptAssemblyPath(impl->preferredScriptAssemblyPath, false);
     if (scriptPath.empty())
@@ -422,21 +541,30 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
         return false;
     }
 
-    if (scriptForceReload)
+    const bool wasGameplaySessionActive = impl->gameplaySessionActive;
+
+    if (!MonoRuntime_RecreateManagedAppDomain(impl, scene))
     {
-        MonoRuntime_InvalidateScriptRuntimeState(impl, scene);
-        EngineLogger::Info("Mono", "Cleared runtime script cache/state before forced reload.");
+        impl->scriptReloadRequested = true;
+        return false;
+    }
+
+    if (impl->editorMode)
+    {
+        if (!MonoRuntime_LoadEditorAssemblyInCurrentDomain(impl, true))
+        {
+            impl->scriptReloadRequested = true;
+            EngineLogger::Error("Mono", "Reload failed: editor assembly could not be loaded into recreated AppDomain.");
+            return false;
+        }
     }
 
     ScriptAssemblyBindings newScriptBindings;
     if (!TryLoadScriptAssemblyBindings(impl->domain, impl->shadowCopyDirectory, scriptPath, newScriptBindings))
+    {
+        impl->scriptReloadRequested = true;
         return false;
-
-    MonoRuntime_StopActiveScriptInstances(impl, scene);
-
-    const bool wasGameplaySessionActive = impl->gameplaySessionActive;
-    if (wasGameplaySessionActive && impl->scriptLoaded && impl->onShutdown)
-        mono_runtime_invoke(impl->onShutdown, nullptr, nullptr, nullptr);
+    }
 
     impl->assembly = newScriptBindings.assembly;
     impl->image = newScriptBindings.image;
@@ -455,6 +583,7 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
         impl->scriptAssemblyFileSize = scriptFileSize;
     impl->scriptReloadRequested = false;
     impl->scriptReloadDeferredUntilEdit = false;
+    impl->gameplaySessionActive = false;
 
     if (wasGameplaySessionActive)
     {
@@ -472,9 +601,9 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
     else if (scriptDeferredReload)
         EngineLogger::Infof("Mono", "Applied deferred script assembly reload: ", scriptPath);
     else if (scriptForceReload)
-        EngineLogger::Infof("Mono", "Reloaded script assembly from explicit request: ", scriptPath);
+        EngineLogger::Infof("Mono", "Reloaded script AppDomain and assembly from explicit request: ", scriptPath);
     else
-        EngineLogger::Infof("Mono", "Hot-reloaded script assembly: ", scriptPath);
+        EngineLogger::Infof("Mono", "Hot-reloaded script AppDomain and assembly: ", scriptPath);
 
     return true;
 }
@@ -536,10 +665,18 @@ bool MonoRuntime::Initialize()
 #endif
 
     mono_config_parse(nullptr);
-    m_impl->domain = mono_jit_init_version("CppCSharpGameEngine", "v4.0.30319");
-    if (!m_impl->domain)
+    m_impl->rootDomain = mono_jit_init_version("CppCSharpGameEngine", "v4.0.30319");
+    if (!m_impl->rootDomain)
     {
         EngineLogger::Error("Mono", "Failed to initialize Mono JIT domain.");
+        return false;
+    }
+
+    if (!MonoRuntime_CreateManagedAppDomain(m_impl.get()))
+    {
+        mono_jit_cleanup(m_impl->rootDomain);
+        m_impl->rootDomain = nullptr;
+        EngineLogger::Error("Mono", "Failed to initialize managed script AppDomain.");
         return false;
     }
 
@@ -836,26 +973,11 @@ bool MonoRuntime::Initialize()
             return true;
         }
 
-        EditorAssemblyBindings editorBindings;
-        if (!TryLoadEditorAssemblyBindings(m_impl->domain, m_impl->shadowCopyDirectory, editorPath, editorBindings))
+        if (!MonoRuntime_LoadEditorAssemblyInCurrentDomain(m_impl.get(), true))
         {
             EngineLogger::Errorf("Mono", "Failed to load editor assembly: ", editorPath);
             return true;
         }
-
-        m_impl->editorAssembly = editorBindings.assembly;
-        m_impl->editorImage = editorBindings.image;
-        m_impl->editorClass = editorBindings.editorClass;
-        m_impl->editorOnStart = editorBindings.onStart;
-        m_impl->editorOnUpdate = editorBindings.onUpdate;
-        m_impl->editorOnShutdown = editorBindings.onShutdown;
-        m_impl->editorLoaded = true;
-
-        m_impl->resolvedEditorAssemblyPath = editorPath;
-        m_impl->hasEditorAssemblyWriteTime = TryGetFileWriteTime(editorPath, m_impl->editorAssemblyWriteTime);
-
-        if (m_impl->editorOnStart)
-            mono_runtime_invoke(m_impl->editorOnStart, nullptr, nullptr, nullptr);
 
         EngineLogger::Infof("Mono", "Loaded editor assembly: ", editorPath);
     }
@@ -880,13 +1002,19 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
     g_runtimeSceneForScriptApi = scene;
 
     m_impl->hotReloadPollAccumulator += deltaTime;
-    if (m_impl->hotReloadPollAccumulator >= 0.5f)
+    const bool shouldPollHotReload = m_impl->hotReloadPollAccumulator >= 0.5f;
+    const bool shouldProcessReloadRequestNow = m_impl->scriptReloadRequested ||
+        (m_impl->scriptReloadDeferredUntilEdit &&
+         (!m_impl->editorMode || m_impl->simulationState == MonoRuntime::SimulationState::Edit));
+
+    if (shouldPollHotReload || shouldProcessReloadRequestNow)
     {
-        m_impl->hotReloadPollAccumulator = 0.0f;
+        if (shouldPollHotReload)
+            m_impl->hotReloadPollAccumulator = 0.0f;
 
         MonoRuntime_ReloadScriptAssemblyIfNeeded(m_impl.get(), scene, false);
 
-        if (m_impl->editorMode)
+        if (shouldPollHotReload && m_impl->editorMode)
         {
             const auto editorPath = FindEditorAssemblyPath();
             if (!editorPath.empty())
@@ -1158,8 +1286,20 @@ void MonoRuntime::Shutdown(Scene* scene)
 
     if (m_impl->domain)
     {
-        mono_jit_cleanup(m_impl->domain);
+        MonoDomain* domainToUnload = m_impl->domain;
         m_impl->domain = nullptr;
+
+        if (m_impl->rootDomain && domainToUnload != m_impl->rootDomain)
+        {
+            mono_domain_set(m_impl->rootDomain, false);
+            mono_domain_unload(domainToUnload);
+        }
+    }
+
+    if (m_impl->rootDomain)
+    {
+        mono_jit_cleanup(m_impl->rootDomain);
+        m_impl->rootDomain = nullptr;
     }
 
     m_impl.reset();
