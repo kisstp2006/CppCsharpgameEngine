@@ -119,7 +119,7 @@ namespace EngineEditor
 
             ImGui.SameLine();
             if (ImGui.Button("Open Last"))
-                ProjectOperations.OpenLastProject();
+                OpenLastProjectAndEnterEditor();
 
             ImGui.SameLine();
             if (ImGui.Button("Browse Project"))
@@ -141,7 +141,7 @@ namespace EngineEditor
                         }
                         else
                         {
-                            ProjectOperations.OpenProject(projectDirectory);
+                            OpenProjectAndEnterEditor(projectDirectory);
                             RefreshProjectList();
                             TrySelectProjectByPath(projectDirectory);
                         }
@@ -187,6 +187,7 @@ namespace EngineEditor
                 if (ImGui.Selectable(projectName + "##ProjectListItem" + i, selected))
                 {
                     SelectProject(i, projectName);
+                    OpenProjectAndEnterEditor(projectPath);
                 }
             }
 
@@ -214,7 +215,7 @@ namespace EngineEditor
 
                 if (ImGui.Selectable(projectName + "##RecentProject" + i, selected))
                 {
-                    ProjectOperations.OpenProject(projectPath);
+                    OpenProjectAndEnterEditor(projectPath);
                     RefreshProjectList();
                     TrySelectProjectByPath(projectPath);
                 }
@@ -263,7 +264,7 @@ namespace EngineEditor
             ImGui.Text(selectedProjectPath);
 
             if (ImGui.Button("Open Project"))
-                ProjectOperations.OpenProject(selectedProjectPath);
+                OpenProjectAndEnterEditor(selectedProjectPath);
 
             ImGui.SameLine();
             if (ImGui.Button("Rename"))
@@ -274,6 +275,20 @@ namespace EngineEditor
             {
                 PopupDialogs.OpenDeleteProjectPopup(selectedProjectPath);
             }
+        }
+
+        private static void OpenProjectAndEnterEditor(string projectPath)
+        {
+            ProjectOperations.OpenProject(projectPath);
+            if (ProjectOperations.HasOpenProject())
+                EditorHost.SetShowProjectManagerView(false);
+        }
+
+        private static void OpenLastProjectAndEnterEditor()
+        {
+            ProjectOperations.OpenLastProject();
+            if (ProjectOperations.HasOpenProject())
+                EditorHost.SetShowProjectManagerView(false);
         }
     }
 }
