@@ -81,6 +81,9 @@ namespace Engine
         public static extern void RequestScriptAssemblyReload();
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool IsScriptReloadInProgress();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void SetPreferredScriptAssemblyPath(string assemblyPath);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -94,6 +97,9 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool SetProjectSetting(string key, string value);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool HasOpenProjectContext();
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern uint CreateAuxiliaryWindow(string title,

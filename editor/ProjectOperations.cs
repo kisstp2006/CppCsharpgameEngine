@@ -39,6 +39,14 @@ namespace EngineEditor
             return !string.IsNullOrEmpty(_activeProjectPath) && Directory.Exists(_activeProjectPath);
         }
 
+        // Called by EditorHost after a script domain hot reload to restore the
+        // active project path without triggering a recompile or other side effects
+        // of a full OpenProject call.
+        internal static void RestoreFromHotReload(string projectPath)
+        {
+            _activeProjectPath = projectPath;
+        }
+
         public static void SetStatusMessage(string message)
         {
             _statusMessage = message;

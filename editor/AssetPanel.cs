@@ -104,8 +104,8 @@ namespace EngineEditor
                 if (ImGui.BeginChild("##AssetFolderTree", treeWidth, 0.0f, true))
                 {
                     DrawFolderTree(projectPath);
-                    ImGui.EndChild();
                 }
+                ImGui.EndChild();
 
                 ImGui.SameLine();
 
@@ -114,11 +114,10 @@ namespace EngineEditor
                     DrawBreadcrumb(projectPath);
                     ImGui.Separator();
                     DrawAssetGrid(projectPath);
-                    ImGui.EndChild();
                 }
-
                 ImGui.EndChild();
             }
+            ImGui.EndChild();
 
             ImGui.Separator();
             DrawStatusBar(projectPath);

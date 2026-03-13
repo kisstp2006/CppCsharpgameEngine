@@ -1492,6 +1492,14 @@ static void EditorBridge_RequestScriptAssemblyReload()
     g_editorSceneIoStatus = "Script assembly reload requested.";
 }
 
+static bool EditorBridge_IsScriptReloadInProgress()
+{
+    if (!g_monoRuntimeImplForEditorBridge)
+        return false;
+
+    return g_monoRuntimeImplForEditorBridge->isReloadingScripts;
+}
+
 static ProjectContext* EditorBridge_GetProjectContext()
 {
     if (!g_editorEngineContext)
@@ -1502,6 +1510,11 @@ static ProjectContext* EditorBridge_GetProjectContext()
         return nullptr;
 
     return projectContext;
+}
+
+static bool EditorBridge_HasOpenProjectContext()
+{
+    return EditorBridge_GetProjectContext() != nullptr;
 }
 
 static void EditorBridge_SetScriptAutoReloadEnabled(bool enabled)
@@ -3712,7 +3725,7 @@ static bool EditorImGui_BeginCenteredFixed(MonoString* title, float width, float
 
     ImGui::SetNextWindowPos(windowPos, ImGuiCond_Always);
     ImGui::SetNextWindowSize(windowSize, ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(0.74f);
+    ImGui::SetNextWindowBgAlpha(1.0f);
 
     ImGuiWindowFlags flags = ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove;
     if (noCollapse)
@@ -4251,6 +4264,34 @@ static void EditorImGui_DrawRect(float x,
                       0.0f,
                       0,
                       thickness);
+}
+
+static void EditorImGui_SetStyleColor(int colorIdx, float r, float g, float b, float a)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+    if (colorIdx < 0 || colorIdx >= ImGuiCol_COUNT)
+        return;
+    ImGui::GetStyle().Colors[colorIdx] = ImVec4(r, g, b, a);
+}
+
+static void EditorImGui_GetStyleColor(int colorIdx, float* r, float* g, float* b, float* a)
+{
+    if (!r || !g || !b || !a)
+        return;
+    if (!ImGui::GetCurrentContext() || colorIdx < 0 || colorIdx >= ImGuiCol_COUNT)
+    {
+        if (r) *r = 0.0f;
+        if (g) *g = 0.0f;
+        if (b) *b = 0.0f;
+        if (a) *a = 1.0f;
+        return;
+    }
+    const ImVec4& col = ImGui::GetStyle().Colors[colorIdx];
+    *r = col.x;
+    *g = col.y;
+    *b = col.z;
+    *a = col.w;
 }
 
 static bool EditorImGuizmo_IsUsing()

@@ -51,8 +51,8 @@ namespace EngineEditor
             if (ImGui.BeginChild("##OptionsList", leftWidth, contentHeight, true))
             {
                 DrawEntryList();
-                ImGui.EndChild();
             }
+            ImGui.EndChild();
 
             ImGui.SameLine();
 
@@ -63,8 +63,8 @@ namespace EngineEditor
             if (ImGui.BeginChild("##OptionsContent", rightWidth, contentHeight, true))
             {
                 DrawSelectedEntry();
-                ImGui.EndChild();
             }
+            ImGui.EndChild();
 
             ImGui.End();
         }

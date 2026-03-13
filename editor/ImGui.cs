@@ -180,5 +180,11 @@ namespace Engine
                                            float b,
                                            float a,
                                            float thickness);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetStyleColor(int colorIdx, float r, float g, float b, float a);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void GetStyleColor(int colorIdx, out float r, out float g, out float b, out float a);
     }
 }

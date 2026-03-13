@@ -48,6 +48,9 @@ namespace EngineEditor
             ProjectOperations.Initialize(_editorConfigDir);
             ScriptComponentValidation.Initialize(_editorConfigDir);
 
+            ImGuiThemeSettings.Initialize(_editorConfigDir);
+            ImGuiThemeSettings.RegisterEditorOptions();
+
             AssetPanel.RegisterEditorOptions();
             AssetPanel.RegisterAssetContextMenu();
             SceneEditor.RegisterEditorOptions();
@@ -62,19 +65,71 @@ namespace EngineEditor
 
             RegisterMenuItems();
 
-            _bootStage = BootStage.ProjectSelector;
             _lastWindowStyleStage = (BootStage)(-1);
-            EditorBridge.SetWindowBackgroundVisible(false);
 
-            // Enforce a predictable starting window size for the Project Selector.
-            EditorBridge.SetMainWindowBorderless(false);
-            EditorBridge.SetMainWindowResizable(true);
-            EditorBridge.SetMainWindowSize(ProjectSelectorWindowWidth, ProjectSelectorWindowHeight);
-            EditorBridge.CenterMainWindow();
+            // Detect hot reload only when native runtime reports an active script
+            // reload, a native project context is open, and the last-project file
+            // points to a valid directory. In that case restore managed project
+            // state and jump directly to MainEditor without showing loading splash.
+            string restoredProjectPath = TryReadLastProjectPath();
+            if (EditorBridge.IsScriptReloadInProgress()
+                && !string.IsNullOrEmpty(restoredProjectPath))
+            {
+                ProjectOperations.RestoreFromHotReload(restoredProjectPath);
+                _bootStage = BootStage.MainEditor;
+                _showProjectManagerView = false;
 
-            _showProjectManagerView = true;
-            _statusMessage = "No project loaded.";
-            Console.WriteLine("[Editor] OnEditorStart called. Boot stage: " + _bootStage);
+                string projectName = Path.GetFileName(restoredProjectPath);
+                if (string.IsNullOrEmpty(projectName))
+                    projectName = "Untitled";
+
+                _statusMessage = "Project loaded: " + projectName;
+                EditorBridge.SetDockspaceEnabled(true);
+                EditorBridge.SetMainWindowBorderless(false);
+                EditorBridge.SetMainWindowResizable(true);
+                EditorBridge.SetWindowBackgroundVisible(false);
+                EditorBridge.SetMainWindowTitle("CppCSharp Editor \u2014 " + projectName);
+                EditorBridge.MaximizeMainWindow();
+                Console.WriteLine("[Editor] OnEditorStart (hot reload) -> MainEditor: " + restoredProjectPath);
+            }
+            else
+            {
+                _bootStage = BootStage.ProjectSelector;
+                EditorBridge.SetDockspaceEnabled(false);
+                EditorBridge.SetWindowBackgroundVisible(false);
+
+                // Enforce a predictable starting window size for the Project Selector.
+                EditorBridge.SetMainWindowBorderless(false);
+                EditorBridge.SetMainWindowResizable(true);
+                EditorBridge.SetMainWindowSize(ProjectSelectorWindowWidth, ProjectSelectorWindowHeight);
+                EditorBridge.CenterMainWindow();
+
+                _showProjectManagerView = true;
+                _statusMessage = "No project loaded.";
+                Console.WriteLine("[Editor] OnEditorStart called. Boot stage: " + _bootStage);
+            }
+        }
+
+        private static string TryReadLastProjectPath()
+        {
+            if (string.IsNullOrEmpty(_editorConfigDir))
+                return string.Empty;
+
+            string lastProjectFile = Path.Combine(_editorConfigDir, "last_project.txt");
+            if (!File.Exists(lastProjectFile))
+                return string.Empty;
+
+            try
+            {
+                string path = File.ReadAllText(lastProjectFile).Trim();
+                return (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+                    ? string.Empty
+                    : path;
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
 
         public static void OnEditorUpdate(float deltaTime)
@@ -281,6 +336,8 @@ namespace EngineEditor
 
             if (!hasOpenProject)
             {
+                EditorBridge.SetDockspaceEnabled(false);
+                EditorBridge.SetWindowBackgroundVisible(false);
                 _showProjectManagerView = true;
                 SceneEditor.ResetEditorState();
                 ProjectManager.DrawProjectPanel();

@@ -769,11 +769,13 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::StopPlayMode", (const void*)&EditorBridge_StopPlayMode);
         mono_add_internal_call("Engine.EditorBridge::SetSimulationPaused", (const void*)&EditorBridge_SetSimulationPaused);
         mono_add_internal_call("Engine.EditorBridge::RequestScriptAssemblyReload", (const void*)&EditorBridge_RequestScriptAssemblyReload);
+        mono_add_internal_call("Engine.EditorBridge::IsScriptReloadInProgress", (const void*)&EditorBridge_IsScriptReloadInProgress);
         mono_add_internal_call("Engine.EditorBridge::SetPreferredScriptAssemblyPath", (const void*)&EditorBridge_SetPreferredScriptAssemblyPath);
         mono_add_internal_call("Engine.EditorBridge::SetPreferredScriptProjectPath", (const void*)&EditorBridge_SetPreferredScriptProjectPath);
         mono_add_internal_call("Engine.EditorBridge::SetScriptAutoReloadEnabled", (const void*)&EditorBridge_SetScriptAutoReloadEnabled);
         mono_add_internal_call("Engine.EditorBridge::GetProjectSetting", (const void*)&EditorBridge_GetProjectSetting);
         mono_add_internal_call("Engine.EditorBridge::SetProjectSetting", (const void*)&EditorBridge_SetProjectSetting);
+        mono_add_internal_call("Engine.EditorBridge::HasOpenProjectContext", (const void*)&EditorBridge_HasOpenProjectContext);
         mono_add_internal_call("Engine.EditorBridge::CreateAuxiliaryWindow", (const void*)&EditorBridge_CreateAuxiliaryWindow);
         mono_add_internal_call("Engine.EditorBridge::DestroyAuxiliaryWindow", (const void*)&EditorBridge_DestroyAuxiliaryWindow);
         mono_add_internal_call("Engine.EditorBridge::DestroyAllAuxiliaryWindows", (const void*)&EditorBridge_DestroyAllAuxiliaryWindows);
@@ -958,6 +960,8 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.ImGui::IsMouseClicked", (const void*)&EditorImGui_IsMouseClicked);
         mono_add_internal_call("Engine.ImGui::DrawLine", (const void*)&EditorImGui_DrawLine);
         mono_add_internal_call("Engine.ImGui::DrawRect", (const void*)&EditorImGui_DrawRect);
+        mono_add_internal_call("Engine.ImGui::SetStyleColor", (const void*)&EditorImGui_SetStyleColor);
+        mono_add_internal_call("Engine.ImGui::GetStyleColor", (const void*)&EditorImGui_GetStyleColor);
 
         mono_add_internal_call("Engine.ImGuizmo::IsUsing", (const void*)&EditorImGuizmo_IsUsing);
         mono_add_internal_call("Engine.ImGuizmo::Manipulate2DTranslate", (const void*)&EditorImGuizmo_Manipulate2DTranslate);
