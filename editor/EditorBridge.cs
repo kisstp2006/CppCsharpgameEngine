@@ -165,6 +165,18 @@ namespace Engine
         public static extern void SetWindowBackgroundVisible(bool visible);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern int GetBootPhase();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetSelectedProjectPath(string path);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern string GetNativeProjectPath();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern string GetSelectedProjectPath();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern int GetScriptedEntityCount();
 
         [MethodImpl(MethodImplOptions.InternalCall)]

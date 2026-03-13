@@ -833,6 +833,10 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::SetWindowBackgroundImage", (const void*)&EditorBridge_SetWindowBackgroundImage);
         mono_add_internal_call("Engine.EditorBridge::ClearWindowBackgroundImage", (const void*)&EditorBridge_ClearWindowBackgroundImage);
         mono_add_internal_call("Engine.EditorBridge::SetWindowBackgroundVisible", (const void*)&EditorBridge_SetWindowBackgroundVisible);
+        mono_add_internal_call("Engine.EditorBridge::GetBootPhase", (const void*)&EditorBridge_GetBootPhase);
+        mono_add_internal_call("Engine.EditorBridge::SetSelectedProjectPath", (const void*)&EditorBridge_SetSelectedProjectPath);
+        mono_add_internal_call("Engine.EditorBridge::GetNativeProjectPath", (const void*)&EditorBridge_GetNativeProjectPath);
+        mono_add_internal_call("Engine.EditorBridge::GetSelectedProjectPath", (const void*)&EditorBridge_GetSelectedProjectPath);
     }
 
     mono_add_internal_call("Engine.DebugDraw::LineInternal", (const void*)&EditorDebugDraw_Line);
@@ -1483,4 +1487,26 @@ bool MonoRuntime::IsScriptLoaded() const
 bool MonoRuntime::IsEditorLoaded() const
 {
     return m_impl && m_impl->editorLoaded;
+}
+
+void MonoRuntime::ReInvokeEditorStart(Scene* scene, Renderer* renderer, Engine* engineContext)
+{
+#if ENGINE_MONO_RUNTIME_AVAILABLE
+    if (m_impl && m_impl->editorLoaded && m_impl->editorOnStart)
+    {
+        Scene* previousEditorSceneContext = g_editorSceneContext;
+        Renderer* previousEditorRendererContext = g_editorRendererContext;
+        Engine* previousEditorEngineContext = g_editorEngineContext;
+
+        g_editorSceneContext = scene;
+        g_editorRendererContext = renderer;
+        g_editorEngineContext = engineContext;
+
+        mono_runtime_invoke(m_impl->editorOnStart, nullptr, nullptr, nullptr);
+
+        g_editorSceneContext = previousEditorSceneContext;
+        g_editorRendererContext = previousEditorRendererContext;
+        g_editorEngineContext = previousEditorEngineContext;
+    }
+#endif
 }

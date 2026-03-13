@@ -7,33 +7,16 @@ namespace EngineEditor
 {
     public static class EditorHost
     {
-        private enum BootStage
-        {
-            ProjectSelector,
-            Loading,
-            MainEditor,
-        }
-
         private static string _statusMessage = "No project loaded.";
-        private static bool _showProjectManagerView = true;
+        private static bool _showProjectManagerView = false;
         private static string _editorConfigDir = string.Empty;
         private static string _playSnapshotPath = string.Empty;
         private static float _compileProgressPulse = 0.0f;
         private static bool _compileDialogOpen;
         private static bool _menuItemsRegistered;
-        private static bool _backgroundSplashInitialized;
-        private static bool _backgroundSplashReady;
+        private static string _phase2AttachAttemptedPath = string.Empty;
 
-        private static BootStage _bootStage = BootStage.ProjectSelector;
-        private static BootStage _lastWindowStyleStage = (BootStage)(-1);
-        private static float _loadingTimer = 0.0f;
-        private static string _loadingProjectName = string.Empty;
-
-        private const float LoadingMinDuration = 1.0f;
         private const string CompilePopupId = "##ScriptCompileBlockingModal";
-        private const string SplashLogoRelativePath = "assets/editor/splash_logo.png";
-        private const int ProjectSelectorWindowWidth = 960;
-        private const int ProjectSelectorWindowHeight = 640;
 
         public static string StatusMessage => _statusMessage;
 
@@ -59,270 +42,78 @@ namespace EngineEditor
             ScriptFieldInspector.RegisterEditorOptions();
             ScriptFieldInspector.RegisterAssetContextMenu();
 
-            _backgroundSplashInitialized = false;
-            _backgroundSplashReady = false;
-            EditorBridge.SetWindowBackgroundVisible(false);
-
             RegisterMenuItems();
 
-            _lastWindowStyleStage = (BootStage)(-1);
+            int bootPhase = EditorBridge.GetBootPhase();
 
-            // Detect hot reload only when native runtime reports an active script
-            // reload, a native project context is open, and the last-project file
-            // points to a valid directory. In that case restore managed project
-            // state and jump directly to MainEditor without showing loading splash.
-            string restoredProjectPath = TryReadLastProjectPath();
-            if (EditorBridge.IsScriptReloadInProgress()
-                && !string.IsNullOrEmpty(restoredProjectPath))
+            if (bootPhase == 2)
             {
-                ProjectOperations.RestoreFromHotReload(restoredProjectPath);
-                _bootStage = BootStage.MainEditor;
-                _showProjectManagerView = false;
+                _phase2AttachAttemptedPath = string.Empty;
+                TryAttachProjectForEditorPhase();
 
-                string projectName = Path.GetFileName(restoredProjectPath);
-                if (string.IsNullOrEmpty(projectName))
-                    projectName = "Untitled";
-
-                _statusMessage = "Project loaded: " + projectName;
-                EditorBridge.SetDockspaceEnabled(true);
-                EditorBridge.SetMainWindowBorderless(false);
-                EditorBridge.SetMainWindowResizable(true);
-                EditorBridge.SetWindowBackgroundVisible(false);
-                EditorBridge.SetMainWindowTitle("CppCSharp Editor \u2014 " + projectName);
-                EditorBridge.MaximizeMainWindow();
-                Console.WriteLine("[Editor] OnEditorStart (hot reload) -> MainEditor: " + restoredProjectPath);
+                Console.WriteLine("[Editor] OnEditorStart -> Editor phase.");
             }
             else
             {
-                _bootStage = BootStage.ProjectSelector;
-                EditorBridge.SetDockspaceEnabled(false);
-                EditorBridge.SetWindowBackgroundVisible(false);
-
-                // Enforce a predictable starting window size for the Project Selector.
-                EditorBridge.SetMainWindowBorderless(false);
-                EditorBridge.SetMainWindowResizable(true);
-                EditorBridge.SetMainWindowSize(ProjectSelectorWindowWidth, ProjectSelectorWindowHeight);
-                EditorBridge.CenterMainWindow();
-
+                _phase2AttachAttemptedPath = string.Empty;
                 _showProjectManagerView = true;
                 _statusMessage = "No project loaded.";
-                Console.WriteLine("[Editor] OnEditorStart called. Boot stage: " + _bootStage);
-            }
-        }
-
-        private static string TryReadLastProjectPath()
-        {
-            if (string.IsNullOrEmpty(_editorConfigDir))
-                return string.Empty;
-
-            string lastProjectFile = Path.Combine(_editorConfigDir, "last_project.txt");
-            if (!File.Exists(lastProjectFile))
-                return string.Empty;
-
-            try
-            {
-                string path = File.ReadAllText(lastProjectFile).Trim();
-                return (string.IsNullOrEmpty(path) || !Directory.Exists(path))
-                    ? string.Empty
-                    : path;
-            }
-            catch
-            {
-                return string.Empty;
+                Console.WriteLine("[Editor] OnEditorStart -> Project Selector phase.");
             }
         }
 
         public static void OnEditorUpdate(float deltaTime)
         {
-            EnsureBackgroundSplashInitialized();
-            ApplyWindowStyleForBootStage();
+            int bootPhase = EditorBridge.GetBootPhase();
 
-            switch (_bootStage)
+            if (bootPhase == 0)
             {
-                case BootStage.ProjectSelector:
-                    UpdateProjectSelectorStage(deltaTime);
-                    break;
-                case BootStage.Loading:
-                    UpdateLoadingStage(deltaTime);
-                    break;
-                case BootStage.MainEditor:
-                    UpdateMainEditorStage(deltaTime);
-                    break;
+                // Phase 0: Project Selector — only draw project panel.
+                ProjectManager.DrawProjectPanel();
+                EditorOptionsWindow.Draw();
+            }
+            else if (bootPhase == 2)
+            {
+                // Phase 2: Main Editor — full editor UI.
+                TryAttachProjectForEditorPhase();
+                UpdateMainEditorStage(deltaTime);
             }
         }
 
-        // ----- Stage 1: Project Selector (small window, no dockspace) -----
-        private static void UpdateProjectSelectorStage(float deltaTime)
+        private static void TryAttachProjectForEditorPhase()
         {
             if (ProjectOperations.HasOpenProject())
-            {
-                TransitionToLoading();
-                return;
-            }
-
-            ProjectManager.DrawProjectPanel();
-            EditorOptionsWindow.Draw();
-
-            if (ProjectOperations.HasOpenProject())
-                TransitionToLoading();
-        }
-
-        // ----- Stage 2: Loading / Splash screen -----
-        private static void UpdateLoadingStage(float deltaTime)
-        {
-            _loadingTimer += deltaTime;
-
-            DrawLoadingSplash(deltaTime);
-
-            ScriptValidationSnapshot snapshot = ScriptComponentValidation.GetSnapshot();
-            bool compileFinished = !snapshot.IsCompiling;
-
-            if (_loadingTimer >= LoadingMinDuration && compileFinished)
-                TransitionToMainEditor();
-        }
-
-        private static void DrawLoadingSplash(float deltaTime)
-        {
-            if (ImGui.BeginCenteredFixed("##LoadingSplash", 560.0f, 270.0f, true))
-            {
-                ImGui.Text("");
-                ImGui.Text("          CppCSharp Engine");
-                ImGui.Text("");
-                ImGui.Separator();
-                ImGui.Text("");
-
-                string projectLabel = string.IsNullOrEmpty(_loadingProjectName)
-                    ? "Loading project..."
-                    : "Loading: " + _loadingProjectName;
-                ImGui.Text("  " + projectLabel);
-
-                ImGui.Text("");
-
-                _compileProgressPulse += deltaTime * 0.65f;
-                while (_compileProgressPulse > 1.0f)
-                    _compileProgressPulse -= 1.0f;
-
-                float progress = 0.1f + (_compileProgressPulse * 0.8f);
-                ImGui.Text("  " + BuildProgressBarText(progress, 36));
-
-                ImGui.Text("");
-
-                ScriptValidationSnapshot snapshot = ScriptComponentValidation.GetSnapshot();
-                string status = snapshot.IsCompiling ? "  Compiling C# scripts..." : "  Initializing editor...";
-                ImGui.Text(status);
-            }
-            ImGui.End();
-        }
-
-        private static void EnsureBackgroundSplashInitialized()
-        {
-            if (_backgroundSplashInitialized)
                 return;
 
-            _backgroundSplashInitialized = true;
+            string projectPath = EditorBridge.GetNativeProjectPath();
+            if (string.IsNullOrEmpty(projectPath))
+                projectPath = EditorBridge.GetSelectedProjectPath();
 
-            string splashLogoPath = ResolveSplashLogoPath();
-            _backgroundSplashReady = EditorBridge.SetWindowBackgroundImage(splashLogoPath);
-
-            if (_bootStage == BootStage.Loading && _backgroundSplashReady)
-                EditorBridge.SetWindowBackgroundVisible(true);
-        }
-
-        private static void ApplyWindowStyleForBootStage()
-        {
-            // Only apply SDL2 window style changes on actual stage transitions to avoid
-            // generating redundant Win32 messages every frame.
-            if (_lastWindowStyleStage == _bootStage)
+            if (string.IsNullOrEmpty(projectPath))
                 return;
-            _lastWindowStyleStage = _bootStage;
 
-            if (_bootStage == BootStage.Loading)
-            {
-                EditorBridge.SetMainWindowResizable(false);
-                EditorBridge.SetMainWindowBorderless(true);
+            if (string.Equals(_phase2AttachAttemptedPath, projectPath, StringComparison.OrdinalIgnoreCase))
                 return;
-            }
 
-            EditorBridge.SetMainWindowBorderless(false);
-            EditorBridge.SetMainWindowResizable(true);
-        }
+            _phase2AttachAttemptedPath = projectPath;
 
-        private static string ResolveSplashLogoPath()
-        {
-            // Try the current working directory first (normal editor start path).
-            string cwdCandidate = Path.Combine(Directory.GetCurrentDirectory(), SplashLogoRelativePath);
-            if (File.Exists(cwdCandidate))
-                return cwdCandidate;
+            if (EditorBridge.IsScriptReloadInProgress())
+                ProjectOperations.RestoreFromHotReload(projectPath);
+            else
+                ProjectOperations.OpenProject(projectPath);
 
-            // Fallback: walk upward from managed assembly base directory to find workspace root.
-            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
-            try
-            {
-                DirectoryInfo current = new DirectoryInfo(baseDirectory);
-                for (int i = 0; i < 10 && current != null; ++i)
-                {
-                    string candidate = Path.Combine(current.FullName, SplashLogoRelativePath);
-                    if (File.Exists(candidate))
-                        return candidate;
+            if (!ProjectOperations.HasOpenProject())
+                return;
 
-                    current = current.Parent;
-                }
-            }
-            catch
-            {
-                // Keep startup robust even if directory probing fails.
-            }
-
-            // Return the canonical relative fallback; engine-side loader will fail silently.
-            return SplashLogoRelativePath;
-        }
-
-        // ----- Stage transitions -----
-        private static void TransitionToLoading()
-        {
-            _loadingProjectName = Path.GetFileName(ProjectOperations.ActiveProjectPath);
-            _loadingTimer = 0.0f;
-            _compileProgressPulse = 0.0f;
-            _bootStage = BootStage.Loading;
-
-            // Normalise the OS window to a fixed windowed size before applying the
-            // borderless loading style.  This guarantees that – regardless of any
-            // resize or maximise the user performed in the Project Selector –
-            // SDL2's internal "restore" rect is a known value, so that the
-            // SDL_RestoreWindow call inside Maximize() produces a clean transition
-            // back to the maximised main-editor window.
-            EditorBridge.SetMainWindowBorderless(false);
-            EditorBridge.SetMainWindowResizable(true);
-            EditorBridge.SetMainWindowSize(ProjectSelectorWindowWidth, ProjectSelectorWindowHeight);
-            EditorBridge.CenterMainWindow();
-
-            EditorBridge.SetMainWindowResizable(false);
-            EditorBridge.SetMainWindowBorderless(true);
-            EditorBridge.SetWindowBackgroundVisible(_backgroundSplashReady);
-            Console.WriteLine("[Editor] Boot transition -> Loading (" + _loadingProjectName + ")");
-        }
-
-        private static void TransitionToMainEditor()
-        {
-            _bootStage = BootStage.MainEditor;
-            _showProjectManagerView = false;
-
-            string projectName = Path.GetFileName(ProjectOperations.ActiveProjectPath);
+            string projectName = Path.GetFileName(projectPath);
             if (string.IsNullOrEmpty(projectName))
                 projectName = "Untitled";
 
-            EditorBridge.SetDockspaceEnabled(true);
-            EditorBridge.SetMainWindowBorderless(false);
-            EditorBridge.SetMainWindowResizable(true);
-            EditorBridge.SetWindowBackgroundVisible(false);
-            EditorBridge.SetMainWindowTitle("CppCSharp Editor \u2014 " + projectName);
-            EditorBridge.MaximizeMainWindow();
-
             _statusMessage = "Project loaded: " + projectName;
-            Console.WriteLine("[Editor] Boot transition -> MainEditor (" + projectName + ")");
+            _showProjectManagerView = false;
         }
 
-        // ----- Stage 3: Main Editor (full window, dockspace, all panels) -----
+        // ----- Main Editor (full window, dockspace, all panels) -----
         private static void UpdateMainEditorStage(float deltaTime)
         {
             bool hasOpenProject = ProjectOperations.HasOpenProject();
@@ -736,9 +527,6 @@ namespace EngineEditor
 
         public static void OnEditorShutdown()
         {
-            EditorBridge.SetWindowBackgroundVisible(false);
-            EditorBridge.SetMainWindowBorderless(false);
-            EditorBridge.SetMainWindowResizable(true);
             StopPlayMode();
             Console.WriteLine("[Editor] OnEditorShutdown called.");
         }

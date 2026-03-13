@@ -259,7 +259,10 @@ add_executable(App src/app/main.cpp)
 target_link_libraries(App PRIVATE Engine)
 
 # Editor executable
-add_executable(Editor src/editor/main.cpp)
+add_executable(Editor
+  src/editor/main.cpp
+  src/editor/BootManager.cpp
+)
 
 target_link_libraries(Editor PRIVATE Engine)
 

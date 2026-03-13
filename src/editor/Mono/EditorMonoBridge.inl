@@ -3064,6 +3064,41 @@ static void EditorBridge_SetWindowBackgroundVisible(bool visible)
     g_editorEngineContext->SetWindowBackgroundVisible(visible);
 }
 
+static int EditorBridge_GetBootPhase()
+{
+    if (!g_editorEngineContext)
+        return 0;
+
+    return g_editorEngineContext->GetBootPhase();
+}
+
+static void EditorBridge_SetSelectedProjectPath(MonoString* path)
+{
+    if (!g_editorEngineContext)
+        return;
+
+    const std::string utf8 = MonoStringToUtf8(path);
+    g_editorEngineContext->SetSelectedProjectPath(utf8);
+}
+
+static MonoString* EditorBridge_GetNativeProjectPath()
+{
+    if (!g_editorEngineContext)
+        return mono_string_new(mono_domain_get(), "");
+
+    const std::string path = g_editorEngineContext->GetNativeProjectPath();
+    return mono_string_new(mono_domain_get(), path.c_str());
+}
+
+static MonoString* EditorBridge_GetSelectedProjectPath()
+{
+    if (!g_editorEngineContext)
+        return mono_string_new(mono_domain_get(), "");
+
+    const std::string& path = g_editorEngineContext->GetSelectedProjectPath();
+    return mono_string_new(mono_domain_get(), path.c_str());
+}
+
 static void EditorDebugDraw_Line(float x0, float y0, float x1, float y1,
                                  float r, float g, float b, float a,
                                  float thickness, float durationSeconds)

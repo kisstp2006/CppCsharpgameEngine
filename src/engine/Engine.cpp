@@ -213,6 +213,133 @@ namespace
 Engine::Engine() = default;
 Engine::~Engine() = default;
 
+void Engine::SetEditorMode(bool enabled)
+{
+    m_editorMode = enabled;
+
+#ifndef ENGINE_MONO_DISABLED
+    if (m_mono)
+        m_mono->SetEditorMode(enabled);
+#endif
+}
+
+// ---- Core systems: SDL_Init + Mono JIT (once per process) ----
+
+bool Engine::InitializeCoreSystems()
+{
+    if (m_coreInitialized)
+        return true;
+
+    // SDL_Init is idempotent but we only want to do it once explicitly.
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_TIMER) != 0)
+    {
+        EngineLogger::Error("SDL", std::string("SDL_Init failed: ") + SDL_GetError());
+        return false;
+    }
+
+    m_scene = std::make_unique<Scene>();
+
+#ifndef ENGINE_MONO_DISABLED
+    m_mono = std::make_unique<MonoRuntime>();
+    m_mono->SetEditorMode(m_editorMode);
+
+    if (!m_mono->Initialize())
+        return false;
+#endif
+
+    m_coreInitialized = true;
+    return true;
+}
+
+void Engine::ShutdownCoreSystems()
+{
+    if (!m_coreInitialized)
+        return;
+
+#ifndef ENGINE_MONO_DISABLED
+    if (m_mono)
+        m_mono->Shutdown(m_scene.get());
+#endif
+
+    m_scene.reset();
+    m_spriteTextureCache.clear();
+
+    if (m_assetDatabase)
+        m_assetDatabase->Save();
+
+    m_assetDatabase.reset();
+    m_projectContext.reset();
+
+    SDL_Quit();
+    m_coreInitialized = false;
+}
+
+// ---- Per-window lifecycle ----
+
+bool Engine::CreateWindow(const WindowCreateDesc& desc)
+{
+    m_window = std::make_unique<SDLWindow>();
+
+    // SDLWindow::Initialize calls SDL_Init internally, which is safe because
+    // SDL_Init is idempotent.  We rely on the InitializeCoreSystems() call above
+    // to have already initialised the SDL subsystems.
+    if (!m_window->Initialize(desc.title, desc.width, desc.height))
+        return false;
+
+    if (desc.borderless)
+        m_window->SetBorderless(true);
+
+    if (!desc.resizable)
+        m_window->SetResizable(false);
+
+    m_auxiliaryWindows = std::make_unique<AuxiliaryWindowManager>();
+
+    m_renderer = std::make_unique<Renderer>();
+    if (!m_renderer->Initialize(desc.width, desc.height))
+        return false;
+
+    m_dockspaceEnabled = desc.dockspaceEnabled;
+
+    if (!InitializeImGui(desc.imguiIniPath))
+        return false;
+
+    if (desc.maximized)
+        m_window->Maximize();
+
+    m_running = true;
+    m_perfFrequency = SDL_GetPerformanceFrequency();
+    m_previousCounter = SDL_GetPerformanceCounter();
+
+    return true;
+}
+
+void Engine::DestroyWindow()
+{
+    DestroyAllAuxiliaryWindows();
+    m_auxiliaryWindows.reset();
+
+    ShutdownImGui();
+
+    m_windowBackgroundTexture.reset();
+
+    if (m_renderer)
+        m_renderer->Shutdown();
+    m_renderer.reset();
+
+    DebugDraw::Clear();
+
+    if (m_window)
+        m_window->Shutdown();
+    m_window.reset();
+
+    m_running = false;
+}
+
+bool Engine::HasWindow() const
+{
+    return m_window != nullptr;
+}
+
 bool Engine::SaveScene(const std::filesystem::path& scenePath, SceneStorageFormat format)
 {
     m_lastSceneIoError.clear();
@@ -412,92 +539,88 @@ void Engine::SetWindowBackgroundVisible(bool visible)
     m_windowBackgroundVisible = visible;
 }
 
-void Engine::SetEditorMode(bool enabled)
-{
-    m_editorMode = enabled;
-
-#ifndef ENGINE_MONO_DISABLED
-    if (m_mono)
-        m_mono->SetEditorMode(enabled);
-#endif
-}
-
 bool Engine::Initialize(const std::string& title, int width, int height)
 {
-    m_window = std::make_unique<SDLWindow>();
-    if (!m_window->Initialize(title, width, height))
+    if (!InitializeCoreSystems())
         return false;
 
-    m_auxiliaryWindows = std::make_unique<AuxiliaryWindowManager>();
-
-    m_renderer = std::make_unique<Renderer>();
-    if (!m_renderer->Initialize(width, height))
+    WindowCreateDesc desc;
+    desc.title = title;
+    desc.width = width;
+    desc.height = height;
+    desc.resizable = true;
+    desc.dockspaceEnabled = m_editorMode;
+    if (!CreateWindow(desc))
         return false;
 
-    m_scene = std::make_unique<Scene>();
+    // Legacy path: open project from current working directory.
+    OpenProject(std::filesystem::current_path());
 
+    return true;
+}
+
+// ---- Project loading ----
+
+bool Engine::OpenProject(const std::filesystem::path& projectPath)
+{
     m_projectContext = std::make_unique<ProjectContext>();
-    if (m_projectContext->OpenWorkspace(std::filesystem::current_path()))
+    if (!m_projectContext->OpenProject(projectPath))
     {
-        m_assetDatabase = std::make_unique<AssetDatabase>();
-        const std::filesystem::path databasePath = m_projectContext->LibraryRoot() / "AssetDatabase.json";
+        m_projectContext.reset();
+        return false;
+    }
 
-        if (!m_assetDatabase->LoadOrCreate(databasePath))
-            EngineLogger::Errorf("Assets", "Failed to load asset database: ", databasePath);
+    m_assetDatabase = std::make_unique<AssetDatabase>();
+    const std::filesystem::path databasePath = m_projectContext->LibraryRoot() / "AssetDatabase.json";
 
-        m_assetDatabase->ScanProject(*m_projectContext);
-        const auto assetChanges = m_assetDatabase->DetectChanges();
-        if (!assetChanges.empty())
+    if (!m_assetDatabase->LoadOrCreate(databasePath))
+        EngineLogger::Errorf("Assets", "Failed to load asset database: ", databasePath);
+
+    m_assetDatabase->ScanProject(*m_projectContext);
+    const auto assetChanges = m_assetDatabase->DetectChanges();
+    if (!assetChanges.empty())
+    {
+        std::size_t addedCount = 0;
+        std::size_t modifiedCount = 0;
+        std::size_t deletedCount = 0;
+
+        for (const auto& change : assetChanges)
         {
-            std::size_t addedCount = 0;
-            std::size_t modifiedCount = 0;
-            std::size_t deletedCount = 0;
-
-            for (const auto& change : assetChanges)
+            switch (change.kind)
             {
-                switch (change.kind)
-                {
-                case AssetDatabase::AssetChangeKind::Added:
-                    ++addedCount;
-                    break;
-                case AssetDatabase::AssetChangeKind::Modified:
-                    ++modifiedCount;
-                    break;
-                case AssetDatabase::AssetChangeKind::Deleted:
-                    ++deletedCount;
-                    break;
-                }
-            }
-
-            EngineLogger::Infof("Assets",
-                                "Changes detected: added=", addedCount,
-                                ", modified=", modifiedCount,
-                                ", deleted=", deletedCount);
-
-            AssetImportPipeline importPipeline;
-            const AssetImportPipeline::Result importResult = importPipeline.Run(*m_projectContext, assetChanges);
-            if (importResult.imported > 0 || importResult.removed > 0 || importResult.failed > 0)
-            {
-                EngineLogger::Infof("Assets",
-                                    "Import pass: imported=", importResult.imported,
-                                    ", removed=", importResult.removed,
-                                    ", failed=", importResult.failed);
+            case AssetDatabase::AssetChangeKind::Added:
+                ++addedCount;
+                break;
+            case AssetDatabase::AssetChangeKind::Modified:
+                ++modifiedCount;
+                break;
+            case AssetDatabase::AssetChangeKind::Deleted:
+                ++deletedCount;
+                break;
             }
         }
 
-        if (!m_assetDatabase->Save())
-            EngineLogger::Errorf("Assets", "Failed to save asset database: ", databasePath);
+        EngineLogger::Infof("Assets",
+                            "Changes detected: added=", addedCount,
+                            ", modified=", modifiedCount,
+                            ", deleted=", deletedCount);
+
+        AssetImportPipeline importPipeline;
+        const AssetImportPipeline::Result importResult = importPipeline.Run(*m_projectContext, assetChanges);
+        if (importResult.imported > 0 || importResult.removed > 0 || importResult.failed > 0)
+        {
+            EngineLogger::Infof("Assets",
+                                "Import pass: imported=", importResult.imported,
+                                ", removed=", importResult.removed,
+                                ", failed=", importResult.failed);
+        }
     }
-    else
-    {
-        m_projectContext.reset();
-    }
+
+    if (!m_assetDatabase->Save())
+        EngineLogger::Errorf("Assets", "Failed to save asset database: ", databasePath);
 
 #ifndef ENGINE_MONO_DISABLED
-    m_mono = std::make_unique<MonoRuntime>();
-    m_mono->SetEditorMode(m_editorMode);
-
-    if (m_projectContext && m_projectContext->IsOpen())
+    if (m_mono && m_projectContext && m_projectContext->IsOpen())
     {
         const std::filesystem::path assemblyPath = m_projectContext->ScriptAssemblyAbsolutePath();
         if (!assemblyPath.empty())
@@ -507,362 +630,391 @@ bool Engine::Initialize(const std::string& title, int width, int height)
         if (!scriptProjectPath.empty())
             m_mono->SetPreferredScriptProjectPath(scriptProjectPath.string());
     }
-
-    if (!m_mono->Initialize())
-        return false;
 #endif
 
-    if (!InitializeImGui())
-        return false;
-
-    m_running = true;
     return true;
 }
 
 void Engine::Run()
 {
-    const std::uint64_t perfFrequency = SDL_GetPerformanceFrequency();
-    std::uint64_t previousCounter = SDL_GetPerformanceCounter();
+    RunMainLoop();
+}
 
-    while (m_running)
+void Engine::Shutdown()
+{
+    DestroyWindow();
+    ShutdownCoreSystems();
+}
+
+// ---- Per-frame API for custom boot loops ----
+
+bool Engine::BeginFrame(float& outDeltaTime)
+{
+    if (!m_running || !m_window)
     {
-        const std::uint64_t currentCounter = SDL_GetPerformanceCounter();
-        const float deltaTime = static_cast<float>(currentCounter - previousCounter) / static_cast<float>(perfFrequency);
-        previousCounter = currentCounter;
+        outDeltaTime = 0.0f;
+        return false;
+    }
 
-        SDLInputState::BeginFrame();
+    const std::uint64_t currentCounter = SDL_GetPerformanceCounter();
+    outDeltaTime = static_cast<float>(currentCounter - m_previousCounter) / static_cast<float>(m_perfFrequency);
+    m_previousCounter = currentCounter;
 
-        SDL_Event event;
-        while (SDL_PollEvent(&event))
+    SDLInputState::BeginFrame();
+
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+    {
+        if (m_auxiliaryWindows && m_auxiliaryWindows->HandleWindowCloseEvent(event))
+            continue;
+
+        SDLInputState::ProcessEvent(event);
+        ImGui_ImplSDL2_ProcessEvent(&event);
+        if (event.type == SDL_QUIT)
+            m_running = false;
+    }
+
+    SDLInputState::EndFrame();
+
+    if (!m_running)
+    {
+        outDeltaTime = 0.0f;
+        return false;
+    }
+
+    m_renderer->BeginFrame();
+
+    if (m_windowBackgroundVisible && m_windowBackgroundTexture)
+    {
+        const float viewWidth = static_cast<float>(m_renderer->GetViewWidth());
+        const float viewHeight = static_cast<float>(m_renderer->GetViewHeight());
+        const float textureWidth = static_cast<float>(m_windowBackgroundTexture->GetWidth());
+        const float textureHeight = static_cast<float>(m_windowBackgroundTexture->GetHeight());
+
+        if (viewWidth > 1.0f && viewHeight > 1.0f && textureWidth > 1.0f && textureHeight > 1.0f)
         {
-            if (m_auxiliaryWindows && m_auxiliaryWindows->HandleWindowCloseEvent(event))
-                continue;
+            const float fitScale = std::min(viewWidth / textureWidth, viewHeight / textureHeight);
+            const float drawWidth = textureWidth * fitScale;
+            const float drawHeight = textureHeight * fitScale;
+            const float drawX = (viewWidth - drawWidth) * 0.5f;
+            const float drawY = (viewHeight - drawHeight) * 0.5f;
 
-            SDLInputState::ProcessEvent(event);
-            ImGui_ImplSDL2_ProcessEvent(&event);
-            if (event.type == SDL_QUIT)
-                m_running = false;
+            m_renderer->SetCameraProjection(viewWidth * 0.5f, viewHeight * 0.5f, 1.0f);
+            m_renderer->DrawSprite(*m_windowBackgroundTexture, drawX, drawY, drawWidth, drawHeight);
+        }
+    }
 
-            if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_ESCAPE)
-                m_running = false;
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame(m_window->GetSDL_Window());
+    ImGui::NewFrame();
+
+    if (m_dockspaceEnabled)
+    {
+        const ImGuiDockNodeFlags dockspaceFlags = ImGuiDockNodeFlags_PassthruCentralNode;
+
+        ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDocking;
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewport->WorkPos);
+        ImGui::SetNextWindowSize(viewport->WorkSize);
+        ImGui::SetNextWindowViewport(viewport->ID);
+
+        windowFlags |= ImGuiWindowFlags_NoTitleBar;
+        windowFlags |= ImGuiWindowFlags_NoCollapse;
+        windowFlags |= ImGuiWindowFlags_NoResize;
+        windowFlags |= ImGuiWindowFlags_NoMove;
+        windowFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus;
+        windowFlags |= ImGuiWindowFlags_NoNavFocus;
+        if ((dockspaceFlags & ImGuiDockNodeFlags_PassthruCentralNode) != 0)
+            windowFlags |= ImGuiWindowFlags_NoBackground;
+
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::Begin("##MainDockSpaceHost", nullptr, windowFlags);
+        ImGui::PopStyleVar(2);
+
+        const ImGuiID dockspaceId = ImGui::GetID("MainDockSpace");
+        ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), dockspaceFlags);
+        ImGui::End();
+    }
+
+    return true;
+}
+
+void Engine::EndFrame()
+{
+    if (m_dockspaceEnabled && m_scene && m_renderer)
+    {
+        float cameraX = 0.0f;
+        float cameraY = 0.0f;
+        float cameraZoom = 1.0f;
+        float cameraViewportX = 0.0f;
+        float cameraViewportY = 0.0f;
+        float cameraViewportWidth = 1.0f;
+        float cameraViewportHeight = 1.0f;
+        float cameraOrthographicSize = 0.0f;
+        std::uint32_t cameraCullingMask = 0xFFFFFFFFu;
+        std::uint32_t cameraBackgroundColor = 0x14141AFFu;
+        bool clearCameraViewport = false;
+        bool hasActiveSceneCamera = false;
+        bool useEditorPreviewCamera = false;
+
+        if (m_editorMode && m_editorPreviewCameraEnabled)
+        {
+#ifndef ENGINE_MONO_DISABLED
+            useEditorPreviewCamera = (!m_mono) ||
+                (m_mono->GetSimulationState() == MonoRuntime::SimulationState::Edit);
+#else
+            useEditorPreviewCamera = true;
+#endif
         }
 
-        SDLInputState::EndFrame();
-
-        m_renderer->BeginFrame();
-
-        if (m_windowBackgroundVisible && m_windowBackgroundTexture)
+        if (useEditorPreviewCamera)
         {
-            const float viewWidth = static_cast<float>(m_renderer->GetViewWidth());
-            const float viewHeight = static_cast<float>(m_renderer->GetViewHeight());
-            const float textureWidth = static_cast<float>(m_windowBackgroundTexture->GetWidth());
-            const float textureHeight = static_cast<float>(m_windowBackgroundTexture->GetHeight());
-
-            if (viewWidth > 1.0f && viewHeight > 1.0f && textureWidth > 1.0f && textureHeight > 1.0f)
+            cameraX = m_editorPreviewCameraX;
+            cameraY = m_editorPreviewCameraY;
+            cameraZoom = m_editorPreviewCameraZoom;
+        }
+        else
+        {
+            const Scene::Entity cameraEntity = m_scene->FindFirstCamera();
+            if (m_scene->IsValid(cameraEntity))
             {
-                const float fitScale = std::min(viewWidth / textureWidth, viewHeight / textureHeight);
-                const float drawWidth = textureWidth * fitScale;
-                const float drawHeight = textureHeight * fitScale;
-                const float drawX = (viewWidth - drawWidth) * 0.5f;
-                const float drawY = (viewHeight - drawHeight) * 0.5f;
-
-                m_renderer->SetCameraProjection(viewWidth * 0.5f, viewHeight * 0.5f, 1.0f);
-                m_renderer->DrawSprite(*m_windowBackgroundTexture, drawX, drawY, drawWidth, drawHeight);
+                const CameraComponent* activeCamera = m_scene->TryGetCamera(cameraEntity);
+                if (activeCamera && activeCamera->enabled)
+                {
+                    hasActiveSceneCamera = true;
+                    if (const TransformComponent* cameraTransform = m_scene->TryGetTransform(cameraEntity))
+                    {
+                        cameraX = cameraTransform->x;
+                        cameraY = cameraTransform->y;
+                    }
+                    else
+                    {
+                        cameraX = activeCamera->x;
+                        cameraY = activeCamera->y;
+                    }
+                    cameraZoom = activeCamera->zoom;
+                    cameraViewportX = activeCamera->viewportX;
+                    cameraViewportY = activeCamera->viewportY;
+                    cameraViewportWidth = activeCamera->viewportWidth;
+                    cameraViewportHeight = activeCamera->viewportHeight;
+                    cameraOrthographicSize = activeCamera->orthographicSize;
+                    cameraCullingMask = activeCamera->cullingMask;
+                    cameraBackgroundColor = activeCamera->backgroundColor;
+                    clearCameraViewport = activeCamera->clearColor;
+                }
             }
         }
 
-        // Keep ImGui frame active so C# editor code can draw managed panels.
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame(m_window->GetSDL_Window());
-        ImGui::NewFrame();
+        m_renderer->BeginGameView();
+        m_renderer->SetCameraViewportNormalized(cameraViewportX,
+                                               cameraViewportY,
+                                               cameraViewportWidth,
+                                               cameraViewportHeight);
 
-        // Root dockspace so C# editor windows can be docked.
-        if (m_dockspaceEnabled)
+        if (hasActiveSceneCamera && cameraOrthographicSize > 0.0001f)
         {
-            const ImGuiDockNodeFlags dockspaceFlags = ImGuiDockNodeFlags_PassthruCentralNode;
-
-            ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDocking;
-            const ImGuiViewport* viewport = ImGui::GetMainViewport();
-            ImGui::SetNextWindowPos(viewport->WorkPos);
-            ImGui::SetNextWindowSize(viewport->WorkSize);
-            ImGui::SetNextWindowViewport(viewport->ID);
-
-            windowFlags |= ImGuiWindowFlags_NoTitleBar;
-            windowFlags |= ImGuiWindowFlags_NoCollapse;
-            windowFlags |= ImGuiWindowFlags_NoResize;
-            windowFlags |= ImGuiWindowFlags_NoMove;
-            windowFlags |= ImGuiWindowFlags_NoBringToFrontOnFocus;
-            windowFlags |= ImGuiWindowFlags_NoNavFocus;
-            if ((dockspaceFlags & ImGuiDockNodeFlags_PassthruCentralNode) != 0)
-                windowFlags |= ImGuiWindowFlags_NoBackground;
-
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-            ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-            ImGui::Begin("##MainDockSpaceHost", nullptr, windowFlags);
-            ImGui::PopStyleVar(2);
-
-            const ImGuiID dockspaceId = ImGui::GetID("MainDockSpace");
-            ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), dockspaceFlags);
-            ImGui::End();
+            const int viewportPixelHeight = m_renderer->GetCameraViewportHeight();
+            const float derivedZoom = (static_cast<float>(viewportPixelHeight) * 0.5f) / cameraOrthographicSize;
+            if (std::isfinite(derivedZoom) && derivedZoom > 0.0001f)
+                cameraZoom = derivedZoom;
         }
+
+        if (clearCameraViewport)
+        {
+            float clearR = 0.0f;
+            float clearG = 0.0f;
+            float clearB = 0.0f;
+            float clearA = 1.0f;
+            UnpackColorRgba32(cameraBackgroundColor, clearR, clearG, clearB, clearA);
+            m_renderer->ClearCameraViewport(clearR, clearG, clearB, clearA);
+        }
+
+        m_renderer->SetCameraProjection(cameraX, cameraY, cameraZoom);
+
+        auto view = m_scene->Registry().view<const TransformComponent, const SpriteComponent>();
+        for (const auto entity : view)
+        {
+            if (hasActiveSceneCamera)
+            {
+                std::uint32_t entityLayer = 0;
+                const EntityMetadataComponent* metadata = m_scene->TryGetMetadata(entity);
+                if (metadata)
+                    entityLayer = metadata->layer > 31 ? 31u : metadata->layer;
+
+                const std::uint32_t entityLayerMask = (1u << entityLayer);
+                if ((cameraCullingMask & entityLayerMask) == 0u)
+                    continue;
+            }
+
+            const auto& transform = view.get<const TransformComponent>(entity);
+            auto& sprite = m_scene->Registry().get<SpriteComponent>(entity);
+
+            float drawX = transform.x + sprite.offsetX;
+            float drawY = transform.y + sprite.offsetY;
+            if (sprite.centered)
+            {
+                drawX -= transform.width * 0.5f;
+                drawY -= transform.height * 0.5f;
+            }
+
+            Texture* texture = ResolveSpriteTexture(sprite, m_spriteTextureCache, m_projectContext.get());
+            if (!texture)
+            {
+                float r = 1.0f;
+                float g = 1.0f;
+                float b = 1.0f;
+                float a = 1.0f;
+                UnpackColorRgba32(sprite.fallbackColor, r, g, b, a);
+                m_renderer->DrawSolidSprite(drawX,
+                                            drawY,
+                                            transform.width,
+                                            transform.height,
+                                            r,
+                                            g,
+                                            b,
+                                            a);
+                continue;
+            }
+
+            const int textureWidth = texture->GetWidth();
+            const int textureHeight = texture->GetHeight();
+            if (textureWidth <= 0 || textureHeight <= 0)
+                continue;
+
+            float sourceX = 0.0f;
+            float sourceY = 0.0f;
+            float sourceWidth = static_cast<float>(textureWidth);
+            float sourceHeight = static_cast<float>(textureHeight);
+
+            if (sprite.regionEnabled)
+            {
+                sourceX = sprite.regionX;
+                sourceY = sprite.regionY;
+                sourceWidth = sprite.regionWidth > 0.0f ? sprite.regionWidth : sourceWidth;
+                sourceHeight = sprite.regionHeight > 0.0f ? sprite.regionHeight : sourceHeight;
+            }
+            else
+            {
+                const std::uint32_t hframes = sprite.hframes < 1 ? 1 : sprite.hframes;
+                const std::uint32_t vframes = sprite.vframes < 1 ? 1 : sprite.vframes;
+                const std::uint64_t frameCount = static_cast<std::uint64_t>(hframes) * static_cast<std::uint64_t>(vframes);
+                std::uint32_t frame = sprite.frame;
+                if (frameCount == 0)
+                    frame = 0;
+                else if (frame >= frameCount)
+                    frame = static_cast<std::uint32_t>(frameCount - 1);
+
+                sourceWidth = static_cast<float>(textureWidth) / static_cast<float>(hframes);
+                sourceHeight = static_cast<float>(textureHeight) / static_cast<float>(vframes);
+
+                const std::uint32_t frameX = frame % hframes;
+                const std::uint32_t frameY = frame / hframes;
+                sourceX = static_cast<float>(frameX) * sourceWidth;
+                sourceY = static_cast<float>(frameY) * sourceHeight;
+            }
+
+            if (sourceWidth <= 0.0f || sourceHeight <= 0.0f)
+                continue;
+
+            float uvMinX = Clamp01(sourceX / static_cast<float>(textureWidth));
+            float uvMinY = Clamp01(sourceY / static_cast<float>(textureHeight));
+            float uvMaxX = Clamp01((sourceX + sourceWidth) / static_cast<float>(textureWidth));
+            float uvMaxY = Clamp01((sourceY + sourceHeight) / static_cast<float>(textureHeight));
+
+            if (sprite.flipH)
+            {
+                const float swap = uvMinX;
+                uvMinX = uvMaxX;
+                uvMaxX = swap;
+            }
+
+            if (sprite.flipV)
+            {
+                const float swap = uvMinY;
+                uvMinY = uvMaxY;
+                uvMaxY = swap;
+            }
+
+            m_renderer->DrawSprite(*texture,
+                                   drawX,
+                                   drawY,
+                                   transform.width,
+                                   transform.height,
+                                   uvMinX,
+                                   uvMinY,
+                                   uvMaxX,
+                                   uvMaxY);
+        }
+
+        m_renderer->EndGameView();
+    }
+
+    if (m_renderer)
+        DebugDraw::Render(0.0f, m_renderer->GetViewHeight());
+
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    m_window->SwapBuffers();
+}
+
+// ---- Loading/selection signaling ----
+
+void Engine::SetLoadingMessage(const std::string& message)
+{
+    m_loadingMessage = message;
+}
+
+void Engine::SetSelectedProjectPath(const std::string& path)
+{
+    m_selectedProjectPath = path;
+}
+
+void Engine::ClearSelectedProjectPath()
+{
+    m_selectedProjectPath.clear();
+}
+
+std::string Engine::GetNativeProjectPath() const
+{
+    if (m_projectContext && m_projectContext->IsOpen())
+        return m_projectContext->ProjectRoot().string();
+    return {};
+}
+
+// ---- Internal main loop ----
+
+void Engine::RunMainLoop()
+{
+    while (m_running)
+    {
+        float deltaTime = 0.0f;
+        if (!BeginFrame(deltaTime))
+            break;
 
 #ifndef ENGINE_MONO_DISABLED
         if (m_mono)
             m_mono->Update(deltaTime, m_scene.get(), m_renderer.get(), this);
 #endif
 
-        if (m_dockspaceEnabled && m_scene && m_renderer)
-        {
-            float cameraX = 0.0f;
-            float cameraY = 0.0f;
-            float cameraZoom = 1.0f;
-            float cameraViewportX = 0.0f;
-            float cameraViewportY = 0.0f;
-            float cameraViewportWidth = 1.0f;
-            float cameraViewportHeight = 1.0f;
-            float cameraOrthographicSize = 0.0f;
-            std::uint32_t cameraCullingMask = 0xFFFFFFFFu;
-            std::uint32_t cameraBackgroundColor = 0x14141AFFu;
-            bool clearCameraViewport = false;
-            bool hasActiveSceneCamera = false;
-            bool useEditorPreviewCamera = false;
-
-            if (m_editorMode && m_editorPreviewCameraEnabled)
-            {
-#ifndef ENGINE_MONO_DISABLED
-                useEditorPreviewCamera = (!m_mono) ||
-                    (m_mono->GetSimulationState() == MonoRuntime::SimulationState::Edit);
-#else
-                useEditorPreviewCamera = true;
-#endif
-            }
-
-            if (useEditorPreviewCamera)
-            {
-                cameraX = m_editorPreviewCameraX;
-                cameraY = m_editorPreviewCameraY;
-                cameraZoom = m_editorPreviewCameraZoom;
-            }
-            else
-            {
-                const Scene::Entity cameraEntity = m_scene->FindFirstCamera();
-                if (m_scene->IsValid(cameraEntity))
-                {
-                    const CameraComponent* activeCamera = m_scene->TryGetCamera(cameraEntity);
-                    if (activeCamera && activeCamera->enabled)
-                    {
-                        hasActiveSceneCamera = true;
-                        if (const TransformComponent* cameraTransform = m_scene->TryGetTransform(cameraEntity))
-                        {
-                            cameraX = cameraTransform->x;
-                            cameraY = cameraTransform->y;
-                        }
-                        else
-                        {
-                            cameraX = activeCamera->x;
-                            cameraY = activeCamera->y;
-                        }
-                        cameraZoom = activeCamera->zoom;
-                        cameraViewportX = activeCamera->viewportX;
-                        cameraViewportY = activeCamera->viewportY;
-                        cameraViewportWidth = activeCamera->viewportWidth;
-                        cameraViewportHeight = activeCamera->viewportHeight;
-                        cameraOrthographicSize = activeCamera->orthographicSize;
-                        cameraCullingMask = activeCamera->cullingMask;
-                        cameraBackgroundColor = activeCamera->backgroundColor;
-                        clearCameraViewport = activeCamera->clearColor;
-                    }
-                }
-            }
-
-            m_renderer->BeginGameView();
-            m_renderer->SetCameraViewportNormalized(cameraViewportX,
-                                                   cameraViewportY,
-                                                   cameraViewportWidth,
-                                                   cameraViewportHeight);
-
-            if (hasActiveSceneCamera && cameraOrthographicSize > 0.0001f)
-            {
-                const int viewportPixelHeight = m_renderer->GetCameraViewportHeight();
-                const float derivedZoom = (static_cast<float>(viewportPixelHeight) * 0.5f) / cameraOrthographicSize;
-                if (std::isfinite(derivedZoom) && derivedZoom > 0.0001f)
-                    cameraZoom = derivedZoom;
-            }
-
-            if (clearCameraViewport)
-            {
-                float clearR = 0.0f;
-                float clearG = 0.0f;
-                float clearB = 0.0f;
-                float clearA = 1.0f;
-                UnpackColorRgba32(cameraBackgroundColor, clearR, clearG, clearB, clearA);
-                m_renderer->ClearCameraViewport(clearR, clearG, clearB, clearA);
-            }
-
-            m_renderer->SetCameraProjection(cameraX, cameraY, cameraZoom);
-
-            auto view = m_scene->Registry().view<const TransformComponent, const SpriteComponent>();
-            for (const auto entity : view)
-            {
-                if (hasActiveSceneCamera)
-                {
-                    std::uint32_t entityLayer = 0;
-                    const EntityMetadataComponent* metadata = m_scene->TryGetMetadata(entity);
-                    if (metadata)
-                        entityLayer = metadata->layer > 31 ? 31u : metadata->layer;
-
-                    const std::uint32_t entityLayerMask = (1u << entityLayer);
-                    if ((cameraCullingMask & entityLayerMask) == 0u)
-                        continue;
-                }
-
-                const auto& transform = view.get<const TransformComponent>(entity);
-                auto& sprite = m_scene->Registry().get<SpriteComponent>(entity);
-
-                float drawX = transform.x + sprite.offsetX;
-                float drawY = transform.y + sprite.offsetY;
-                if (sprite.centered)
-                {
-                    drawX -= transform.width * 0.5f;
-                    drawY -= transform.height * 0.5f;
-                }
-
-                Texture* texture = ResolveSpriteTexture(sprite, m_spriteTextureCache, m_projectContext.get());
-                if (!texture)
-                {
-                    float r = 1.0f;
-                    float g = 1.0f;
-                    float b = 1.0f;
-                    float a = 1.0f;
-                    UnpackColorRgba32(sprite.fallbackColor, r, g, b, a);
-                    m_renderer->DrawSolidSprite(drawX,
-                                                drawY,
-                                                transform.width,
-                                                transform.height,
-                                                r,
-                                                g,
-                                                b,
-                                                a);
-                    continue;
-                }
-
-                const int textureWidth = texture->GetWidth();
-                const int textureHeight = texture->GetHeight();
-                if (textureWidth <= 0 || textureHeight <= 0)
-                    continue;
-
-                float sourceX = 0.0f;
-                float sourceY = 0.0f;
-                float sourceWidth = static_cast<float>(textureWidth);
-                float sourceHeight = static_cast<float>(textureHeight);
-
-                if (sprite.regionEnabled)
-                {
-                    sourceX = sprite.regionX;
-                    sourceY = sprite.regionY;
-                    sourceWidth = sprite.regionWidth > 0.0f ? sprite.regionWidth : sourceWidth;
-                    sourceHeight = sprite.regionHeight > 0.0f ? sprite.regionHeight : sourceHeight;
-                }
-                else
-                {
-                    const std::uint32_t hframes = sprite.hframes < 1 ? 1 : sprite.hframes;
-                    const std::uint32_t vframes = sprite.vframes < 1 ? 1 : sprite.vframes;
-                    const std::uint64_t frameCount = static_cast<std::uint64_t>(hframes) * static_cast<std::uint64_t>(vframes);
-                    std::uint32_t frame = sprite.frame;
-                    if (frameCount == 0)
-                        frame = 0;
-                    else if (frame >= frameCount)
-                        frame = static_cast<std::uint32_t>(frameCount - 1);
-
-                    sourceWidth = static_cast<float>(textureWidth) / static_cast<float>(hframes);
-                    sourceHeight = static_cast<float>(textureHeight) / static_cast<float>(vframes);
-
-                    const std::uint32_t frameX = frame % hframes;
-                    const std::uint32_t frameY = frame / hframes;
-                    sourceX = static_cast<float>(frameX) * sourceWidth;
-                    sourceY = static_cast<float>(frameY) * sourceHeight;
-                }
-
-                if (sourceWidth <= 0.0f || sourceHeight <= 0.0f)
-                    continue;
-
-                float uvMinX = Clamp01(sourceX / static_cast<float>(textureWidth));
-                float uvMinY = Clamp01(sourceY / static_cast<float>(textureHeight));
-                float uvMaxX = Clamp01((sourceX + sourceWidth) / static_cast<float>(textureWidth));
-                float uvMaxY = Clamp01((sourceY + sourceHeight) / static_cast<float>(textureHeight));
-
-                if (sprite.flipH)
-                {
-                    const float swap = uvMinX;
-                    uvMinX = uvMaxX;
-                    uvMaxX = swap;
-                }
-
-                if (sprite.flipV)
-                {
-                    const float swap = uvMinY;
-                    uvMinY = uvMaxY;
-                    uvMaxY = swap;
-                }
-
-                m_renderer->DrawSprite(*texture,
-                                       drawX,
-                                       drawY,
-                                       transform.width,
-                                       transform.height,
-                                       uvMinX,
-                                       uvMinY,
-                                       uvMaxX,
-                                       uvMaxY);
-            }
-
-            m_renderer->EndGameView();
-        }
-
-        if (m_renderer)
-            DebugDraw::Render(deltaTime, m_renderer->GetViewHeight());
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        m_window->SwapBuffers();
+        EndFrame();
     }
 }
 
-void Engine::Shutdown()
+void Engine::RunFrameInternal(float deltaTime)
 {
-    DestroyAllAuxiliaryWindows();
-    m_auxiliaryWindows.reset();
-
-    ShutdownImGui();
-
-#ifndef ENGINE_MONO_DISABLED
-    if (m_mono)
-        m_mono->Shutdown(m_scene.get());
-#endif
-
-    m_scene.reset();
-    m_spriteTextureCache.clear();
-    m_windowBackgroundTexture.reset();
-
-    if (m_assetDatabase)
-        m_assetDatabase->Save();
-
-    if (m_renderer)
-        m_renderer->Shutdown();
-
-    DebugDraw::Clear();
-
-    if (m_window)
-        m_window->Shutdown();
+    // Reserved for future per-frame logic.
+    (void)deltaTime;
 }
 
-bool Engine::InitializeImGui()
+bool Engine::InitializeImGui(const char* iniPath)
 {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+    io.IniFilename = iniPath; // nullptr disables persistence
     SetupEditorImGuiStyle();
 
     if (!ImGui_ImplSDL2_InitForOpenGL(m_window->GetSDL_Window(), m_window->GetGLContext()))

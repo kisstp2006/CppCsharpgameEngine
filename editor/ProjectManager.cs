@@ -21,10 +21,65 @@ namespace EngineEditor
 
         public static void Initialize(string editorConfigDir)
         {
-            string cwd = Directory.GetCurrentDirectory();
-            _projectsRoot = Path.Combine(cwd, "projects");
+            _projectsRoot = ResolveProjectsRoot();
             Directory.CreateDirectory(_projectsRoot);
             RefreshProjectList();
+        }
+
+        private static string ResolveProjectsRoot()
+        {
+            string cwd = SafeGetFullPath(Directory.GetCurrentDirectory());
+            string fromCwd = TryResolveProjectsRootFromStart(cwd);
+            if (!string.IsNullOrEmpty(fromCwd))
+                return fromCwd;
+
+            string baseDir = SafeGetFullPath(AppContext.BaseDirectory);
+            string fromBaseDir = TryResolveProjectsRootFromStart(baseDir);
+            if (!string.IsNullOrEmpty(fromBaseDir))
+                return fromBaseDir;
+
+            return Path.Combine(cwd, "projects");
+        }
+
+        private static string TryResolveProjectsRootFromStart(string startPath)
+        {
+            if (string.IsNullOrWhiteSpace(startPath))
+                return string.Empty;
+
+            string current = startPath;
+            while (!string.IsNullOrEmpty(current))
+            {
+                string projectsPath = Path.Combine(current, "projects");
+                bool hasProjects = Directory.Exists(projectsPath);
+                bool hasRepoMarkers = File.Exists(Path.Combine(current, "CMakeLists.txt")) ||
+                                      Directory.Exists(Path.Combine(current, "src"));
+
+                if (hasProjects && hasRepoMarkers)
+                    return projectsPath;
+
+                DirectoryInfo parent = Directory.GetParent(current);
+                if (parent == null)
+                    break;
+
+                current = parent.FullName;
+            }
+
+            return string.Empty;
+        }
+
+        private static string SafeGetFullPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return string.Empty;
+
+            try
+            {
+                return Path.GetFullPath(path);
+            }
+            catch
+            {
+                return path;
+            }
         }
 
         public static void RefreshProjectList()
@@ -279,16 +334,14 @@ namespace EngineEditor
 
         private static void OpenProjectAndEnterEditor(string projectPath)
         {
-            ProjectOperations.OpenProject(projectPath);
-            if (ProjectOperations.HasOpenProject())
-                EditorHost.SetShowProjectManagerView(false);
+            EditorBridge.SetSelectedProjectPath(projectPath);
         }
 
         private static void OpenLastProjectAndEnterEditor()
         {
-            ProjectOperations.OpenLastProject();
-            if (ProjectOperations.HasOpenProject())
-                EditorHost.SetShowProjectManagerView(false);
+            string lastPath = ProjectOperations.GetLastProjectPath();
+            if (!string.IsNullOrEmpty(lastPath))
+                EditorBridge.SetSelectedProjectPath(lastPath);
         }
     }
 }

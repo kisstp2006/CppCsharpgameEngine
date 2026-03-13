@@ -35,6 +35,7 @@ public:
 
     bool IsScriptLoaded() const;
     bool IsEditorLoaded() const;
+    void ReInvokeEditorStart(Scene* scene = nullptr, Renderer* renderer = nullptr, Engine* engineContext = nullptr);
 
 private:
     std::unique_ptr<Impl> m_impl;

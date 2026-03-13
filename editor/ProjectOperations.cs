@@ -39,6 +39,22 @@ namespace EngineEditor
             return !string.IsNullOrEmpty(_activeProjectPath) && Directory.Exists(_activeProjectPath);
         }
 
+        public static string GetLastProjectPath()
+        {
+            if (string.IsNullOrEmpty(_lastProjectFile) || !File.Exists(_lastProjectFile))
+                return string.Empty;
+
+            try
+            {
+                string path = File.ReadAllText(_lastProjectFile).Trim();
+                return (!string.IsNullOrEmpty(path) && Directory.Exists(path)) ? path : string.Empty;
+            }
+            catch
+            {
+                return string.Empty;
+            }
+        }
+
         // Called by EditorHost after a script domain hot reload to restore the
         // active project path without triggering a recompile or other side effects
         // of a full OpenProject call.
