@@ -11,6 +11,9 @@ namespace Engine
         public static extern bool BeginCenteredFixed(string title, float width, float height, bool noCollapse);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool BeginFillNoDecoration(string title, float topInset);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool BeginTopBar(string id, float height);
 
         [MethodImpl(MethodImplOptions.InternalCall)]

@@ -25,12 +25,15 @@ namespace EngineEditor
         private static bool _backgroundSplashReady;
 
         private static BootStage _bootStage = BootStage.ProjectSelector;
+        private static BootStage _lastWindowStyleStage = (BootStage)(-1);
         private static float _loadingTimer = 0.0f;
         private static string _loadingProjectName = string.Empty;
 
         private const float LoadingMinDuration = 1.0f;
         private const string CompilePopupId = "##ScriptCompileBlockingModal";
         private const string SplashLogoRelativePath = "assets/editor/splash_logo.png";
+        private const int ProjectSelectorWindowWidth = 960;
+        private const int ProjectSelectorWindowHeight = 640;
 
         public static string StatusMessage => _statusMessage;
 
@@ -60,7 +63,14 @@ namespace EngineEditor
             RegisterMenuItems();
 
             _bootStage = BootStage.ProjectSelector;
+            _lastWindowStyleStage = (BootStage)(-1);
             EditorBridge.SetWindowBackgroundVisible(false);
+
+            // Enforce a predictable starting window size for the Project Selector.
+            EditorBridge.SetMainWindowBorderless(false);
+            EditorBridge.SetMainWindowResizable(true);
+            EditorBridge.SetMainWindowSize(ProjectSelectorWindowWidth, ProjectSelectorWindowHeight);
+            EditorBridge.CenterMainWindow();
 
             _showProjectManagerView = true;
             _statusMessage = "No project loaded.";
@@ -165,6 +175,12 @@ namespace EngineEditor
 
         private static void ApplyWindowStyleForBootStage()
         {
+            // Only apply SDL2 window style changes on actual stage transitions to avoid
+            // generating redundant Win32 messages every frame.
+            if (_lastWindowStyleStage == _bootStage)
+                return;
+            _lastWindowStyleStage = _bootStage;
+
             if (_bootStage == BootStage.Loading)
             {
                 EditorBridge.SetMainWindowResizable(false);
@@ -213,6 +229,18 @@ namespace EngineEditor
             _loadingTimer = 0.0f;
             _compileProgressPulse = 0.0f;
             _bootStage = BootStage.Loading;
+
+            // Normalise the OS window to a fixed windowed size before applying the
+            // borderless loading style.  This guarantees that – regardless of any
+            // resize or maximise the user performed in the Project Selector –
+            // SDL2's internal "restore" rect is a known value, so that the
+            // SDL_RestoreWindow call inside Maximize() produces a clean transition
+            // back to the maximised main-editor window.
+            EditorBridge.SetMainWindowBorderless(false);
+            EditorBridge.SetMainWindowResizable(true);
+            EditorBridge.SetMainWindowSize(ProjectSelectorWindowWidth, ProjectSelectorWindowHeight);
+            EditorBridge.CenterMainWindow();
+
             EditorBridge.SetMainWindowResizable(false);
             EditorBridge.SetMainWindowBorderless(true);
             EditorBridge.SetWindowBackgroundVisible(_backgroundSplashReady);

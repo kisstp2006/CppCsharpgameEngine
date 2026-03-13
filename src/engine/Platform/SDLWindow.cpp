@@ -95,7 +95,12 @@ void SDLWindow::Center()
 void SDLWindow::Maximize()
 {
     if (m_window)
+    {
+        // Restore from maximized/minimized state first so SDL2 doesn't treat
+        // the subsequent Maximize as a no-op (SDL_WINDOW_MAXIMIZED flag already set).
+        SDL_RestoreWindow(m_window);
         SDL_MaximizeWindow(m_window);
+    }
 }
 
 void SDLWindow::SetResizable(bool enabled)

@@ -908,6 +908,7 @@ bool MonoRuntime::Initialize()
 
         mono_add_internal_call("Engine.ImGui::Begin", (const void*)&EditorImGui_Begin);
         mono_add_internal_call("Engine.ImGui::BeginCenteredFixed", (const void*)&EditorImGui_BeginCenteredFixed);
+        mono_add_internal_call("Engine.ImGui::BeginFillNoDecoration", (const void*)&EditorImGui_BeginFillNoDecoration);
         mono_add_internal_call("Engine.ImGui::BeginTopBar", (const void*)&EditorImGui_BeginTopBar);
         mono_add_internal_call("Engine.ImGui::EndTopBar", (const void*)&EditorImGui_EndTopBar);
         mono_add_internal_call("Engine.ImGui::BeginMenu", (const void*)&EditorImGui_BeginMenu);

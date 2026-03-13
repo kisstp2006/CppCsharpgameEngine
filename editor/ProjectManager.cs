@@ -13,6 +13,8 @@ namespace EngineEditor
         private static string _projectSearchText = string.Empty;
         private static string _renameProjectName = string.Empty;
 
+        private const float ProjectManagerTopInset = 34.0f;
+
         public static string ProjectsRoot => _projectsRoot;
         public static string[] ProjectPaths => _projectPaths;
         public static int SelectedProjectIndex => _selectedProjectIndex;
@@ -77,12 +79,13 @@ namespace EngineEditor
 
         public static void DrawProjectPanel()
         {
-            if (ImGui.Begin("Project Manager"))
+            float topInset = ProjectOperations.HasOpenProject() ? ProjectManagerTopInset : 0.0f;
+            if (ImGui.BeginFillNoDecoration("Project Manager", topInset))
             {
                 DrawProjectToolbar();
                 ImGui.Separator();
 
-                if (ImGui.BeginChild("ProjectListPane", 420.0f, 0.0f, true))
+                if (ImGui.BeginChild("ProjectListPane", 420.0f, 0.0f, false))
                 {
                     DrawProjectListPane();
                 }
@@ -90,7 +93,7 @@ namespace EngineEditor
 
                 ImGui.SameLine();
 
-                if (ImGui.BeginChild("ProjectDetailsPane", 0.0f, 0.0f, true))
+                if (ImGui.BeginChild("ProjectDetailsPane", 0.0f, 0.0f, false))
                 {
                     DrawProjectDetailsPane();
                 }

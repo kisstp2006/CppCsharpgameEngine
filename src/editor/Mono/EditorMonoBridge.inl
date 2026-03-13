@@ -3721,6 +3721,40 @@ static bool EditorImGui_BeginCenteredFixed(MonoString* title, float width, float
     return ImGui::Begin(windowTitle, nullptr, flags);
 }
 
+static bool EditorImGui_BeginFillNoDecoration(MonoString* title, float topInset)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    if (topInset < 0.0f)
+        topInset = 0.0f;
+
+    const std::string text = MonoStringToUtf8(title);
+    const char* windowTitle = text.empty() ? "C# Window" : text.c_str();
+
+    const ImVec2 displaySize = ImGui::GetIO().DisplaySize;
+    float windowHeight = displaySize.y - topInset;
+    if (windowHeight < 1.0f)
+        windowHeight = 1.0f;
+
+    ImGui::SetNextWindowPos(ImVec2(0.0f, topInset), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(displaySize.x, windowHeight), ImGuiCond_Always);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+
+    const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
+                                   ImGuiWindowFlags_NoResize |
+                                   ImGuiWindowFlags_NoMove |
+                                   ImGuiWindowFlags_NoCollapse |
+                                   ImGuiWindowFlags_NoSavedSettings;
+
+    const bool open = ImGui::Begin(windowTitle, nullptr, flags);
+
+    ImGui::PopStyleVar(2);
+    return open;
+}
+
 static bool EditorImGui_BeginTopBar(MonoString* id, float height)
 {
     if (!ImGui::GetCurrentContext())
