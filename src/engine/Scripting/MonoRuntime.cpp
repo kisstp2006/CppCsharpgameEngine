@@ -820,6 +820,11 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::SetGameViewSize", (const void*)&EditorBridge_SetGameViewSize);
         mono_add_internal_call("Engine.EditorBridge::SetEditorPreviewCamera", (const void*)&EditorBridge_SetEditorPreviewCamera);
         mono_add_internal_call("Engine.EditorBridge::GetGameViewTextureHandle", (const void*)&EditorBridge_GetGameViewTextureHandle);
+        mono_add_internal_call("Engine.EditorBridge::SetMainWindowSize", (const void*)&EditorBridge_SetMainWindowSize);
+        mono_add_internal_call("Engine.EditorBridge::SetMainWindowTitle", (const void*)&EditorBridge_SetMainWindowTitle);
+        mono_add_internal_call("Engine.EditorBridge::CenterMainWindow", (const void*)&EditorBridge_CenterMainWindow);
+        mono_add_internal_call("Engine.EditorBridge::MaximizeMainWindow", (const void*)&EditorBridge_MaximizeMainWindow);
+        mono_add_internal_call("Engine.EditorBridge::SetDockspaceEnabled", (const void*)&EditorBridge_SetDockspaceEnabled);
     }
 
     mono_add_internal_call("Engine.DebugDraw::LineInternal", (const void*)&EditorDebugDraw_Line);

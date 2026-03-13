@@ -129,6 +129,21 @@ namespace Engine
         public static extern int GetAuxiliaryWindowCount();
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetMainWindowSize(int width, int height);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetMainWindowTitle(string title);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void CenterMainWindow();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void MaximizeMainWindow();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetDockspaceEnabled(bool enabled);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern int GetScriptedEntityCount();
 
         [MethodImpl(MethodImplOptions.InternalCall)]

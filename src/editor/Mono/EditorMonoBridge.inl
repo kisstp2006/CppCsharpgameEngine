@@ -2970,6 +2970,46 @@ static std::uint64_t EditorBridge_GetGameViewTextureHandle()
     return static_cast<std::uint64_t>(g_editorRendererContext->GetGameViewTextureHandle());
 }
 
+static void EditorBridge_SetMainWindowSize(int width, int height)
+{
+    if (!g_editorEngineContext)
+        return;
+
+    g_editorEngineContext->SetMainWindowSize(width, height);
+}
+
+static void EditorBridge_SetMainWindowTitle(MonoString* title)
+{
+    if (!g_editorEngineContext)
+        return;
+
+    g_editorEngineContext->SetMainWindowTitle(MonoStringToUtf8(title));
+}
+
+static void EditorBridge_CenterMainWindow()
+{
+    if (!g_editorEngineContext)
+        return;
+
+    g_editorEngineContext->CenterMainWindow();
+}
+
+static void EditorBridge_MaximizeMainWindow()
+{
+    if (!g_editorEngineContext)
+        return;
+
+    g_editorEngineContext->MaximizeMainWindow();
+}
+
+static void EditorBridge_SetDockspaceEnabled(bool enabled)
+{
+    if (!g_editorEngineContext)
+        return;
+
+    g_editorEngineContext->SetDockspaceEnabled(enabled);
+}
+
 static void EditorDebugDraw_Line(float x0, float y0, float x1, float y1,
                                  float r, float g, float b, float a,
                                  float thickness, float durationSeconds)

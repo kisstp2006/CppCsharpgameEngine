@@ -7,6 +7,13 @@ namespace EngineEditor
 {
     public static class EditorHost
     {
+        private enum BootStage
+        {
+            ProjectSelector,
+            Loading,
+            MainEditor,
+        }
+
         private static string _statusMessage = "No project loaded.";
         private static bool _showProjectManagerView = true;
         private static string _editorConfigDir = string.Empty;
@@ -14,6 +21,11 @@ namespace EngineEditor
         private static float _compileProgressPulse = 0.0f;
         private static bool _compileDialogOpen;
 
+        private static BootStage _bootStage = BootStage.ProjectSelector;
+        private static float _loadingTimer = 0.0f;
+        private static string _loadingProjectName = string.Empty;
+
+        private const float LoadingMinDuration = 1.0f;
         private const string CompilePopupId = "##ScriptCompileBlockingModal";
 
         public static string StatusMessage => _statusMessage;
@@ -38,12 +50,130 @@ namespace EngineEditor
             ScriptFieldInspector.RegisterEditorOptions();
             ScriptFieldInspector.RegisterAssetContextMenu();
 
+            if (ProjectOperations.HasOpenProject())
+            {
+                _loadingProjectName = Path.GetFileName(ProjectOperations.ActiveProjectPath);
+                _loadingTimer = 0.0f;
+                _bootStage = BootStage.Loading;
+            }
+            else
+            {
+                _bootStage = BootStage.ProjectSelector;
+            }
+
             _showProjectManagerView = true;
             _statusMessage = "No project loaded.";
-            Console.WriteLine("[Editor] OnEditorStart called.");
+            Console.WriteLine("[Editor] OnEditorStart called. Boot stage: " + _bootStage);
         }
 
         public static void OnEditorUpdate(float deltaTime)
+        {
+            switch (_bootStage)
+            {
+                case BootStage.ProjectSelector:
+                    UpdateProjectSelectorStage(deltaTime);
+                    break;
+                case BootStage.Loading:
+                    UpdateLoadingStage(deltaTime);
+                    break;
+                case BootStage.MainEditor:
+                    UpdateMainEditorStage(deltaTime);
+                    break;
+            }
+        }
+
+        // ----- Stage 1: Project Selector (small window, no dockspace) -----
+        private static void UpdateProjectSelectorStage(float deltaTime)
+        {
+            if (ProjectOperations.HasOpenProject())
+            {
+                TransitionToLoading();
+                return;
+            }
+
+            ProjectManager.DrawProjectPanel();
+            EditorOptionsWindow.Draw();
+
+            if (ProjectOperations.HasOpenProject())
+                TransitionToLoading();
+        }
+
+        // ----- Stage 2: Loading / Splash screen -----
+        private static void UpdateLoadingStage(float deltaTime)
+        {
+            _loadingTimer += deltaTime;
+
+            DrawLoadingSplash(deltaTime);
+
+            ScriptValidationSnapshot snapshot = ScriptComponentValidation.GetSnapshot();
+            bool compileFinished = !snapshot.IsCompiling;
+
+            if (_loadingTimer >= LoadingMinDuration && compileFinished)
+                TransitionToMainEditor();
+        }
+
+        private static void DrawLoadingSplash(float deltaTime)
+        {
+            if (ImGui.Begin("##LoadingSplash"))
+            {
+                ImGui.Text("");
+                ImGui.Text("          CppCSharp Engine");
+                ImGui.Text("");
+                ImGui.Separator();
+                ImGui.Text("");
+
+                string projectLabel = string.IsNullOrEmpty(_loadingProjectName)
+                    ? "Loading project..."
+                    : "Loading: " + _loadingProjectName;
+                ImGui.Text("  " + projectLabel);
+
+                ImGui.Text("");
+
+                _compileProgressPulse += deltaTime * 0.65f;
+                while (_compileProgressPulse > 1.0f)
+                    _compileProgressPulse -= 1.0f;
+
+                float progress = 0.1f + (_compileProgressPulse * 0.8f);
+                ImGui.Text("  " + BuildProgressBarText(progress, 36));
+
+                ImGui.Text("");
+
+                ScriptValidationSnapshot snapshot = ScriptComponentValidation.GetSnapshot();
+                string status = snapshot.IsCompiling ? "  Compiling C# scripts..." : "  Initializing editor...";
+                ImGui.Text(status);
+            }
+            ImGui.End();
+        }
+
+        // ----- Stage transitions -----
+        private static void TransitionToLoading()
+        {
+            _loadingProjectName = Path.GetFileName(ProjectOperations.ActiveProjectPath);
+            _loadingTimer = 0.0f;
+            _compileProgressPulse = 0.0f;
+            _bootStage = BootStage.Loading;
+            Console.WriteLine("[Editor] Boot transition -> Loading (" + _loadingProjectName + ")");
+        }
+
+        private static void TransitionToMainEditor()
+        {
+            _bootStage = BootStage.MainEditor;
+            _showProjectManagerView = false;
+
+            string projectName = Path.GetFileName(ProjectOperations.ActiveProjectPath);
+            if (string.IsNullOrEmpty(projectName))
+                projectName = "Untitled";
+
+            EditorBridge.SetDockspaceEnabled(true);
+            EditorBridge.SetMainWindowTitle("CppCSharp Editor \u2014 " + projectName);
+            EditorBridge.MaximizeMainWindow();
+
+            _statusMessage = "Project loaded: " + projectName;
+            Console.WriteLine("[Editor] Boot transition -> MainEditor (" + projectName + ")");
+        }
+
+        // ----- Stage 3: Main Editor (full window, dockspace, all panels) -----
+        private static void UpdateMainEditorStage(float deltaTime)
         {
             bool hasOpenProject = ProjectOperations.HasOpenProject();
             bool compileBlocking = DrawScriptBuildProgressWindow(deltaTime);

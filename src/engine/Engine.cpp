@@ -246,6 +246,39 @@ std::size_t Engine::GetAuxiliaryWindowCount() const
     return m_auxiliaryWindows ? m_auxiliaryWindows->GetWindowCount() : 0;
 }
 
+void Engine::SetMainWindowSize(int width, int height)
+{
+    if (m_window)
+    {
+        m_window->SetSize(width, height);
+        if (m_renderer)
+            m_renderer->Initialize(width, height);
+    }
+}
+
+void Engine::SetMainWindowTitle(const std::string& title)
+{
+    if (m_window)
+        m_window->SetTitle(title);
+}
+
+void Engine::CenterMainWindow()
+{
+    if (m_window)
+        m_window->Center();
+}
+
+void Engine::MaximizeMainWindow()
+{
+    if (m_window)
+        m_window->Maximize();
+}
+
+void Engine::SetDockspaceEnabled(bool enabled)
+{
+    m_dockspaceEnabled = enabled;
+}
+
 void Engine::SetEditorMode(bool enabled)
 {
     m_editorMode = enabled;
@@ -391,6 +424,7 @@ void Engine::Run()
         ImGui::NewFrame();
 
         // Root dockspace so C# editor windows can be docked.
+        if (m_dockspaceEnabled)
         {
             const ImGuiDockNodeFlags dockspaceFlags = ImGuiDockNodeFlags_PassthruCentralNode;
 
@@ -424,7 +458,7 @@ void Engine::Run()
             m_mono->Update(deltaTime, m_scene.get(), m_renderer.get(), this);
 #endif
 
-        if (m_scene && m_renderer)
+        if (m_dockspaceEnabled && m_scene && m_renderer)
         {
             float cameraX = 0.0f;
             float cameraY = 0.0f;

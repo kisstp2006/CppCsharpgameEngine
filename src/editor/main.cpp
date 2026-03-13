@@ -7,7 +7,8 @@ int main(int argc, char** argv)
 
     Engine engine;
     engine.SetEditorMode(true);
-    if (!engine.Initialize("CppCSharpGameEditor", 1600, 900))
+    engine.SetDockspaceEnabled(false);
+    if (!engine.Initialize("CppCSharp Editor — Project Selector", 727, 480))
         return -1;
 
     engine.Run();

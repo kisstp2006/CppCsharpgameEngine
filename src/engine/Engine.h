@@ -68,6 +68,13 @@ public:
     std::size_t GetAuxiliaryWindowCount() const;
     void SetEditorPreviewCamera(float x, float y, float zoom, bool enabled);
 
+    void SetMainWindowSize(int width, int height);
+    void SetMainWindowTitle(const std::string& title);
+    void CenterMainWindow();
+    void MaximizeMainWindow();
+    void SetDockspaceEnabled(bool enabled);
+    bool IsDockspaceEnabled() const { return m_dockspaceEnabled; }
+
 private:
     bool InitializeImGui();
     void ShutdownImGui();
@@ -84,6 +91,7 @@ private:
 
     bool m_editorMode = false;
     bool m_running = false;
+    bool m_dockspaceEnabled = true;
     bool m_editorPreviewCameraEnabled = false;
     float m_editorPreviewCameraX = 0.0f;
     float m_editorPreviewCameraY = 0.0f;

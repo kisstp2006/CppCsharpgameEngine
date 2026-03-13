@@ -73,3 +73,27 @@ void SDLWindow::SwapBuffers()
     if (m_window)
         SDL_GL_SwapWindow(m_window);
 }
+
+void SDLWindow::SetSize(int width, int height)
+{
+    if (m_window)
+        SDL_SetWindowSize(m_window, width, height);
+}
+
+void SDLWindow::SetTitle(const std::string& title)
+{
+    if (m_window)
+        SDL_SetWindowTitle(m_window, title.c_str());
+}
+
+void SDLWindow::Center()
+{
+    if (m_window)
+        SDL_SetWindowPosition(m_window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+}
+
+void SDLWindow::Maximize()
+{
+    if (m_window)
+        SDL_MaximizeWindow(m_window);
+}
