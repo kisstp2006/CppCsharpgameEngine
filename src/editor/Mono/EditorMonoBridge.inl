@@ -1426,23 +1426,14 @@ static bool EditorBridge_StartPlayMode()
         return false;
     }
 
-    const bool reloadSucceeded = MonoRuntime_ReloadScriptAssemblyIfNeeded(g_monoRuntimeImplForEditorBridge,
-                                                                          g_editorSceneContext,
-                                                                          true);
-    if (!reloadSucceeded)
-    {
-        g_editorSceneIoStatus = "Play failed: script reload did not complete. Wait for compile/reload and try again.";
-        return false;
-    }
-
-    if (!g_monoRuntimeImplForEditorBridge->scriptLoaded)
-    {
-        g_editorSceneIoStatus = "Play failed: script assembly is not loaded.";
-        return false;
-    }
-
-    MonoRuntime_StartPlaySession(g_monoRuntimeImplForEditorBridge, g_editorSceneContext);
-    g_editorSceneIoStatus = "Entered play mode.";
+    // IMPORTANT: We must NOT call MonoRuntime_ReloadScriptAssemblyIfNeeded here!
+    // This function is called from managed C# code via an internal call.
+    // Reloading the AppDomain would destroy the calling C# stack frame,
+    // causing a crash when this function returns.
+    // Instead, set a flag and let MonoRuntime::Update() handle the transition
+    // from native code where no managed frames are on the stack.
+    g_monoRuntimeImplForEditorBridge->playModeRequested = true;
+    g_editorSceneIoStatus = "Play mode requested (will start next frame).";
     return true;
 }
 
@@ -1454,8 +1445,11 @@ static void EditorBridge_StopPlayMode()
         return;
     }
 
-    MonoRuntime_StopPlaySession(g_monoRuntimeImplForEditorBridge, g_editorSceneContext);
-    g_editorSceneIoStatus = "Stopped play mode.";
+    // Defer stop to C++ Update for the same reason as StartPlayMode:
+    // this is called from managed code and StopPlaySession tears down
+    // script instances which may invoke managed callbacks.
+    g_monoRuntimeImplForEditorBridge->stopModeRequested = true;
+    g_editorSceneIoStatus = "Stop mode requested (will stop next frame).";
 }
 
 static void EditorBridge_SetSimulationPaused(bool paused)
@@ -1484,6 +1478,12 @@ static void EditorBridge_RequestScriptAssemblyReload()
     if (!g_monoRuntimeImplForEditorBridge)
     {
         g_editorSceneIoStatus = "Script reload request ignored: runtime context unavailable.";
+        return;
+    }
+
+    if (g_monoRuntimeImplForEditorBridge->isReloadingScripts)
+    {
+        g_editorSceneIoStatus = "Script reload request ignored: reload already in progress.";
         return;
     }
 

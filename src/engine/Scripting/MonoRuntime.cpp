@@ -97,6 +97,9 @@ struct MonoRuntime::Impl
     bool autoScriptReloadEnabled = true;
     bool scriptReloadRequested = false;
     bool scriptReloadDeferredUntilEdit = false;
+    bool isReloadingScripts = false;
+    bool playModeRequested = false;
+    bool stopModeRequested = false;
 
     float hotReloadPollAccumulator = 0.0f;
 #endif
@@ -135,13 +138,50 @@ static bool MonoRuntime_ShouldRunGameplay(const MonoRuntime::Impl* impl)
     return impl->gameplaySessionActive && impl->simulationState == MonoRuntime::SimulationState::Play;
 }
 
+static bool MonoRuntime_SafeInvoke(MonoMethod* method, MonoObject* instance, void** args, const char* callContext)
+{
+    if (!method)
+    {
+        EngineLogger::Warningf("Mono", "SafeInvoke skipped: method is null (", callContext, ").");
+        return false;
+    }
+
+    MonoObject* exception = nullptr;
+    mono_runtime_invoke(method, instance, args, &exception);
+
+    if (exception)
+    {
+        MonoString* exStr = mono_object_to_string(exception, nullptr);
+        if (exStr)
+        {
+            char* utf8 = mono_string_to_utf8(exStr);
+            EngineLogger::Errorf("Mono", "Exception in ", callContext, ": ", utf8 ? utf8 : "<unknown>");
+            if (utf8)
+                mono_free(utf8);
+        }
+        else
+        {
+            EngineLogger::Errorf("Mono", "Unhandled exception in ", callContext);
+        }
+        return false;
+    }
+
+    return true;
+}
+
 static void MonoRuntime_InvokeEntityLifecycle(MonoMethod* method, MonoObject* instanceObject, std::uint32_t entityId)
 {
     if (!method)
         return;
 
+    if (!instanceObject)
+    {
+        EngineLogger::Error("Mono", "InvokeEntityLifecycle skipped: instance is null.");
+        return;
+    }
+
     void* args[1] = { (void*)&entityId };
-    mono_runtime_invoke(method, instanceObject, args, nullptr);
+    MonoRuntime_SafeInvoke(method, instanceObject, args, mono_method_get_name(method));
 }
 
 static MonoClass* MonoRuntime_FindMonoBehaviourBaseClass(MonoClass* klass)
@@ -501,6 +541,9 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
     if (!impl)
         return false;
 
+    if (impl->isReloadingScripts)
+        return false;
+
     if (!impl->domain)
     {
         if (!MonoRuntime_CreateManagedAppDomain(impl))
@@ -533,6 +576,17 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
     if (!(autoReloadTriggered || scriptForceReload))
         return false;
 
+    // Safety guard: if the assembly file on disk hasn't actually changed
+    // (same path, write time, and size), reject the reload request.
+    // This prevents infinite reload loops where domain recreation triggers
+    // a recompile that requests another reload even though nothing changed.
+    if (!scriptChangedOnDisk && !forceReload)
+    {
+        impl->scriptReloadRequested = false;
+        impl->scriptReloadDeferredUntilEdit = false;
+        return false;
+    }
+
     const bool inPlayOrPause = impl->editorMode && impl->simulationState != MonoRuntime::SimulationState::Edit;
     if (!forceReload && inPlayOrPause)
     {
@@ -543,8 +597,11 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
 
     const bool wasGameplaySessionActive = impl->gameplaySessionActive;
 
+    impl->isReloadingScripts = true;
+
     if (!MonoRuntime_RecreateManagedAppDomain(impl, scene))
     {
+        impl->isReloadingScripts = false;
         impl->scriptReloadRequested = true;
         return false;
     }
@@ -553,6 +610,7 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
     {
         if (!MonoRuntime_LoadEditorAssemblyInCurrentDomain(impl, true))
         {
+            impl->isReloadingScripts = false;
             impl->scriptReloadRequested = true;
             EngineLogger::Error("Mono", "Reload failed: editor assembly could not be loaded into recreated AppDomain.");
             return false;
@@ -562,6 +620,7 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
     ScriptAssemblyBindings newScriptBindings;
     if (!TryLoadScriptAssemblyBindings(impl->domain, impl->shadowCopyDirectory, scriptPath, newScriptBindings))
     {
+        impl->isReloadingScripts = false;
         impl->scriptReloadRequested = true;
         return false;
     }
@@ -583,6 +642,7 @@ static bool MonoRuntime_ReloadScriptAssemblyIfNeeded(MonoRuntime::Impl* impl, Sc
         impl->scriptAssemblyFileSize = scriptFileSize;
     impl->scriptReloadRequested = false;
     impl->scriptReloadDeferredUntilEdit = false;
+    impl->isReloadingScripts = false;
     impl->gameplaySessionActive = false;
 
     if (wasGameplaySessionActive)
@@ -1001,6 +1061,35 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
 
     g_runtimeSceneForScriptApi = scene;
 
+    // Process deferred play/stop requests from C++ side, BEFORE any managed
+    // code runs, so that domain recreation does not destroy a live C# stack.
+    if (m_impl->playModeRequested)
+    {
+        m_impl->playModeRequested = false;
+
+        MonoRuntime_ReloadScriptAssemblyIfNeeded(m_impl.get(), scene, true);
+
+        if (m_impl->scriptLoaded)
+        {
+            MonoRuntime_StartPlaySession(m_impl.get(), scene);
+            EngineLogger::Info("Mono", "Entered play mode (deferred from editor request).");
+            g_editorSceneIoStatus = "Entered play mode.";
+        }
+        else
+        {
+            EngineLogger::Warning("Mono", "Play mode deferred request failed: script assembly not loaded.");
+            g_editorSceneIoStatus = "Play failed: script assembly is not loaded.";
+        }
+    }
+
+    if (m_impl->stopModeRequested)
+    {
+        m_impl->stopModeRequested = false;
+        MonoRuntime_StopPlaySession(m_impl.get(), scene);
+        EngineLogger::Info("Mono", "Stopped play mode (deferred from editor request).");
+        g_editorSceneIoStatus = "Stopped play mode.";
+    }
+
     m_impl->hotReloadPollAccumulator += deltaTime;
     const bool shouldPollHotReload = m_impl->hotReloadPollAccumulator >= 0.5f;
     const bool shouldProcessReloadRequestNow = m_impl->scriptReloadRequested ||
@@ -1217,10 +1306,14 @@ void MonoRuntime::Update(float deltaTime, Scene* scene, Renderer* renderer, Engi
             instance.active = true;
         }
 
-        if (instance.onUpdate)
+        if (instance.onUpdate && instance.instance)
         {
             void* updateArgs[2] = { (void*)&entityId, (void*)&deltaTime };
-            mono_runtime_invoke(instance.onUpdate, instance.instance, updateArgs, nullptr);
+            if (!MonoRuntime_SafeInvoke(instance.onUpdate, instance.instance, updateArgs, "OnUpdate"))
+            {
+                EngineLogger::Errorf("Mono", "Script OnUpdate failed for entity ", entityId,
+                                     " (", instance.classNamespace, ".", instance.className, ")");
+            }
         }
     }
 

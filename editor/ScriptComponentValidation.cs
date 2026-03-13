@@ -442,7 +442,7 @@ namespace EngineEditor
             {
                 var startInfo = new ProcessStartInfo();
                 startInfo.FileName = "dotnet";
-                startInfo.Arguments = "build \"" + scriptProjectPath + "\" -c Debug -nologo -t:Rebuild";
+                startInfo.Arguments = "build \"" + scriptProjectPath + "\" -c Debug -nologo";
                 startInfo.WorkingDirectory = string.IsNullOrEmpty(projectRoot) ? Directory.GetCurrentDirectory() : projectRoot;
                 startInfo.UseShellExecute = false;
                 startInfo.CreateNoWindow = true;
