@@ -243,6 +243,7 @@ namespace
             "DebugDraw.cs",
             "Camera2D.cs",
             "ImGuizmo.cs",
+            "UI.cs",
         };
 
         const bool hasProjectReference = ContainsCaseInsensitive(content, "<ProjectReference") &&

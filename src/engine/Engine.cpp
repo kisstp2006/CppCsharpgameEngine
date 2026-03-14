@@ -1013,6 +1013,28 @@ bool Engine::InitializeImGui(const char* iniPath)
     io.IniFilename = iniPath; // nullptr disables persistence
     SetupEditorImGuiStyle();
 
+    const std::filesystem::path fontRoot = std::filesystem::current_path() / "assets" / "font";
+    const std::filesystem::path regularFontPath = fontRoot / "Inconsolata-LGC.otf";
+    const std::filesystem::path boldFontPath = fontRoot / "Inconsolata-LGC-Bold.otf";
+
+    ImFont* defaultFont = nullptr;
+    std::error_code fontExistsError;
+    if (std::filesystem::exists(regularFontPath, fontExistsError) && !fontExistsError)
+    {
+        defaultFont = io.Fonts->AddFontFromFileTTF(regularFontPath.string().c_str(), 14.0f);
+        io.Fonts->AddFontFromFileTTF(regularFontPath.string().c_str(), 16.0f);
+    }
+
+    fontExistsError.clear();
+    if (std::filesystem::exists(boldFontPath, fontExistsError) && !fontExistsError)
+    {
+        io.Fonts->AddFontFromFileTTF(boldFontPath.string().c_str(), 16.0f);
+        io.Fonts->AddFontFromFileTTF(boldFontPath.string().c_str(), 18.0f);
+    }
+
+    if (defaultFont)
+        io.FontDefault = defaultFont;
+
     if (!ImGui_ImplSDL2_InitForOpenGL(m_window->GetSDL_Window(), m_window->GetGLContext()))
         return false;
 

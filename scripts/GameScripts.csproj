@@ -15,6 +15,7 @@
     <Compile Remove="ImGuizmo.cs" />
     <Compile Remove="Input.cs" />
     <Compile Remove="Sprite.cs" />
+    <Compile Remove="UI.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="EngineManagedApi.csproj" />

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SDL.h>
+#include <string>
 
 namespace SDLInputState
 {
@@ -21,4 +22,6 @@ namespace SDLInputState
     bool GetKey(int scancode);
     bool GetKeyDown(int scancode);
     bool GetKeyUp(int scancode);
+
+    std::string GetTextInput();
 }

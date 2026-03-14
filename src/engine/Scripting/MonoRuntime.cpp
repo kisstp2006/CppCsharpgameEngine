@@ -1030,6 +1030,14 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.Input::GetKey", (const void*)&EngineInput_GetKey);
     mono_add_internal_call("Engine.Input::GetKeyDown", (const void*)&EngineInput_GetKeyDown);
     mono_add_internal_call("Engine.Input::GetKeyUp", (const void*)&EngineInput_GetKeyUp);
+    mono_add_internal_call("Engine.Input::GetTextInput", (const void*)&EngineInput_GetTextInput);
+    mono_add_internal_call("Engine.UI::GetDisplayWidthInternal", (const void*)&EngineUi_GetDisplayWidth);
+    mono_add_internal_call("Engine.UI::GetDisplayHeightInternal", (const void*)&EngineUi_GetDisplayHeight);
+    mono_add_internal_call("Engine.UI::DrawFilledRoundedRectInternal", (const void*)&EngineUi_DrawFilledRoundedRect);
+    mono_add_internal_call("Engine.UI::DrawRoundedRectInternal", (const void*)&EngineUi_DrawRoundedRect);
+    mono_add_internal_call("Engine.UI::DrawTextInternal", (const void*)&EngineUi_DrawText);
+    mono_add_internal_call("Engine.UI::MeasureTextInternal", (const void*)&EngineUi_MeasureText);
+    mono_add_internal_call("Engine.UI::DrawImageInternal", (const void*)&EngineUi_DrawImage);
 
     m_impl->shadowCopyDirectory = std::filesystem::current_path() / ".mono_cache";
     std::error_code shadowError;

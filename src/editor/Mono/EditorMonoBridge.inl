@@ -4791,13 +4791,21 @@ static float EditorImGui_GetCursorScreenPosY()
     return ImGui::GetCurrentContext() ? ImGui::GetCursorScreenPos().y : 0.0f;
 }
 
-static std::uint64_t EditorImGui_GetImageHandle(MonoString* path)
+static ImU32 ConvertRgbaToImColor(std::uint32_t rgbaColor)
 {
-    std::string imagePath = MonoStringToUtf8(path);
-    if (imagePath.empty())
-        return 0;
+    const int r = static_cast<int>((rgbaColor >> 24) & 0xFFu);
+    const int g = static_cast<int>((rgbaColor >> 16) & 0xFFu);
+    const int b = static_cast<int>((rgbaColor >> 8) & 0xFFu);
+    const int a = static_cast<int>(rgbaColor & 0xFFu);
+    return IM_COL32(r, g, b, a);
+}
 
-    std::filesystem::path resolvedPath(imagePath);
+static Texture* ResolveCachedUiTexture(const std::string& path)
+{
+    if (path.empty())
+        return nullptr;
+
+    std::filesystem::path resolvedPath(path);
     if (resolvedPath.is_relative())
         resolvedPath = std::filesystem::current_path() / resolvedPath;
 
@@ -4807,15 +4815,290 @@ static std::uint64_t EditorImGui_GetImageHandle(MonoString* path)
 
     auto found = g_editorUiTextureCache.find(cacheKey);
     if (found != g_editorUiTextureCache.end())
-        return static_cast<std::uint64_t>(found->second->GetHandle());
+        return found->second.get();
 
     auto texture = std::make_unique<Texture>();
     if (!texture->CreateFromFile(cacheKey))
-        return 0;
+        return nullptr;
 
-    const std::uint64_t handle = static_cast<std::uint64_t>(texture->GetHandle());
+    Texture* texturePtr = texture.get();
     g_editorUiTextureCache.emplace(cacheKey, std::move(texture));
-    return handle;
+    return texturePtr;
+}
+
+static ImFont* ResolveUiFont(float requestedSize, bool bold)
+{
+    if (!ImGui::GetCurrentContext())
+        return nullptr;
+
+    ImGuiIO& io = ImGui::GetIO();
+    ImFontAtlas* atlas = io.Fonts;
+    if (!atlas || atlas->Fonts.empty())
+        return nullptr;
+
+    ImFont* bestFont = io.FontDefault ? io.FontDefault : atlas->Fonts.front();
+    float bestScore = std::numeric_limits<float>::max();
+    const float targetSize = requestedSize > 0.0f ? requestedSize : bestFont->FontSize;
+
+    for (ImFont* candidate : atlas->Fonts)
+    {
+        if (!candidate)
+            continue;
+
+        float score = std::fabs(candidate->FontSize - targetSize);
+        if (bold)
+        {
+            const char* debugName = candidate->GetDebugName();
+            const bool isBoldFont = debugName &&
+                (std::strstr(debugName, "Bold") != nullptr || std::strstr(debugName, "bold") != nullptr);
+            if (!isBoldFont)
+                score += 3.0f;
+        }
+
+        if (score < bestScore)
+        {
+            bestScore = score;
+            bestFont = candidate;
+        }
+    }
+
+    return bestFont;
+}
+
+static float EngineUi_GetDisplayWidth()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().DisplaySize.x : 0.0f;
+}
+
+static float EngineUi_GetDisplayHeight()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetIO().DisplaySize.y : 0.0f;
+}
+
+static void EngineUi_DrawFilledRoundedRect(float x,
+                                           float y,
+                                           float width,
+                                           float height,
+                                           float radius,
+                                           std::uint32_t rgbaColor)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    if (!drawList)
+        return;
+
+    const ImVec2 minPos(x, y);
+    const ImVec2 maxPos(x + width, y + height);
+    const float clampedRadius = radius < 0.0f ? 0.0f : radius;
+    drawList->AddRectFilled(minPos, maxPos, ConvertRgbaToImColor(rgbaColor), clampedRadius);
+}
+
+static void EngineUi_DrawRoundedRect(float x,
+                                     float y,
+                                     float width,
+                                     float height,
+                                     float radius,
+                                     std::uint32_t rgbaColor,
+                                     float thickness)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    if (!drawList)
+        return;
+
+    const ImVec2 minPos(x, y);
+    const ImVec2 maxPos(x + width, y + height);
+    const float clampedRadius = radius < 0.0f ? 0.0f : radius;
+    const float clampedThickness = thickness <= 0.0f ? 1.0f : thickness;
+    drawList->AddRect(minPos, maxPos, ConvertRgbaToImColor(rgbaColor), clampedRadius, ImDrawFlags_None, clampedThickness);
+}
+
+static void EngineUi_DrawText(MonoString* text,
+                              float x,
+                              float y,
+                              float fontSize,
+                              std::uint32_t rgbaColor,
+                              bool bold)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    const std::string value = MonoStringToUtf8(text);
+    if (value.empty())
+        return;
+
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    if (!drawList)
+        return;
+
+    ImFont* font = ResolveUiFont(fontSize, bold);
+    const float drawFontSize = fontSize > 0.0f
+        ? fontSize
+        : (font ? font->FontSize : ImGui::GetFontSize());
+    const ImU32 color = ConvertRgbaToImColor(rgbaColor);
+    const ImVec2 pos(x, y);
+
+    if (!font)
+    {
+        drawList->AddText(pos, color, value.c_str());
+        return;
+    }
+
+    drawList->AddText(font,
+                      drawFontSize,
+                      pos,
+                      color,
+                      value.c_str(),
+                      value.c_str() + value.size());
+
+    if (bold)
+    {
+        const ImVec2 offsetPos(x + 0.65f, y);
+        drawList->AddText(font,
+                          drawFontSize,
+                          offsetPos,
+                          color,
+                          value.c_str(),
+                          value.c_str() + value.size());
+    }
+}
+
+static bool EngineUi_MeasureText(MonoString* text,
+                                 float fontSize,
+                                 bool bold,
+                                 float* outWidth,
+                                 float* outHeight)
+{
+    if (outWidth)
+        *outWidth = 0.0f;
+    if (outHeight)
+        *outHeight = 0.0f;
+
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string value = MonoStringToUtf8(text);
+    if (value.empty())
+        return true;
+
+    ImFont* font = ResolveUiFont(fontSize, bold);
+    if (!font)
+    {
+        const ImVec2 measured = ImGui::CalcTextSize(value.c_str());
+        if (outWidth)
+            *outWidth = measured.x;
+        if (outHeight)
+            *outHeight = measured.y;
+        return true;
+    }
+
+    const float drawFontSize = fontSize > 0.0f ? fontSize : font->FontSize;
+    const ImVec2 measured = font->CalcTextSizeA(drawFontSize,
+                                                std::numeric_limits<float>::max(),
+                                                0.0f,
+                                                value.c_str(),
+                                                nullptr,
+                                                nullptr);
+    if (outWidth)
+        *outWidth = measured.x;
+    if (outHeight)
+        *outHeight = measured.y;
+    return true;
+}
+
+static void EngineUi_DrawImage(MonoString* imagePath,
+                               float x,
+                               float y,
+                               float width,
+                               float height,
+                               bool keepAspect,
+                               std::uint32_t rgbaTint,
+                               bool maskable,
+                               bool sliced,
+                               float cornerRadius)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+
+    const std::string resolvedPath = MonoStringToUtf8(imagePath);
+    Texture* texture = ResolveCachedUiTexture(resolvedPath);
+
+    ImDrawList* drawList = ImGui::GetForegroundDrawList();
+    if (!drawList)
+        return;
+
+    if (!texture || texture->GetHandle() == 0u)
+    {
+        const ImU32 fallbackColor = IM_COL32(64, 72, 82, 255);
+        drawList->AddRect(ImVec2(x, y), ImVec2(x + width, y + height), fallbackColor, 4.0f);
+        drawList->AddLine(ImVec2(x, y), ImVec2(x + width, y + height), fallbackColor, 1.0f);
+        drawList->AddLine(ImVec2(x + width, y), ImVec2(x, y + height), fallbackColor, 1.0f);
+        return;
+    }
+
+    float drawX = x;
+    float drawY = y;
+    float drawWidth = width;
+    float drawHeight = height;
+
+    if (keepAspect && texture->GetWidth() > 0 && texture->GetHeight() > 0 && width > 0.0f && height > 0.0f)
+    {
+        const float textureAspect = static_cast<float>(texture->GetWidth()) / static_cast<float>(texture->GetHeight());
+        const float rectAspect = width / height;
+
+        if (textureAspect > rectAspect)
+        {
+            drawWidth = width;
+            drawHeight = width / textureAspect;
+            drawY += (height - drawHeight) * 0.5f;
+        }
+        else
+        {
+            drawHeight = height;
+            drawWidth = height * textureAspect;
+            drawX += (width - drawWidth) * 0.5f;
+        }
+    }
+
+    const ImTextureID textureId = reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(texture->GetHandle()));
+    const ImU32 tintColor = ConvertRgbaToImColor(rgbaTint);
+
+    if (maskable)
+        drawList->PushClipRect(ImVec2(x, y), ImVec2(x + width, y + height), true);
+
+    if (sliced && cornerRadius > 0.0f)
+    {
+        drawList->AddImageRounded(textureId,
+                                  ImVec2(drawX, drawY),
+                                  ImVec2(drawX + drawWidth, drawY + drawHeight),
+                                  ImVec2(0.0f, 1.0f),
+                                  ImVec2(1.0f, 0.0f),
+                                  tintColor,
+                                  cornerRadius,
+                                  ImDrawFlags_RoundCornersAll);
+    }
+    else
+    {
+        drawList->AddImage(textureId,
+                           ImVec2(drawX, drawY),
+                           ImVec2(drawX + drawWidth, drawY + drawHeight),
+                           ImVec2(0.0f, 1.0f),
+                           ImVec2(1.0f, 0.0f),
+                           tintColor);
+    }
+
+    if (maskable)
+        drawList->PopClipRect();
+}
+
+static std::uint64_t EditorImGui_GetImageHandle(MonoString* path)
+{
+    Texture* texture = ResolveCachedUiTexture(MonoStringToUtf8(path));
+    return texture ? static_cast<std::uint64_t>(texture->GetHandle()) : 0;
 }
 
 static void EditorImGui_Image(std::uint64_t textureHandle, float width, float height)
@@ -5236,5 +5519,15 @@ static bool EngineInput_GetKeyDown(int scancode)
 static bool EngineInput_GetKeyUp(int scancode)
 {
     return SDLInputState::GetKeyUp(scancode);
+}
+
+static MonoString* EngineInput_GetTextInput()
+{
+    MonoDomain* domain = mono_domain_get();
+    if (!domain)
+        return nullptr;
+
+    const std::string frameInput = SDLInputState::GetTextInput();
+    return mono_string_new(domain, frameInput.c_str());
 }
 #endif

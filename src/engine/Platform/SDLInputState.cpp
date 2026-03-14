@@ -1,5 +1,7 @@
 #include "SDLInputState.h"
 
+#include <string>
+
 namespace
 {
     constexpr int kMouseButtonCount = 3;
@@ -11,6 +13,8 @@ namespace
     bool g_keyHeld[SDL_NUM_SCANCODES] = {};
     bool g_keyDown[SDL_NUM_SCANCODES] = {};
     bool g_keyUp[SDL_NUM_SCANCODES] = {};
+
+    std::string g_textInput;
 
     float g_mouseDeltaX = 0.0f;
     float g_mouseDeltaY = 0.0f;
@@ -65,6 +69,7 @@ namespace SDLInputState
         g_mouseDeltaX = 0.0f;
         g_mouseDeltaY = 0.0f;
         g_mouseWheel = 0.0f;
+        g_textInput.clear();
     }
 
     void ProcessEvent(const SDL_Event& event)
@@ -133,6 +138,11 @@ namespace SDLInputState
             break;
         }
 
+        case SDL_TEXTINPUT:
+            if (event.text.text[0] != '\0')
+                g_textInput += event.text.text;
+            break;
+
         default:
             break;
         }
@@ -195,5 +205,10 @@ namespace SDLInputState
     bool GetKeyUp(int scancode)
     {
         return IsValidScancode(scancode) ? g_keyUp[scancode] : false;
+    }
+
+    std::string GetTextInput()
+    {
+        return g_textInput;
     }
 }

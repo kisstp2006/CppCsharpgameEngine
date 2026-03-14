@@ -103,7 +103,11 @@ int BootManager::Run()
             if (!engine.BeginFrame(dt))
                 break;
 
-            // Draw a minimal loading overlay.
+#ifndef ENGINE_MONO_DISABLED
+            if (engine.GetMonoRuntime())
+                engine.GetMonoRuntime()->Update(dt, engine.GetScene(), nullptr, &engine);
+#else
+            // Fallback loading overlay when managed editor is disabled.
             {
                 const ImGuiViewport* viewport = ImGui::GetMainViewport();
                 ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x, viewport->WorkPos.y + viewport->WorkSize.y * 0.70f));
@@ -120,6 +124,7 @@ int BootManager::Run()
                 ImGui::Text("  %s", engine.GetLoadingMessage().c_str());
                 ImGui::End();
             }
+#endif
 
             engine.EndFrame();
         }
