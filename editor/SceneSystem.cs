@@ -317,7 +317,8 @@ namespace EngineEditor
 
         private static void NotifySceneChanged()
         {
-            HierarchySystem.ResetSelection();
+            if (HierarchyWindow.Instance != null)
+                HierarchyWindow.Instance.ResetState();
             InspectorSystem.ResetTransientState();
         }
     }

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "assets": [
+    {"path": "NewTIProject.csproj", "type": "ScriptProjectFile", "handle": 15761256569793010537, "size": 398, "ticks": 134179891678144478, "hash": ""},
+    {"path": "NewTIProject.sln", "type": "SolutionFile", "handle": 11989533999186707584, "size": 1572, "ticks": 134179891678164645, "hash": ""},
+    {"path": "Scripts/SpriteInputControllerScript.cs", "type": "ScriptSource", "handle": 17425480048723769421, "size": 1014, "ticks": 134179891678174600, "hash": ""},
+    {"path": "bin/Debug/net48/NewTIProject.dll", "type": "ManagedAssembly", "handle": 4035081987870381155, "size": 4608, "ticks": 134179958909961329, "hash": ""},
+    {"path": "project.json", "type": "ProjectFile", "handle": 8993023743294158568, "size": 500, "ticks": 134179891678203167, "hash": ""}
+  ]
+}

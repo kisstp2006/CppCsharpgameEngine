@@ -24,6 +24,8 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
+#include <vector>
 
 namespace
 {
@@ -125,6 +127,518 @@ namespace
         outG = ByteToUnit((rgba >> 16) & 0xFFu);
         outB = ByteToUnit((rgba >> 8) & 0xFFu);
         outA = ByteToUnit(rgba & 0xFFu);
+    }
+
+    struct UiLayoutRect
+    {
+        float x = 0.0f;
+        float y = 0.0f;
+        float width = 0.0f;
+        float height = 0.0f;
+
+        bool Contains(float px, float py) const
+        {
+            return px >= x && px <= (x + width) && py >= y && py <= (y + height);
+        }
+    };
+
+    struct UiRenderElement
+    {
+        Scene::Entity entity = entt::null;
+        Scene::EntityId entityId = 0;
+        UiLayoutRect rect;
+        int canvasSortingOrder = 0;
+        int drawOrder = 0;
+
+        UiCanvasComponent* canvas = nullptr;
+        UiImageComponent* image = nullptr;
+        UiTextComponent* text = nullptr;
+        UiButtonComponent* button = nullptr;
+        UiInputFieldComponent* inputField = nullptr;
+    };
+
+    struct UiRuntimeInteractionState
+    {
+        Scene::EntityId activeCaptureEntityId = 0;
+        Scene::EntityId focusedInputEntityId = 0;
+    };
+
+    static UiRuntimeInteractionState g_uiRuntimeInteractionState;
+
+    static bool IsEntityActiveInHierarchyForUi(const Scene& scene, Scene::Entity entity)
+    {
+        Scene::Entity current = entity;
+        while (scene.IsValid(current))
+        {
+            const EntityMetadataComponent* metadata = scene.TryGetMetadata(current);
+            if (metadata && !metadata->active)
+                return false;
+
+            current = scene.GetParent(current);
+        }
+
+        return true;
+    }
+
+    static UiLayoutRect ResolveUiRect(const UiLayoutRect& parentRect,
+                                      const UiRectTransformComponent* rectTransform)
+    {
+        if (!rectTransform)
+            return parentRect;
+
+        UiLayoutRect resolved;
+        const float anchorMinX = std::clamp(rectTransform->anchorMinX, 0.0f, 1.0f);
+        const float anchorMinY = std::clamp(rectTransform->anchorMinY, 0.0f, 1.0f);
+        const float anchorMaxX = std::clamp(rectTransform->anchorMaxX, anchorMinX, 1.0f);
+        const float anchorMaxY = std::clamp(rectTransform->anchorMaxY, anchorMinY, 1.0f);
+        const float pivotX = std::clamp(rectTransform->pivotX, 0.0f, 1.0f);
+        const float pivotY = std::clamp(rectTransform->pivotY, 0.0f, 1.0f);
+
+        const float parentAnchorX = parentRect.x + parentRect.width * anchorMinX;
+        const float parentAnchorY = parentRect.y + parentRect.height * anchorMinY;
+        const float parentAnchorWidth = parentRect.width * (anchorMaxX - anchorMinX);
+        const float parentAnchorHeight = parentRect.height * (anchorMaxY - anchorMinY);
+
+        float width = parentAnchorWidth + rectTransform->sizeDeltaX;
+        float height = parentAnchorHeight + rectTransform->sizeDeltaY;
+        if (!std::isfinite(width) || width < 0.0f)
+            width = 0.0f;
+        if (!std::isfinite(height) || height < 0.0f)
+            height = 0.0f;
+
+        float anchoredX = rectTransform->anchoredX;
+        float anchoredY = rectTransform->anchoredY;
+        if (!std::isfinite(anchoredX))
+            anchoredX = 0.0f;
+        if (!std::isfinite(anchoredY))
+            anchoredY = 0.0f;
+
+        resolved.x = parentAnchorX + anchoredX - width * pivotX;
+        resolved.y = parentAnchorY + anchoredY - height * pivotY;
+        resolved.width = width;
+        resolved.height = height;
+        return resolved;
+    }
+
+    static std::filesystem::path ResolveUiImagePath(const std::string& texturePath,
+                                                    const ProjectContext* projectContext)
+    {
+        if (texturePath.empty())
+            return {};
+
+        std::filesystem::path candidate(texturePath);
+        if (candidate.is_absolute())
+            return candidate.lexically_normal();
+
+        if (projectContext && projectContext->IsOpen())
+            return (projectContext->ProjectRoot() / candidate).lexically_normal();
+
+        return (std::filesystem::current_path() / candidate).lexically_normal();
+    }
+
+    static Texture* ResolveUiImageTexture(UiImageComponent& image,
+                                          std::unordered_map<std::string, std::unique_ptr<Texture>>& cache,
+                                          const ProjectContext* projectContext)
+    {
+        if (image.textureAssetPath.empty())
+            return nullptr;
+
+        const std::filesystem::path resolvedPath = ResolveUiImagePath(image.textureAssetPath, projectContext);
+        if (resolvedPath.empty())
+            return nullptr;
+
+        std::error_code existsError;
+        if (!std::filesystem::exists(resolvedPath, existsError) || existsError)
+            return nullptr;
+
+        const std::string cacheKey = resolvedPath.string();
+        auto found = cache.find(cacheKey);
+        if (found != cache.end())
+            return found->second.get();
+
+        auto texture = std::make_unique<Texture>();
+        if (!texture->CreateFromFile(cacheKey))
+            return nullptr;
+
+        Texture* texturePtr = texture.get();
+        cache.emplace(cacheKey, std::move(texture));
+        return texturePtr;
+    }
+
+    static UiLayoutRect FitAspectRect(const UiLayoutRect& targetRect, int textureWidth, int textureHeight)
+    {
+        UiLayoutRect result = targetRect;
+        if (textureWidth <= 0 || textureHeight <= 0 || targetRect.width <= 0.0f || targetRect.height <= 0.0f)
+            return result;
+
+        const float textureAspect = static_cast<float>(textureWidth) / static_cast<float>(textureHeight);
+        const float rectAspect = targetRect.width / targetRect.height;
+        if (textureAspect > rectAspect)
+        {
+            result.width = targetRect.width;
+            result.height = targetRect.width / textureAspect;
+            result.y += (targetRect.height - result.height) * 0.5f;
+        }
+        else
+        {
+            result.height = targetRect.height;
+            result.width = targetRect.height * textureAspect;
+            result.x += (targetRect.width - result.width) * 0.5f;
+        }
+
+        return result;
+    }
+
+    static void CollectUiElementsRecursive(Scene& scene,
+                                           Scene::Entity entity,
+                                           Scene::Entity canvasRoot,
+                                           const UiLayoutRect& parentRect,
+                                           int canvasSortingOrder,
+                                           int& drawOrder,
+                                           std::vector<UiRenderElement>& outElements)
+    {
+        if (!scene.IsValid(entity))
+            return;
+
+        if (!IsEntityActiveInHierarchyForUi(scene, entity))
+            return;
+
+        UiRenderElement element;
+        element.entity = entity;
+        element.entityId = scene.ToEntityId(entity);
+        element.rect = ResolveUiRect(parentRect, scene.TryGetUiRectTransform(entity));
+        element.canvasSortingOrder = canvasSortingOrder;
+        element.drawOrder = drawOrder++;
+        element.canvas = scene.TryGetUiCanvas(entity);
+        element.image = scene.TryGetUiImage(entity);
+        element.text = scene.TryGetUiText(entity);
+        element.button = scene.TryGetUiButton(entity);
+        element.inputField = scene.TryGetUiInputField(entity);
+
+        if (element.image || element.text || element.button || element.inputField)
+            outElements.push_back(element);
+
+        const std::size_t childCount = scene.GetChildCount(entity);
+        for (std::size_t index = 0; index < childCount; ++index)
+        {
+            const Scene::Entity child = scene.GetChildAt(entity, index);
+            if (!scene.IsValid(child))
+                continue;
+
+            if (child != canvasRoot && scene.HasUiCanvas(child))
+                continue;
+
+            CollectUiElementsRecursive(scene,
+                                       child,
+                                       canvasRoot,
+                                       element.rect,
+                                       canvasSortingOrder,
+                                       drawOrder,
+                                       outElements);
+        }
+    }
+
+    static void DrawUiRectOutline(Renderer& renderer,
+                                  const UiLayoutRect& rect,
+                                  float viewportHeight,
+                                  std::uint32_t color,
+                                  float thickness)
+    {
+        if (thickness <= 0.0f || rect.width <= 0.0f || rect.height <= 0.0f)
+            return;
+
+        float r = 1.0f;
+        float g = 1.0f;
+        float b = 1.0f;
+        float a = 1.0f;
+        UnpackColorRgba32(color, r, g, b, a);
+
+        const float drawY = viewportHeight - (rect.y + rect.height);
+        const float clampedThickness = std::max(1.0f, thickness);
+        renderer.DrawSolidSprite(rect.x, drawY, rect.width, clampedThickness, r, g, b, a);
+        renderer.DrawSolidSprite(rect.x, drawY + rect.height - clampedThickness, rect.width, clampedThickness, r, g, b, a);
+        renderer.DrawSolidSprite(rect.x, drawY, clampedThickness, rect.height, r, g, b, a);
+        renderer.DrawSolidSprite(rect.x + rect.width - clampedThickness, drawY, clampedThickness, rect.height, r, g, b, a);
+    }
+
+    static void RenderUiCanvasOverlay(Scene& scene,
+                                      Renderer& renderer,
+                                      std::unordered_map<std::string, std::unique_ptr<Texture>>& textureCache,
+                                      const ProjectContext* projectContext,
+                                      bool allowInteraction)
+    {
+        std::vector<std::pair<int, Scene::Entity>> canvases;
+        auto canvasView = scene.Registry().view<UiCanvasComponent>();
+        for (const auto entity : canvasView)
+        {
+            UiCanvasComponent& canvas = canvasView.get<UiCanvasComponent>(entity);
+            if (!canvas.enabled)
+                continue;
+            if (canvas.renderMode != UiCanvasComponent::RenderModeScreenSpaceOverlay)
+                continue;
+            if (!IsEntityActiveInHierarchyForUi(scene, entity))
+                continue;
+
+            canvases.emplace_back(canvas.sortingOrder, entity);
+        }
+
+        if (canvases.empty())
+        {
+            g_uiRuntimeInteractionState.activeCaptureEntityId = 0;
+            g_uiRuntimeInteractionState.focusedInputEntityId = 0;
+            return;
+        }
+
+        std::sort(canvases.begin(), canvases.end(),
+                  [&](const auto& left, const auto& right)
+                  {
+                      if (left.first != right.first)
+                          return left.first < right.first;
+                      return scene.ToEntityId(left.second) < scene.ToEntityId(right.second);
+                  });
+
+        const float viewportWidth = static_cast<float>(renderer.GetCameraViewportWidth());
+        const float viewportHeight = static_cast<float>(renderer.GetCameraViewportHeight());
+        if (viewportWidth < 1.0f || viewportHeight < 1.0f)
+            return;
+
+        std::vector<UiRenderElement> elements;
+        elements.reserve(256);
+        int drawOrder = 0;
+
+        for (const auto& canvasEntry : canvases)
+        {
+            const Scene::Entity canvasEntity = canvasEntry.second;
+            UiLayoutRect rootRect;
+            rootRect.x = 0.0f;
+            rootRect.y = 0.0f;
+            rootRect.width = viewportWidth;
+            rootRect.height = viewportHeight;
+
+            CollectUiElementsRecursive(scene,
+                                       canvasEntity,
+                                       canvasEntity,
+                                       rootRect,
+                                       canvasEntry.first,
+                                       drawOrder,
+                                       elements);
+        }
+
+        if (elements.empty())
+        {
+            g_uiRuntimeInteractionState.activeCaptureEntityId = 0;
+            g_uiRuntimeInteractionState.focusedInputEntityId = 0;
+            return;
+        }
+
+        Scene::EntityId hoveredInteractiveEntityId = 0;
+        if (allowInteraction)
+        {
+            const float mouseX = SDLInputState::GetMousePosX();
+            const float mouseY = SDLInputState::GetMousePosY();
+            for (auto it = elements.rbegin(); it != elements.rend(); ++it)
+            {
+                const UiRenderElement& element = *it;
+                const bool canHitButton = element.button && element.button->enabled && element.button->interactable;
+                const bool canHitInput = element.inputField && element.inputField->enabled && element.inputField->interactable;
+                if (!canHitButton && !canHitInput)
+                    continue;
+
+                if (element.rect.Contains(mouseX, mouseY))
+                {
+                    hoveredInteractiveEntityId = element.entityId;
+                    break;
+                }
+            }
+
+            const bool mousePressed = SDLInputState::GetMouseButtonDown(0);
+            const bool mouseReleased = SDLInputState::GetMouseButtonUp(0);
+            const bool mouseDown = SDLInputState::GetMouseButton(0);
+
+            if (mousePressed)
+                g_uiRuntimeInteractionState.activeCaptureEntityId = hoveredInteractiveEntityId;
+
+            Scene::EntityId clickedEntityId = 0;
+            if (mouseReleased)
+            {
+                if (g_uiRuntimeInteractionState.activeCaptureEntityId != 0 &&
+                    g_uiRuntimeInteractionState.activeCaptureEntityId == hoveredInteractiveEntityId)
+                {
+                    clickedEntityId = hoveredInteractiveEntityId;
+                }
+
+                g_uiRuntimeInteractionState.activeCaptureEntityId = 0;
+            }
+            else if (!mouseDown && g_uiRuntimeInteractionState.activeCaptureEntityId != 0)
+            {
+                g_uiRuntimeInteractionState.activeCaptureEntityId = 0;
+            }
+
+            bool clickedInput = false;
+            if (clickedEntityId != 0)
+            {
+                for (const UiRenderElement& element : elements)
+                {
+                    if (element.entityId != clickedEntityId)
+                        continue;
+
+                    if (element.inputField && element.inputField->enabled && element.inputField->interactable)
+                    {
+                        g_uiRuntimeInteractionState.focusedInputEntityId = clickedEntityId;
+                        clickedInput = true;
+                    }
+                    break;
+                }
+            }
+
+            if (mousePressed && !clickedInput && hoveredInteractiveEntityId == 0)
+                g_uiRuntimeInteractionState.focusedInputEntityId = 0;
+
+            if (g_uiRuntimeInteractionState.focusedInputEntityId != 0)
+            {
+                Scene::Entity focusedEntity = scene.FromEntityId(g_uiRuntimeInteractionState.focusedInputEntityId);
+                UiInputFieldComponent* focusedInput = scene.TryGetUiInputField(focusedEntity);
+                if (!focusedInput || !focusedInput->enabled || !focusedInput->interactable)
+                {
+                    g_uiRuntimeInteractionState.focusedInputEntityId = 0;
+                }
+                else
+                {
+                    const std::string textInput = SDLInputState::GetTextInput();
+                    if (!textInput.empty())
+                    {
+                        for (char character : textInput)
+                        {
+                            if (character == '\n' || character == '\r')
+                                continue;
+
+                            if (focusedInput->maxLength > 0 && focusedInput->text.size() >= focusedInput->maxLength)
+                                break;
+
+                            focusedInput->text.push_back(character);
+                        }
+                    }
+
+                    if (SDLInputState::GetKeyDown(SDL_SCANCODE_BACKSPACE) && !focusedInput->text.empty())
+                        focusedInput->text.pop_back();
+
+                    if (SDLInputState::GetKeyDown(SDL_SCANCODE_ESCAPE) || SDLInputState::GetKeyDown(SDL_SCANCODE_RETURN))
+                        g_uiRuntimeInteractionState.focusedInputEntityId = 0;
+                }
+            }
+        }
+        else
+        {
+            g_uiRuntimeInteractionState.activeCaptureEntityId = 0;
+            g_uiRuntimeInteractionState.focusedInputEntityId = 0;
+        }
+
+        renderer.SetCameraProjection(viewportWidth * 0.5f, viewportHeight * 0.5f, 1.0f);
+
+        const bool mouseDown = allowInteraction && SDLInputState::GetMouseButton(0);
+        for (UiRenderElement& element : elements)
+        {
+            if (element.rect.width <= 0.0f || element.rect.height <= 0.0f)
+                continue;
+
+            if (element.image && element.image->enabled)
+            {
+                Texture* texture = ResolveUiImageTexture(*element.image, textureCache, projectContext);
+                if (texture)
+                {
+                    UiLayoutRect drawRect = element.rect;
+                    if (element.image->preserveAspect)
+                        drawRect = FitAspectRect(element.rect, texture->GetWidth(), texture->GetHeight());
+
+                    const float drawY = viewportHeight - (drawRect.y + drawRect.height);
+                    renderer.DrawSprite(*texture,
+                                       drawRect.x,
+                                       drawY,
+                                       drawRect.width,
+                                       drawRect.height);
+                }
+                else
+                {
+                    float r = 1.0f;
+                    float g = 1.0f;
+                    float b = 1.0f;
+                    float a = 1.0f;
+                    UnpackColorRgba32(element.image->color, r, g, b, a);
+                    const float drawY = viewportHeight - (element.rect.y + element.rect.height);
+                    renderer.DrawSolidSprite(element.rect.x,
+                                             drawY,
+                                             element.rect.width,
+                                             element.rect.height,
+                                             r,
+                                             g,
+                                             b,
+                                             a);
+                }
+            }
+
+            if (element.button && element.button->enabled)
+            {
+                std::uint32_t buttonColor = element.button->normalColor;
+                const bool hovered = allowInteraction && (hoveredInteractiveEntityId == element.entityId);
+                const bool pressed = allowInteraction &&
+                                     (g_uiRuntimeInteractionState.activeCaptureEntityId == element.entityId) &&
+                                     mouseDown;
+
+                if (!element.button->interactable)
+                    buttonColor = element.button->disabledColor;
+                else if (pressed)
+                    buttonColor = element.button->pressedColor;
+                else if (hovered)
+                    buttonColor = element.button->highlightedColor;
+
+                float r = 1.0f;
+                float g = 1.0f;
+                float b = 1.0f;
+                float a = 1.0f;
+                UnpackColorRgba32(buttonColor, r, g, b, a);
+                const float drawY = viewportHeight - (element.rect.y + element.rect.height);
+                renderer.DrawSolidSprite(element.rect.x,
+                                         drawY,
+                                         element.rect.width,
+                                         element.rect.height,
+                                         r,
+                                         g,
+                                         b,
+                                         a);
+            }
+
+            if (element.inputField && element.inputField->enabled)
+            {
+                std::uint32_t fillColor = element.inputField->placeholderColor;
+                if (!element.inputField->interactable)
+                    fillColor = 0x404040AAu;
+                else if (allowInteraction && g_uiRuntimeInteractionState.focusedInputEntityId == element.entityId)
+                    fillColor = 0x2E3A52FFu;
+                else
+                    fillColor = 0x1E2636FFu;
+
+                float r = 1.0f;
+                float g = 1.0f;
+                float b = 1.0f;
+                float a = 1.0f;
+                UnpackColorRgba32(fillColor, r, g, b, a);
+                const float drawY = viewportHeight - (element.rect.y + element.rect.height);
+                renderer.DrawSolidSprite(element.rect.x,
+                                         drawY,
+                                         element.rect.width,
+                                         element.rect.height,
+                                         r,
+                                         g,
+                                         b,
+                                         a);
+
+                DrawUiRectOutline(renderer,
+                                  element.rect,
+                                  viewportHeight,
+                                  0x8FA4C6FFu,
+                                  1.0f);
+            }
+        }
     }
 
     static void SetupEditorImGuiStyle()
@@ -939,6 +1453,14 @@ void Engine::EndFrame()
                                    uvMaxX,
                                    uvMaxY);
         }
+
+        // Runtime ECS UI overlay (Screen Space Overlay MVP).
+        const bool allowUiInteraction = !m_dockspaceEnabled;
+        RenderUiCanvasOverlay(*m_scene,
+                              *m_renderer,
+                              m_spriteTextureCache,
+                              m_projectContext.get(),
+                              allowUiInteraction);
 
         m_renderer->EndGameView();
     }

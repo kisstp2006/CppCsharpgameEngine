@@ -155,6 +155,18 @@ namespace Engine
                 hasComponent = EntityManager.HasCamera(EntityId);
             else if (type == typeof(SpriteRenderer))
                 hasComponent = EntityManager.HasSprite(EntityId);
+            else if (type == typeof(UiCanvasComponent))
+                hasComponent = EntityManager.HasUiCanvas(EntityId);
+            else if (type == typeof(UiRectTransformComponent))
+                hasComponent = EntityManager.HasUiRectTransform(EntityId);
+            else if (type == typeof(UiImageComponent))
+                hasComponent = EntityManager.HasUiImage(EntityId);
+            else if (type == typeof(UiTextComponent))
+                hasComponent = EntityManager.HasUiText(EntityId);
+            else if (type == typeof(UiButtonComponent))
+                hasComponent = EntityManager.HasUiButton(EntityId);
+            else if (type == typeof(UiInputFieldComponent))
+                hasComponent = EntityManager.HasUiInputField(EntityId);
             else
                 return false;
 
@@ -883,6 +895,277 @@ namespace Engine
             {
                 Sprite.SetFallbackColor(EntityId, value);
             }
+        }
+    }
+
+    public sealed class UiCanvasComponent : Component
+    {
+        public bool enabled
+        {
+            get
+            {
+                bool enabledValue;
+                int sortingOrder;
+                bool pixelPerfect;
+                return EntityManager.GetUiCanvasSettings(EntityId, out enabledValue, out sortingOrder, out pixelPerfect) && enabledValue;
+            }
+            set
+            {
+                bool enabledValue;
+                int sortingOrder;
+                bool pixelPerfect;
+                if (!EntityManager.GetUiCanvasSettings(EntityId, out enabledValue, out sortingOrder, out pixelPerfect))
+                    return;
+
+                EntityManager.SetUiCanvasSettings(EntityId, value, sortingOrder, pixelPerfect);
+            }
+        }
+
+        public int sortingOrder
+        {
+            get
+            {
+                bool enabledValue;
+                int sortingOrderValue;
+                bool pixelPerfect;
+                if (!EntityManager.GetUiCanvasSettings(EntityId, out enabledValue, out sortingOrderValue, out pixelPerfect))
+                    return 0;
+
+                return sortingOrderValue;
+            }
+            set
+            {
+                bool enabledValue;
+                int sortingOrderValue;
+                bool pixelPerfect;
+                if (!EntityManager.GetUiCanvasSettings(EntityId, out enabledValue, out sortingOrderValue, out pixelPerfect))
+                    return;
+
+                EntityManager.SetUiCanvasSettings(EntityId, enabledValue, value, pixelPerfect);
+            }
+        }
+
+        public bool pixelPerfect
+        {
+            get
+            {
+                bool enabledValue;
+                int sortingOrder;
+                bool pixelPerfectValue;
+                return EntityManager.GetUiCanvasSettings(EntityId, out enabledValue, out sortingOrder, out pixelPerfectValue) && pixelPerfectValue;
+            }
+            set
+            {
+                bool enabledValue;
+                int sortingOrder;
+                bool pixelPerfectValue;
+                if (!EntityManager.GetUiCanvasSettings(EntityId, out enabledValue, out sortingOrder, out pixelPerfectValue))
+                    return;
+
+                EntityManager.SetUiCanvasSettings(EntityId, enabledValue, sortingOrder, value);
+            }
+        }
+    }
+
+    public sealed class UiRectTransformComponent : Component
+    {
+        public Vector3 anchoredPosition
+        {
+            get
+            {
+                float anchorMinX;
+                float anchorMinY;
+                float anchorMaxX;
+                float anchorMaxY;
+                float pivotX;
+                float pivotY;
+                float anchoredX;
+                float anchoredY;
+                float sizeDeltaX;
+                float sizeDeltaY;
+                if (!EntityManager.GetUiRectTransform(EntityId,
+                                                      out anchorMinX,
+                                                      out anchorMinY,
+                                                      out anchorMaxX,
+                                                      out anchorMaxY,
+                                                      out pivotX,
+                                                      out pivotY,
+                                                      out anchoredX,
+                                                      out anchoredY,
+                                                      out sizeDeltaX,
+                                                      out sizeDeltaY))
+                {
+                    return new Vector3();
+                }
+
+                return new Vector3(anchoredX, anchoredY, 0.0f);
+            }
+            set
+            {
+                float anchorMinX;
+                float anchorMinY;
+                float anchorMaxX;
+                float anchorMaxY;
+                float pivotX;
+                float pivotY;
+                float anchoredX;
+                float anchoredY;
+                float sizeDeltaX;
+                float sizeDeltaY;
+                if (!EntityManager.GetUiRectTransform(EntityId,
+                                                      out anchorMinX,
+                                                      out anchorMinY,
+                                                      out anchorMaxX,
+                                                      out anchorMaxY,
+                                                      out pivotX,
+                                                      out pivotY,
+                                                      out anchoredX,
+                                                      out anchoredY,
+                                                      out sizeDeltaX,
+                                                      out sizeDeltaY))
+                {
+                    return;
+                }
+
+                EntityManager.SetUiRectTransform(EntityId,
+                                                 anchorMinX,
+                                                 anchorMinY,
+                                                 anchorMaxX,
+                                                 anchorMaxY,
+                                                 pivotX,
+                                                 pivotY,
+                                                 value.x,
+                                                 value.y,
+                                                 sizeDeltaX,
+                                                 sizeDeltaY);
+            }
+        }
+    }
+
+    public sealed class UiImageComponent : Component
+    {
+        public bool enabled
+        {
+            get
+            {
+                bool enabledValue;
+                ulong textureAssetHandle;
+                uint color;
+                bool preserveAspect;
+                float cornerRadius;
+                return EntityManager.GetUiImageSettings(EntityId,
+                                                        out enabledValue,
+                                                        out textureAssetHandle,
+                                                        out color,
+                                                        out preserveAspect,
+                                                        out cornerRadius)
+                       && enabledValue;
+            }
+            set
+            {
+                bool enabledValue;
+                ulong textureAssetHandle;
+                uint color;
+                bool preserveAspect;
+                float cornerRadius;
+                if (!EntityManager.GetUiImageSettings(EntityId,
+                                                      out enabledValue,
+                                                      out textureAssetHandle,
+                                                      out color,
+                                                      out preserveAspect,
+                                                      out cornerRadius))
+                {
+                    return;
+                }
+
+                EntityManager.SetUiImageSettings(EntityId,
+                                                 value,
+                                                 textureAssetHandle,
+                                                 color,
+                                                 preserveAspect,
+                                                 cornerRadius);
+            }
+        }
+
+        public string texturePath
+        {
+            get => EntityManager.GetUiImageTexturePath(EntityId) ?? string.Empty;
+            set => EntityManager.SetUiImageTexturePath(EntityId, value ?? string.Empty);
+        }
+    }
+
+    public sealed class UiTextComponent : Component
+    {
+        public string text
+        {
+            get => EntityManager.GetUiTextValue(EntityId) ?? string.Empty;
+            set => EntityManager.SetUiTextValue(EntityId, value ?? string.Empty);
+        }
+    }
+
+    public sealed class UiButtonComponent : Component
+    {
+        public bool interactable
+        {
+            get
+            {
+                bool enabled;
+                bool interactableValue;
+                uint normalColor;
+                uint highlightedColor;
+                uint pressedColor;
+                uint disabledColor;
+                return EntityManager.GetUiButtonSettings(EntityId,
+                                                         out enabled,
+                                                         out interactableValue,
+                                                         out normalColor,
+                                                         out highlightedColor,
+                                                         out pressedColor,
+                                                         out disabledColor)
+                       && interactableValue;
+            }
+            set
+            {
+                bool enabled;
+                bool interactableValue;
+                uint normalColor;
+                uint highlightedColor;
+                uint pressedColor;
+                uint disabledColor;
+                if (!EntityManager.GetUiButtonSettings(EntityId,
+                                                       out enabled,
+                                                       out interactableValue,
+                                                       out normalColor,
+                                                       out highlightedColor,
+                                                       out pressedColor,
+                                                       out disabledColor))
+                {
+                    return;
+                }
+
+                EntityManager.SetUiButtonSettings(EntityId,
+                                                  enabled,
+                                                  value,
+                                                  normalColor,
+                                                  highlightedColor,
+                                                  pressedColor,
+                                                  disabledColor);
+            }
+        }
+    }
+
+    public sealed class UiInputFieldComponent : Component
+    {
+        public string text
+        {
+            get => EntityManager.GetUiInputFieldText(EntityId) ?? string.Empty;
+            set => EntityManager.SetUiInputFieldText(EntityId, value ?? string.Empty);
+        }
+
+        public string placeholder
+        {
+            get => EntityManager.GetUiInputFieldPlaceholder(EntityId) ?? string.Empty;
+            set => EntityManager.SetUiInputFieldPlaceholder(EntityId, value ?? string.Empty);
         }
     }
 

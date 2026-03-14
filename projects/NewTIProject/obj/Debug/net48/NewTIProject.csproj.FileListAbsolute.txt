@@ -1,0 +1,13 @@
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\bin\Debug\net48\NewTIProject.dll
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\bin\Debug\net48\NewTIProject.pdb
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\bin\Debug\net48\EngineManagedApi.dll
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\bin\Debug\net48\EngineManagedApi.pdb
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\obj\Debug\net48\NewTIProject.csproj.AssemblyReference.cache
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\obj\Debug\net48\NewTIProject.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\obj\Debug\net48\NewTIProject.AssemblyInfoInputs.cache
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\obj\Debug\net48\NewTIProject.AssemblyInfo.cs
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\obj\Debug\net48\NewTIProject.csproj.CoreCompileInputs.cache
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\obj\Debug\net48\NewTIProject.sourcelink.json
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\obj\Debug\net48\NewTIPro.C4495C09.Up2Date
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\obj\Debug\net48\NewTIProject.dll
+C:\Users\tibig\Documents\CppCsharpgameEngine\projects\NewTIProject\obj\Debug\net48\NewTIProject.pdb

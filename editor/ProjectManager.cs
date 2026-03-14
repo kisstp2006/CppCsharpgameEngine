@@ -1737,12 +1737,13 @@ namespace EngineEditor
             {
                 Directory.CreateDirectory(location);
                 string projectPath = Path.Combine(location, projectName);
-                ProjectOperations.CreateProject(projectPath,
-                                               templateName,
-                                               true,
-                                               true);
+                string createdProjectPath = ProjectOperations.CreateProject(projectPath,
+                                                                           templateName,
+                                                                           true,
+                                                                           true);
                 RefreshProjectList();
-                TrySelectProjectByPath(projectPath);
+                string selectionPath = string.IsNullOrWhiteSpace(createdProjectPath) ? projectPath : createdProjectPath;
+                TrySelectProjectByPath(selectionPath);
                 CloseModal();
             }
             catch (Exception ex)
@@ -2071,13 +2072,14 @@ namespace EngineEditor
 
         private static void TrySelectProjectByPath(string projectPath)
         {
-            _selectedProjectPathOverride = projectPath ?? string.Empty;
+            string normalizedTarget = NormalizePath(projectPath);
+            _selectedProjectPathOverride = normalizedTarget;
 
             for (int i = 0; i < _projectPaths.Length; ++i)
             {
-                if (string.Equals(_projectPaths[i], projectPath, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(NormalizePath(_projectPaths[i]), normalizedTarget, StringComparison.OrdinalIgnoreCase))
                 {
-                    SelectProject(i, Path.GetFileName(projectPath));
+                    SelectProject(i, Path.GetFileName(_projectPaths[i]));
                     return;
                 }
             }

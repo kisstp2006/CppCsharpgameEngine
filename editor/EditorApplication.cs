@@ -377,7 +377,7 @@ namespace EngineEditor
             return EditorBridge.GetSimulationState() != EditorBridge.SimulationEdit;
         }
 
-        private static void TogglePauseState()
+        public static void TogglePauseState()
         {
             int simulationState = EditorBridge.GetSimulationState();
             if (simulationState == EditorBridge.SimulationPlay)
@@ -448,7 +448,7 @@ namespace EngineEditor
             }
         }
 
-        private static bool EnterPlayMode()
+        public static bool EnterPlayMode()
         {
             int simulationState = EditorBridge.GetSimulationState();
             if (simulationState == EditorBridge.SimulationPlay)
@@ -507,7 +507,7 @@ namespace EngineEditor
             return true;
         }
 
-        private static bool StopPlayMode()
+        public static bool StopPlayMode()
         {
             int simulationState = EditorBridge.GetSimulationState();
             if (simulationState == EditorBridge.SimulationEdit)

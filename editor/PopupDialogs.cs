@@ -98,10 +98,12 @@ namespace EngineEditor
                         Directory.CreateDirectory(location);
                         string[] templates_copy = ProjectCodeGenerator.GetProjectTemplates();
                         string templateName = templates_copy[_newProjectTemplateIndex];
-                        ProjectOperations.CreateProject(Path.Combine(location, projectName),
-                                                        templateName,
-                                                        _generateStarterContent,
-                                                        _generateStarterScene);
+                        string createdProjectPath = ProjectOperations.CreateProject(Path.Combine(location, projectName),
+                                                                                    templateName,
+                                                                                    _generateStarterContent,
+                                                                                    _generateStarterScene);
+                        if (!string.IsNullOrWhiteSpace(createdProjectPath))
+                            ProjectManager.RefreshProjectList();
                         ImGui.CloseCurrentPopup();
                         if (_openAfterCreate)
                             EditorHost.SetShowProjectManagerView(false);

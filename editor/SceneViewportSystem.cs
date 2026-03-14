@@ -16,6 +16,8 @@ namespace EngineEditor
         private const float MaxZoom = 8.0f;
         private const float GridStepWorld = 64.0f;
 
+        private const int UiCanvasRenderModeScreenSpaceOverlay = 0;
+
         private static bool _isDraggingEntity;
         private static int _dragEntityId = -1;
         private static float _dragOffsetWorldX;
@@ -30,6 +32,31 @@ namespace EngineEditor
         private static float _defaultGizmoSnapStep = 32.0f;
         private static string _loadedProjectSettingsPath = string.Empty;
         private static bool _pixelSnapEnabled;
+        private static int _selectedResolutionIndex;
+        private static bool _showStats;
+
+        private static readonly string[] _resolutionLabels = new string[]
+        {
+            "Free Aspect",
+            "16:9  (1920x1080)",
+            "16:10 (1920x1200)",
+            "4:3   (1024x768)",
+            "1:1   (512x512)",
+            "Custom"
+        };
+
+        private static readonly float[] _resolutionAspects = new float[]
+        {
+            0.0f,
+            16.0f / 9.0f,
+            16.0f / 10.0f,
+            4.0f / 3.0f,
+            1.0f,
+            0.0f
+        };
+
+        private static float _customWidth = 1280;
+        private static float _customHeight = 720;
 
         private const string ProjectSettingDefaultSnapEnabled = "editor.scene.defaultSnapEnabled";
         private const string ProjectSettingDefaultSnapStep = "editor.scene.defaultSnapStep";
@@ -212,16 +239,34 @@ namespace EngineEditor
                 return;
             }
 
-            if (ImGui.Button("Reset Camera"))
+            // ── Toolbar row 1: Play controls + Resolution ──
+            DrawPlayControls();
+            ImGui.SameLine();
+            ImGui.Text("|");
+            ImGui.SameLine();
+            DrawResolutionSelector();
+            ImGui.SameLine();
+            if (ImGui.Button(_showStats ? "[Stats]" : "Stats"))
+                _showStats = !_showStats;
+
+            // ── Toolbar row 2: Gizmo tools ──
+            if (!simulationRunning)
             {
-                _editorCamera.Reset();
-                SyncPreviewCameraState(!simulationRunning);
+                if (ImGui.Button("Reset Camera"))
+                {
+                    _editorCamera.Reset();
+                    SyncPreviewCameraState(true);
+                }
+
+                ImGui.SameLine();
+                DrawGameViewTopBar();
             }
 
-            ImGui.SameLine();
-            DrawGameViewTopBar();
-
             ImGui.Separator();
+
+            // ── Check for script errors ──
+            ScriptValidationSnapshot snapshot = ScriptComponentValidation.GetSnapshot();
+            bool hasErrors = snapshot.HasCompileErrors;
 
             float availWidth = ImGui.GetContentRegionAvailX();
             float availHeight = ImGui.GetContentRegionAvailY();
@@ -230,10 +275,17 @@ namespace EngineEditor
             if (availHeight < 1.0f)
                 availHeight = 1.0f;
 
-            _gameViewPosX = ImGui.GetCursorScreenPosX();
-            _gameViewPosY = ImGui.GetCursorScreenPosY();
-            _gameViewWidth = availWidth;
-            _gameViewHeight = availHeight;
+            // Calculate actual render size with aspect ratio
+            float renderWidth = availWidth;
+            float renderHeight = availHeight;
+            float offsetX = 0.0f;
+            float offsetY = 0.0f;
+            ComputeViewportLayout(availWidth, availHeight, out renderWidth, out renderHeight, out offsetX, out offsetY);
+
+            _gameViewPosX = ImGui.GetCursorScreenPosX() + offsetX;
+            _gameViewPosY = ImGui.GetCursorScreenPosY() + offsetY;
+            _gameViewWidth = renderWidth;
+            _gameViewHeight = renderHeight;
 
             if (!simulationRunning)
             {
@@ -250,16 +302,31 @@ namespace EngineEditor
             if (simulationRunning)
             {
                 ImGui.Text("Play mode active: rendering is shown in Game Runtime window.");
-                ImGui.InvisibleButton("##GameViewPlayModePlaceholder", _gameViewWidth, _gameViewHeight);
+                ImGui.InvisibleButton("##GameViewPlayModePlaceholder", availWidth, availHeight);
                 ImGui.End();
                 return;
             }
 
+            // ── Draw letterbox bars if aspect ratio constrains the view ──
+            float cursorScreenX = ImGui.GetCursorScreenPosX();
+            float cursorScreenY = ImGui.GetCursorScreenPosY();
+
+            if (offsetX > 0.5f || offsetY > 0.5f)
+            {
+                ImGui.DrawRectFilled(cursorScreenX, cursorScreenY, availWidth, availHeight,
+                                     0.08f, 0.08f, 0.08f, 1.0f);
+            }
+
+            if (offsetX > 0.0f)
+                ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offsetX);
+            if (offsetY > 0.0f)
+                ImGui.SetCursorPosY(ImGui.GetCursorPosY() + offsetY);
+
             ulong gameViewTextureHandle = EditorBridge.GetGameViewTextureHandle();
             if (gameViewTextureHandle != 0)
-                ImGui.Image(gameViewTextureHandle, _gameViewWidth, _gameViewHeight);
+                ImGui.Image(gameViewTextureHandle, renderWidth, renderHeight);
             else
-                ImGui.InvisibleButton("##GameViewImagePlaceholder", _gameViewWidth, _gameViewHeight);
+                ImGui.InvisibleButton("##GameViewImagePlaceholder", renderWidth, renderHeight);
 
             bool itemHovered = ImGui.IsItemHovered();
             bool leftClicked = ImGui.IsMouseClicked(MouseButton.Left);
@@ -290,6 +357,16 @@ namespace EngineEditor
             HandleAssetDropOnViewport(itemHovered);
             DrawAssetDropOverlay(itemHovered);
 
+            // ── Error overlay ──
+            if (hasErrors)
+                DrawErrorOverlay(cursorScreenX + offsetX, cursorScreenY + offsetY,
+                                 renderWidth, renderHeight, snapshot);
+
+            // ── Stats overlay ──
+            if (_showStats)
+                DrawStatsOverlay(cursorScreenX + offsetX, cursorScreenY + offsetY,
+                                 renderWidth, renderHeight);
+
             ImGui.End();
         }
 
@@ -309,8 +386,23 @@ namespace EngineEditor
                 return;
             }
 
-            ImGui.Text(paused ? "Runtime view (paused)." : "Runtime view (playing).");
+            // ── Toolbar: Play/Pause/Stop + Resolution ──
+            DrawPlayControls();
+            ImGui.SameLine();
+            ImGui.Text("|");
+            ImGui.SameLine();
+            DrawResolutionSelector();
+            ImGui.SameLine();
+            if (ImGui.Button(_showStats ? "[Stats]" : "Stats"))
+                _showStats = !_showStats;
+            ImGui.SameLine();
+            ImGui.Text(paused ? "[Paused]" : "[Playing]");
+
             ImGui.Separator();
+
+            // ── Check for script errors ──
+            ScriptValidationSnapshot snapshot = ScriptComponentValidation.GetSnapshot();
+            bool hasErrors = snapshot.HasCompileErrors;
 
             float availWidth = ImGui.GetContentRegionAvailX();
             float availHeight = ImGui.GetContentRegionAvailY();
@@ -319,12 +411,43 @@ namespace EngineEditor
             if (availHeight < 1.0f)
                 availHeight = 1.0f;
 
-            EditorBridge.SetGameViewSize(availWidth, availHeight);
+            float renderWidth;
+            float renderHeight;
+            float offsetX;
+            float offsetY;
+            ComputeViewportLayout(availWidth, availHeight, out renderWidth, out renderHeight, out offsetX, out offsetY);
+
+            float cursorScreenX = ImGui.GetCursorScreenPosX();
+            float cursorScreenY = ImGui.GetCursorScreenPosY();
+
+            // ── Letterbox bars ──
+            if (offsetX > 0.5f || offsetY > 0.5f)
+            {
+                ImGui.DrawRectFilled(cursorScreenX, cursorScreenY, availWidth, availHeight,
+                                     0.08f, 0.08f, 0.08f, 1.0f);
+            }
+
+            if (offsetX > 0.0f)
+                ImGui.SetCursorPosX(ImGui.GetCursorPosX() + offsetX);
+            if (offsetY > 0.0f)
+                ImGui.SetCursorPosY(ImGui.GetCursorPosY() + offsetY);
+
+            EditorBridge.SetGameViewSize(renderWidth, renderHeight);
             ulong gameViewTextureHandle = EditorBridge.GetGameViewTextureHandle();
             if (gameViewTextureHandle != 0)
-                ImGui.Image(gameViewTextureHandle, availWidth, availHeight);
+                ImGui.Image(gameViewTextureHandle, renderWidth, renderHeight);
             else
-                ImGui.InvisibleButton("##RuntimeGameImagePlaceholder", availWidth, availHeight);
+                ImGui.InvisibleButton("##RuntimeGameImagePlaceholder", renderWidth, renderHeight);
+
+            // ── Error overlay ──
+            if (hasErrors)
+                DrawErrorOverlay(cursorScreenX + offsetX, cursorScreenY + offsetY,
+                                 renderWidth, renderHeight, snapshot);
+
+            // ── Stats overlay ──
+            if (_showStats)
+                DrawStatsOverlay(cursorScreenX + offsetX, cursorScreenY + offsetY,
+                                 renderWidth, renderHeight);
 
             ImGui.End();
         }
@@ -497,6 +620,223 @@ namespace EngineEditor
             ImGui.SameLine();
             if (ImGui.Button("Frame Selected"))
                 FrameSelectedEntity();
+        }
+
+        // ── Play Controls ──────────────────────────────────────────────
+
+        private static void DrawPlayControls()
+        {
+            int simulationState = EditorBridge.GetSimulationState();
+            bool isPlaying = simulationState == EditorBridge.SimulationPlay;
+            bool isPaused = simulationState == EditorBridge.SimulationPause;
+            bool isEdit = simulationState == EditorBridge.SimulationEdit;
+
+            if (isEdit)
+            {
+                if (ImGui.Button("Play"))
+                    EditorApplication.EnterPlayMode();
+            }
+            else
+            {
+                if (ImGui.Button("Stop"))
+                    EditorApplication.StopPlayMode();
+
+                ImGui.SameLine();
+                if (isPlaying)
+                {
+                    if (ImGui.Button("Pause"))
+                        EditorApplication.TogglePauseState();
+                }
+                else if (isPaused)
+                {
+                    if (ImGui.Button("Resume"))
+                        EditorApplication.TogglePauseState();
+                }
+            }
+        }
+
+        // ── Resolution Selector ────────────────────────────────────────
+
+        private static void DrawResolutionSelector()
+        {
+            ImGui.SetNextItemWidth(160.0f);
+            string currentLabel = _selectedResolutionIndex >= 0 && _selectedResolutionIndex < _resolutionLabels.Length
+                ? _resolutionLabels[_selectedResolutionIndex]
+                : _resolutionLabels[0];
+
+            if (ImGui.BeginCombo("##Resolution", currentLabel))
+            {
+                for (int i = 0; i < _resolutionLabels.Length; i++)
+                {
+                    bool selected = (i == _selectedResolutionIndex);
+                    if (ImGui.Selectable(_resolutionLabels[i], selected))
+                        _selectedResolutionIndex = i;
+                }
+                ImGui.EndCombo();
+            }
+
+            if (_selectedResolutionIndex == _resolutionLabels.Length - 1) // Custom
+            {
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(60.0f);
+                ImGui.InputFloat("W##CustomRes", ref _customWidth, 0.0f);
+                ImGui.SameLine();
+                ImGui.Text("x");
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(60.0f);
+                ImGui.InputFloat("H##CustomRes", ref _customHeight, 0.0f);
+
+                if (_customWidth < 1.0f) _customWidth = 1.0f;
+                if (_customHeight < 1.0f) _customHeight = 1.0f;
+                if (_customWidth > 7680.0f) _customWidth = 7680.0f;
+                if (_customHeight > 4320.0f) _customHeight = 4320.0f;
+            }
+        }
+
+        // ── Viewport Layout (aspect ratio letterbox) ──────────────────
+
+        private static void ComputeViewportLayout(float availWidth,
+                                                  float availHeight,
+                                                  out float renderWidth,
+                                                  out float renderHeight,
+                                                  out float offsetX,
+                                                  out float offsetY)
+        {
+            renderWidth = availWidth;
+            renderHeight = availHeight;
+            offsetX = 0.0f;
+            offsetY = 0.0f;
+
+            float aspect = 0.0f;
+            if (_selectedResolutionIndex > 0 && _selectedResolutionIndex < _resolutionAspects.Length)
+                aspect = _resolutionAspects[_selectedResolutionIndex];
+
+            // Custom resolution
+            if (_selectedResolutionIndex == _resolutionLabels.Length - 1 && _customHeight > 0.0f)
+                aspect = _customWidth / _customHeight;
+
+            if (aspect <= 0.0f)
+                return; // Free aspect — fill entire area
+
+            float containerAspect = availWidth / availHeight;
+            if (containerAspect > aspect)
+            {
+                // Container is wider — pillarbox
+                renderWidth = availHeight * aspect;
+                renderHeight = availHeight;
+                offsetX = (availWidth - renderWidth) * 0.5f;
+            }
+            else
+            {
+                // Container is taller — letterbox
+                renderWidth = availWidth;
+                renderHeight = availWidth / aspect;
+                offsetY = (availHeight - renderHeight) * 0.5f;
+            }
+        }
+
+        // ── Error Overlay ──────────────────────────────────────────────
+
+        private static void DrawErrorOverlay(float areaX,
+                                             float areaY,
+                                             float areaW,
+                                             float areaH,
+                                             ScriptValidationSnapshot snapshot)
+        {
+            // Build the error message
+            string title = "Script Compile Error";
+            string detail = string.Empty;
+            if (snapshot.CompileErrorLines != null && snapshot.CompileErrorLines.Length > 0)
+            {
+                // Show first few error lines
+                int maxLines = snapshot.CompileErrorLines.Length < 6 ? snapshot.CompileErrorLines.Length : 6;
+                for (int i = 0; i < maxLines; i++)
+                {
+                    if (i > 0) detail += "\n";
+                    string line = snapshot.CompileErrorLines[i];
+                    if (line.Length > 90)
+                        line = line.Substring(0, 87) + "...";
+                    detail += line;
+                }
+                if (snapshot.CompileErrorLines.Length > maxLines)
+                    detail += "\n... +" + (snapshot.CompileErrorLines.Length - maxLines) + " more errors";
+            }
+            else
+            {
+                detail = "Fix script errors before entering Play mode.\nCheck the Console for details.";
+            }
+
+            string fullText = title + "\n\n" + detail;
+
+            float textW;
+            float textH;
+            ImGui.CalcTextSize(fullText, out textW, out textH);
+
+            float padX = 24.0f;
+            float padY = 16.0f;
+            float boxW = textW + padX * 2.0f;
+            float boxH = textH + padY * 2.0f;
+
+            if (boxW > areaW * 0.9f)
+                boxW = areaW * 0.9f;
+            if (boxH > areaH * 0.85f)
+                boxH = areaH * 0.85f;
+
+            float boxX = areaX + (areaW - boxW) * 0.5f;
+            float boxY = areaY + (areaH - boxH) * 0.5f;
+
+            // Dark rounded background
+            ImGui.DrawRectFilledRounded(boxX, boxY, boxW, boxH,
+                                        0.12f, 0.12f, 0.12f, 0.92f, 10.0f);
+
+            // Title text (white)
+            float titleW;
+            float titleH;
+            ImGui.CalcTextSize(title, out titleW, out titleH);
+            float titleX = boxX + (boxW - titleW) * 0.5f;
+            float titleY = boxY + padY;
+            ImGui.DrawText(titleX, titleY, title, 1.0f, 0.35f, 0.35f, 1.0f);
+
+            // Detail text
+            float detailY = titleY + titleH + 8.0f;
+            float detailX = boxX + padX;
+            ImGui.DrawText(detailX, detailY, detail, 0.85f, 0.85f, 0.85f, 1.0f);
+        }
+
+        // ── Stats Overlay ──────────────────────────────────────────────
+
+        private static void DrawStatsOverlay(float areaX,
+                                             float areaY,
+                                             float areaW,
+                                             float areaH)
+        {
+            int simState = EditorBridge.GetSimulationState();
+            string stateText = simState == EditorBridge.SimulationPlay ? "Playing"
+                             : simState == EditorBridge.SimulationPause ? "Paused"
+                             : "Edit";
+
+            string resText = ((int)areaW) + " x " + ((int)areaH);
+            string aspectLabel = _selectedResolutionIndex >= 0 && _selectedResolutionIndex < _resolutionLabels.Length
+                ? _resolutionLabels[_selectedResolutionIndex]
+                : "Free Aspect";
+
+            string statsText = stateText + "  |  " + resText + "  |  " + aspectLabel;
+
+            float textW;
+            float textH;
+            ImGui.CalcTextSize(statsText, out textW, out textH);
+
+            float padX = 8.0f;
+            float padY = 4.0f;
+            float boxW = textW + padX * 2.0f;
+            float boxH = textH + padY * 2.0f;
+
+            float boxX = areaX + 4.0f;
+            float boxY = areaY + 4.0f;
+
+            ImGui.DrawRectFilledRounded(boxX, boxY, boxW, boxH,
+                                        0.0f, 0.0f, 0.0f, 0.55f, 6.0f);
+            ImGui.DrawText(boxX + padX, boxY + padY, statsText, 0.9f, 0.9f, 0.9f, 1.0f);
         }
 
         private static bool IsPointInsideRect(float px, float py, float x, float y, float width, float height)
@@ -1062,6 +1402,7 @@ namespace EngineEditor
             ImGui.DrawLine(_gameViewPosX, axisYTop, _gameViewPosX + _gameViewWidth, axisYTop, 0.2f, 0.95f, 0.2f, 0.95f, 2.0f);
 
             DrawCameraDebugBounds(centerX, centerY);
+            DrawUiCanvasBoundsOverlay();
 
             int entityCount = EntityManager.GetEntityCount();
             for (int i = 0; i < entityCount; ++i)
@@ -1233,6 +1574,64 @@ namespace EngineEditor
                 float cy = drawY + (sh * 0.5f);
                 ImGui.DrawLine(cx - 6.0f, cy, cx + 6.0f, cy, r, g, b, 0.9f, 1.0f);
                 ImGui.DrawLine(cx, cy - 6.0f, cx, cy + 6.0f, r, g, b, 0.9f, 1.0f);
+            }
+        }
+
+        private static void DrawUiCanvasBoundsOverlay()
+        {
+            int entityCount = EntityManager.GetEntityCount();
+            int canvasIndex = 0;
+
+            for (int i = 0; i < entityCount; ++i)
+            {
+                uint entityId = EntityManager.GetEntityIdAtIndex(i);
+                if (!EntityManager.HasUiCanvas(entityId))
+                    continue;
+
+                bool enabled;
+                int sortingOrder;
+                bool pixelPerfect;
+                int renderMode;
+                int targetDisplay;
+                uint additionalShaderChannels;
+                bool vertexColorAlwaysGammaSpace;
+                if (!EntityManager.GetUiCanvasSettingsV2(entityId,
+                                                         out enabled,
+                                                         out sortingOrder,
+                                                         out pixelPerfect,
+                                                         out renderMode,
+                                                         out targetDisplay,
+                                                         out additionalShaderChannels,
+                                                         out vertexColorAlwaysGammaSpace))
+                {
+                    continue;
+                }
+
+                if (!enabled || renderMode != UiCanvasRenderModeScreenSpaceOverlay)
+                    continue;
+
+                float inset = 1.0f + (canvasIndex * 3.0f);
+                float drawX = _gameViewPosX + inset;
+                float drawY = _gameViewPosY + inset;
+                float drawWidth = _gameViewWidth - (inset * 2.0f);
+                float drawHeight = _gameViewHeight - (inset * 2.0f);
+                if (drawWidth < 1.0f || drawHeight < 1.0f)
+                    continue;
+
+                bool selected = SelectedEntityId >= 0 && (uint)SelectedEntityId == entityId;
+                float alpha = selected ? 0.98f : 0.82f;
+                float thickness = selected ? 2.2f : 1.4f;
+                ImGui.DrawRect(drawX,
+                               drawY,
+                               drawWidth,
+                               drawHeight,
+                               0.96f,
+                               0.96f,
+                               0.96f,
+                               alpha,
+                               thickness);
+
+                ++canvasIndex;
             }
         }
     }

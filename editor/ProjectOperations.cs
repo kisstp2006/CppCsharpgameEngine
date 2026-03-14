@@ -165,10 +165,10 @@ namespace EngineEditor
             }
         }
 
-        public static void CreateProject(string projectPath,
-                                         string templateName,
-                                         bool generateStarterContent,
-                                         bool generateStarterScene)
+        public static string CreateProject(string projectPath,
+                                           string templateName,
+                                           bool generateStarterContent,
+                                           bool generateStarterScene)
         {
             try
             {
@@ -182,17 +182,20 @@ namespace EngineEditor
                                                     generateStarterContent,
                                                     generateStarterScene);
 
-                ProjectManager.RefreshProjectList();
                 OpenProject(finalProjectPath);
+                ProjectManager.RefreshProjectList();
 
                 if (resolvedConflict)
                     _statusMessage = "Project exists, created as: " + Path.GetFileName(finalProjectPath) + " (requested: " + requestedName + ").";
                 else
                     _statusMessage = "Created project: " + Path.GetFileName(finalProjectPath);
+
+                return finalProjectPath;
             }
             catch (Exception ex)
             {
                 _statusMessage = "Create failed: " + ex.Message;
+                return string.Empty;
             }
         }
 

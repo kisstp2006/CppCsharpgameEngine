@@ -82,3 +82,81 @@ struct AnimatorComponent
     float speed = 1.0f;
     bool applyPoseWhenStopped = true;
 };
+
+struct UiCanvasComponent
+{
+    static constexpr std::int32_t RenderModeScreenSpaceOverlay = 0;
+    static constexpr std::int32_t RenderModeScreenSpaceCamera = 1;
+    static constexpr std::int32_t RenderModeWorldSpace = 2;
+
+    static constexpr std::uint32_t AdditionalShaderChannelTexCoord1 = 1u << 0;
+    static constexpr std::uint32_t AdditionalShaderChannelTexCoord2 = 1u << 1;
+    static constexpr std::uint32_t AdditionalShaderChannelTexCoord3 = 1u << 2;
+    static constexpr std::uint32_t AdditionalShaderChannelNormal = 1u << 3;
+    static constexpr std::uint32_t AdditionalShaderChannelTangent = 1u << 4;
+
+    bool enabled = true;
+    std::int32_t renderMode = RenderModeScreenSpaceOverlay;
+    std::int32_t sortingOrder = 0;
+    bool pixelPerfect = false;
+    std::int32_t targetDisplay = 0;
+    std::uint32_t additionalShaderChannels = 0;
+    bool vertexColorAlwaysGammaSpace = false;
+};
+
+struct UiRectTransformComponent
+{
+    float anchorMinX = 0.5f;
+    float anchorMinY = 0.5f;
+    float anchorMaxX = 0.5f;
+    float anchorMaxY = 0.5f;
+
+    float pivotX = 0.5f;
+    float pivotY = 0.5f;
+
+    float anchoredX = 0.0f;
+    float anchoredY = 0.0f;
+    float sizeDeltaX = 100.0f;
+    float sizeDeltaY = 100.0f;
+};
+
+struct UiImageComponent
+{
+    bool enabled = true;
+    std::uint64_t textureAssetHandle = 0;
+    std::string textureAssetPath;
+    std::uint32_t color = 0xFFFFFFFFu;
+    bool preserveAspect = true;
+    float cornerRadius = 0.0f;
+};
+
+struct UiTextComponent
+{
+    bool enabled = true;
+    std::string text;
+    float fontSize = 16.0f;
+    std::uint32_t color = 0xFFFFFFFFu;
+    std::int32_t horizontalAlign = 0;
+    bool wrap = false;
+};
+
+struct UiButtonComponent
+{
+    bool enabled = true;
+    bool interactable = true;
+    std::uint32_t normalColor = 0x4A566EFF;
+    std::uint32_t highlightedColor = 0x5E6F8CFF;
+    std::uint32_t pressedColor = 0x3A465CFF;
+    std::uint32_t disabledColor = 0x4A4A4A88;
+};
+
+struct UiInputFieldComponent
+{
+    bool enabled = true;
+    bool interactable = true;
+    std::string text;
+    std::string placeholder;
+    std::uint32_t textColor = 0xF2F2F2FF;
+    std::uint32_t placeholderColor = 0xA0A0A0FF;
+    std::uint32_t maxLength = 0;
+};

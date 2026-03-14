@@ -9,6 +9,12 @@ namespace Engine
         public const int Sprite = 2;
         public const int Script = 3;
         public const int Animator = 4;
+        public const int UiCanvas = 5;
+        public const int UiRectTransform = 6;
+        public const int UiImage = 7;
+        public const int UiText = 8;
+        public const int UiButton = 9;
+        public const int UiInputField = 10;
     }
 
     public static class EntityManager
@@ -206,6 +212,196 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void SetAnimatorApplyPoseWhenStoppedInternal(uint entityId, bool value);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool HasUiCanvasInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void AddUiCanvasInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void RemoveUiCanvasInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool GetUiCanvasSettingsInternal(uint entityId,
+                                       out bool enabled,
+                                       out int sortingOrder,
+                                       out bool pixelPerfect,
+                                       out int renderMode,
+                                       out int targetDisplay,
+                                       out uint additionalShaderChannels,
+                                       out bool vertexColorAlwaysGammaSpace);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetUiCanvasSettingsInternal(uint entityId,
+                                       bool enabled,
+                                       int sortingOrder,
+                                       bool pixelPerfect,
+                                       int renderMode,
+                                       int targetDisplay,
+                                       uint additionalShaderChannels,
+                                       bool vertexColorAlwaysGammaSpace);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool HasUiRectTransformInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void AddUiRectTransformInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void RemoveUiRectTransformInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool GetUiRectTransformInternal(uint entityId,
+                                      out float anchorMinX,
+                                      out float anchorMinY,
+                                      out float anchorMaxX,
+                                      out float anchorMaxY,
+                                      out float pivotX,
+                                      out float pivotY,
+                                      out float anchoredX,
+                                      out float anchoredY,
+                                      out float sizeDeltaX,
+                                      out float sizeDeltaY);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetUiRectTransformInternal(uint entityId,
+                                      float anchorMinX,
+                                      float anchorMinY,
+                                      float anchorMaxX,
+                                      float anchorMaxY,
+                                      float pivotX,
+                                      float pivotY,
+                                      float anchoredX,
+                                      float anchoredY,
+                                      float sizeDeltaX,
+                                      float sizeDeltaY);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool HasUiImageInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void AddUiImageInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void RemoveUiImageInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool GetUiImageSettingsInternal(uint entityId,
+                                      out bool enabled,
+                                      out ulong textureAssetHandle,
+                                      out uint color,
+                                      out bool preserveAspect,
+                                      out float cornerRadius);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetUiImageSettingsInternal(uint entityId,
+                                      bool enabled,
+                                      ulong textureAssetHandle,
+                                      uint color,
+                                      bool preserveAspect,
+                                      float cornerRadius);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern string GetUiImageTexturePathInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetUiImageTexturePathInternal(uint entityId, string texturePath);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool HasUiTextInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void AddUiTextInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void RemoveUiTextInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool GetUiTextSettingsInternal(uint entityId,
+                                     out bool enabled,
+                                     out float fontSize,
+                                     out uint color,
+                                     out int horizontalAlign,
+                                     out bool wrap);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetUiTextSettingsInternal(uint entityId,
+                                     bool enabled,
+                                     float fontSize,
+                                     uint color,
+                                     int horizontalAlign,
+                                     bool wrap);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern string GetUiTextValueInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetUiTextValueInternal(uint entityId, string text);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool HasUiButtonInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void AddUiButtonInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void RemoveUiButtonInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool GetUiButtonSettingsInternal(uint entityId,
+                                       out bool enabled,
+                                       out bool interactable,
+                                       out uint normalColor,
+                                       out uint highlightedColor,
+                                       out uint pressedColor,
+                                       out uint disabledColor);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetUiButtonSettingsInternal(uint entityId,
+                                       bool enabled,
+                                       bool interactable,
+                                       uint normalColor,
+                                       uint highlightedColor,
+                                       uint pressedColor,
+                                       uint disabledColor);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool HasUiInputFieldInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void AddUiInputFieldInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void RemoveUiInputFieldInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool GetUiInputFieldSettingsInternal(uint entityId,
+                                       out bool enabled,
+                                       out bool interactable,
+                                       out uint textColor,
+                                       out uint placeholderColor,
+                                       out uint maxLength);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetUiInputFieldSettingsInternal(uint entityId,
+                                       bool enabled,
+                                       bool interactable,
+                                       uint textColor,
+                                       uint placeholderColor,
+                                       uint maxLength);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern string GetUiInputFieldTextInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetUiInputFieldTextInternal(uint entityId, string text);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern string GetUiInputFieldPlaceholderInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetUiInputFieldPlaceholderInternal(uint entityId, string placeholder);
 
         public static uint CreateEntity()
         {
@@ -550,6 +746,402 @@ namespace Engine
         public static void SetAnimatorApplyPoseWhenStopped(uint entityId, bool value)
         {
             SetAnimatorApplyPoseWhenStoppedInternal(entityId, value);
+        }
+
+        public static bool HasUiCanvas(uint entityId)
+        {
+            return HasUiCanvasInternal(entityId);
+        }
+
+        public static void AddUiCanvas(uint entityId)
+        {
+            AddUiCanvasInternal(entityId);
+        }
+
+        public static void RemoveUiCanvas(uint entityId)
+        {
+            RemoveUiCanvasInternal(entityId);
+        }
+
+        public static bool GetUiCanvasSettings(uint entityId,
+                                               out bool enabled,
+                                               out int sortingOrder,
+                                               out bool pixelPerfect)
+        {
+            int renderMode;
+            int targetDisplay;
+            uint additionalShaderChannels;
+            bool vertexColorAlwaysGammaSpace;
+            return GetUiCanvasSettingsInternal(entityId,
+                                               out enabled,
+                                               out sortingOrder,
+                                               out pixelPerfect,
+                                               out renderMode,
+                                               out targetDisplay,
+                                               out additionalShaderChannels,
+                                               out vertexColorAlwaysGammaSpace);
+        }
+
+        public static void SetUiCanvasSettings(uint entityId,
+                                               bool enabled,
+                                               int sortingOrder,
+                                               bool pixelPerfect)
+        {
+            bool currentEnabled;
+            int currentSortingOrder;
+            bool currentPixelPerfect;
+            int currentRenderMode;
+            int currentTargetDisplay;
+            uint currentAdditionalShaderChannels;
+            bool currentVertexColorAlwaysGammaSpace;
+
+            if (!GetUiCanvasSettingsInternal(entityId,
+                                            out currentEnabled,
+                                            out currentSortingOrder,
+                                            out currentPixelPerfect,
+                                            out currentRenderMode,
+                                            out currentTargetDisplay,
+                                            out currentAdditionalShaderChannels,
+                                            out currentVertexColorAlwaysGammaSpace))
+            {
+                return;
+            }
+
+            SetUiCanvasSettingsInternal(entityId,
+                                        enabled,
+                                        sortingOrder,
+                                        pixelPerfect,
+                                        currentRenderMode,
+                                        currentTargetDisplay,
+                                        currentAdditionalShaderChannels,
+                                        currentVertexColorAlwaysGammaSpace);
+        }
+
+        public static bool GetUiCanvasSettingsV2(uint entityId,
+                                                 out bool enabled,
+                                                 out int sortingOrder,
+                                                 out bool pixelPerfect,
+                                                 out int renderMode,
+                                                 out int targetDisplay,
+                                                 out uint additionalShaderChannels,
+                                                 out bool vertexColorAlwaysGammaSpace)
+        {
+            return GetUiCanvasSettingsInternal(entityId,
+                                               out enabled,
+                                               out sortingOrder,
+                                               out pixelPerfect,
+                                               out renderMode,
+                                               out targetDisplay,
+                                               out additionalShaderChannels,
+                                               out vertexColorAlwaysGammaSpace);
+        }
+
+        public static void SetUiCanvasSettingsV2(uint entityId,
+                                                 bool enabled,
+                                                 int sortingOrder,
+                                                 bool pixelPerfect,
+                                                 int renderMode,
+                                                 int targetDisplay,
+                                                 uint additionalShaderChannels,
+                                                 bool vertexColorAlwaysGammaSpace)
+        {
+            SetUiCanvasSettingsInternal(entityId,
+                                        enabled,
+                                        sortingOrder,
+                                        pixelPerfect,
+                                        renderMode,
+                                        targetDisplay,
+                                        additionalShaderChannels,
+                                        vertexColorAlwaysGammaSpace);
+        }
+
+        public static bool HasUiRectTransform(uint entityId)
+        {
+            return HasUiRectTransformInternal(entityId);
+        }
+
+        public static void AddUiRectTransform(uint entityId)
+        {
+            AddUiRectTransformInternal(entityId);
+        }
+
+        public static void RemoveUiRectTransform(uint entityId)
+        {
+            RemoveUiRectTransformInternal(entityId);
+        }
+
+        public static bool GetUiRectTransform(uint entityId,
+                                              out float anchorMinX,
+                                              out float anchorMinY,
+                                              out float anchorMaxX,
+                                              out float anchorMaxY,
+                                              out float pivotX,
+                                              out float pivotY,
+                                              out float anchoredX,
+                                              out float anchoredY,
+                                              out float sizeDeltaX,
+                                              out float sizeDeltaY)
+        {
+            return GetUiRectTransformInternal(entityId,
+                                              out anchorMinX,
+                                              out anchorMinY,
+                                              out anchorMaxX,
+                                              out anchorMaxY,
+                                              out pivotX,
+                                              out pivotY,
+                                              out anchoredX,
+                                              out anchoredY,
+                                              out sizeDeltaX,
+                                              out sizeDeltaY);
+        }
+
+        public static void SetUiRectTransform(uint entityId,
+                                              float anchorMinX,
+                                              float anchorMinY,
+                                              float anchorMaxX,
+                                              float anchorMaxY,
+                                              float pivotX,
+                                              float pivotY,
+                                              float anchoredX,
+                                              float anchoredY,
+                                              float sizeDeltaX,
+                                              float sizeDeltaY)
+        {
+            SetUiRectTransformInternal(entityId,
+                                       anchorMinX,
+                                       anchorMinY,
+                                       anchorMaxX,
+                                       anchorMaxY,
+                                       pivotX,
+                                       pivotY,
+                                       anchoredX,
+                                       anchoredY,
+                                       sizeDeltaX,
+                                       sizeDeltaY);
+        }
+
+        public static bool HasUiImage(uint entityId)
+        {
+            return HasUiImageInternal(entityId);
+        }
+
+        public static void AddUiImage(uint entityId)
+        {
+            AddUiImageInternal(entityId);
+        }
+
+        public static void RemoveUiImage(uint entityId)
+        {
+            RemoveUiImageInternal(entityId);
+        }
+
+        public static bool GetUiImageSettings(uint entityId,
+                                              out bool enabled,
+                                              out ulong textureAssetHandle,
+                                              out uint color,
+                                              out bool preserveAspect,
+                                              out float cornerRadius)
+        {
+            return GetUiImageSettingsInternal(entityId,
+                                              out enabled,
+                                              out textureAssetHandle,
+                                              out color,
+                                              out preserveAspect,
+                                              out cornerRadius);
+        }
+
+        public static void SetUiImageSettings(uint entityId,
+                                              bool enabled,
+                                              ulong textureAssetHandle,
+                                              uint color,
+                                              bool preserveAspect,
+                                              float cornerRadius)
+        {
+            SetUiImageSettingsInternal(entityId,
+                                       enabled,
+                                       textureAssetHandle,
+                                       color,
+                                       preserveAspect,
+                                       cornerRadius);
+        }
+
+        public static string GetUiImageTexturePath(uint entityId)
+        {
+            return GetUiImageTexturePathInternal(entityId);
+        }
+
+        public static void SetUiImageTexturePath(uint entityId, string texturePath)
+        {
+            SetUiImageTexturePathInternal(entityId, texturePath);
+        }
+
+        public static bool HasUiText(uint entityId)
+        {
+            return HasUiTextInternal(entityId);
+        }
+
+        public static void AddUiText(uint entityId)
+        {
+            AddUiTextInternal(entityId);
+        }
+
+        public static void RemoveUiText(uint entityId)
+        {
+            RemoveUiTextInternal(entityId);
+        }
+
+        public static bool GetUiTextSettings(uint entityId,
+                                             out bool enabled,
+                                             out float fontSize,
+                                             out uint color,
+                                             out int horizontalAlign,
+                                             out bool wrap)
+        {
+            return GetUiTextSettingsInternal(entityId,
+                                             out enabled,
+                                             out fontSize,
+                                             out color,
+                                             out horizontalAlign,
+                                             out wrap);
+        }
+
+        public static void SetUiTextSettings(uint entityId,
+                                             bool enabled,
+                                             float fontSize,
+                                             uint color,
+                                             int horizontalAlign,
+                                             bool wrap)
+        {
+            SetUiTextSettingsInternal(entityId,
+                                      enabled,
+                                      fontSize,
+                                      color,
+                                      horizontalAlign,
+                                      wrap);
+        }
+
+        public static string GetUiTextValue(uint entityId)
+        {
+            return GetUiTextValueInternal(entityId);
+        }
+
+        public static void SetUiTextValue(uint entityId, string text)
+        {
+            SetUiTextValueInternal(entityId, text);
+        }
+
+        public static bool HasUiButton(uint entityId)
+        {
+            return HasUiButtonInternal(entityId);
+        }
+
+        public static void AddUiButton(uint entityId)
+        {
+            AddUiButtonInternal(entityId);
+        }
+
+        public static void RemoveUiButton(uint entityId)
+        {
+            RemoveUiButtonInternal(entityId);
+        }
+
+        public static bool GetUiButtonSettings(uint entityId,
+                                               out bool enabled,
+                                               out bool interactable,
+                                               out uint normalColor,
+                                               out uint highlightedColor,
+                                               out uint pressedColor,
+                                               out uint disabledColor)
+        {
+            return GetUiButtonSettingsInternal(entityId,
+                                               out enabled,
+                                               out interactable,
+                                               out normalColor,
+                                               out highlightedColor,
+                                               out pressedColor,
+                                               out disabledColor);
+        }
+
+        public static void SetUiButtonSettings(uint entityId,
+                                               bool enabled,
+                                               bool interactable,
+                                               uint normalColor,
+                                               uint highlightedColor,
+                                               uint pressedColor,
+                                               uint disabledColor)
+        {
+            SetUiButtonSettingsInternal(entityId,
+                                        enabled,
+                                        interactable,
+                                        normalColor,
+                                        highlightedColor,
+                                        pressedColor,
+                                        disabledColor);
+        }
+
+        public static bool HasUiInputField(uint entityId)
+        {
+            return HasUiInputFieldInternal(entityId);
+        }
+
+        public static void AddUiInputField(uint entityId)
+        {
+            AddUiInputFieldInternal(entityId);
+        }
+
+        public static void RemoveUiInputField(uint entityId)
+        {
+            RemoveUiInputFieldInternal(entityId);
+        }
+
+        public static bool GetUiInputFieldSettings(uint entityId,
+                                                   out bool enabled,
+                                                   out bool interactable,
+                                                   out uint textColor,
+                                                   out uint placeholderColor,
+                                                   out uint maxLength)
+        {
+            return GetUiInputFieldSettingsInternal(entityId,
+                                                   out enabled,
+                                                   out interactable,
+                                                   out textColor,
+                                                   out placeholderColor,
+                                                   out maxLength);
+        }
+
+        public static void SetUiInputFieldSettings(uint entityId,
+                                                   bool enabled,
+                                                   bool interactable,
+                                                   uint textColor,
+                                                   uint placeholderColor,
+                                                   uint maxLength)
+        {
+            SetUiInputFieldSettingsInternal(entityId,
+                                            enabled,
+                                            interactable,
+                                            textColor,
+                                            placeholderColor,
+                                            maxLength);
+        }
+
+        public static string GetUiInputFieldText(uint entityId)
+        {
+            return GetUiInputFieldTextInternal(entityId);
+        }
+
+        public static void SetUiInputFieldText(uint entityId, string text)
+        {
+            SetUiInputFieldTextInternal(entityId, text);
+        }
+
+        public static string GetUiInputFieldPlaceholder(uint entityId)
+        {
+            return GetUiInputFieldPlaceholderInternal(entityId);
+        }
+
+        public static void SetUiInputFieldPlaceholder(uint entityId, string placeholder)
+        {
+            SetUiInputFieldPlaceholderInternal(entityId, placeholder);
         }
     }
 }

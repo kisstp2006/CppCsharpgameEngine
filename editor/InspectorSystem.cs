@@ -9,7 +9,6 @@ namespace EngineEditor
     internal static class InspectorSystem
     {
         private static bool _componentRegistryInitialized;
-        private static readonly List<ComponentInspectorEntry> _componentEntries = new List<ComponentInspectorEntry>();
         private static readonly Dictionary<uint, string> _scriptAssignmentErrors = new Dictionary<uint, string>();
         private static readonly Dictionary<string, bool> _componentFoldoutStates = new Dictionary<string, bool>();
         private static readonly Dictionary<uint, List<int>> _componentOrderByEntity = new Dictionary<uint, List<int>>();
@@ -32,20 +31,30 @@ namespace EngineEditor
 
         private static readonly string[] _layerOptions = BuildLayerOptions();
 
+        private const int UiCanvasRenderModeScreenSpaceOverlay = 0;
+        private const int UiCanvasRenderModeScreenSpaceCamera = 1;
+        private const int UiCanvasRenderModeWorldSpace = 2;
+
+        private const uint UiCanvasAdditionalShaderChannelTexCoord1 = 1u << 0;
+        private const uint UiCanvasAdditionalShaderChannelTexCoord2 = 1u << 1;
+        private const uint UiCanvasAdditionalShaderChannelTexCoord3 = 1u << 2;
+        private const uint UiCanvasAdditionalShaderChannelNormal = 1u << 3;
+        private const uint UiCanvasAdditionalShaderChannelTangent = 1u << 4;
+
+        private static readonly string[] _uiCanvasRenderModeOptions = new[]
+        {
+            "Screen Space - Overlay",
+            "Screen Space - Camera",
+            "World Space",
+        };
+
         private static int SelectedEntityId
         {
             get => EditorContext.SelectedEntityId;
             set => EditorContext.SelectedEntityId = value;
         }
 
-        private sealed class ComponentInspectorEntry
-        {
-            public string Name;
-            public string Category;
-            public int ComponentType;
-            public bool CanRemove;
-            public Action<uint> Draw;
-        }
+
 
         private enum ComponentCardAction
         {
@@ -103,13 +112,13 @@ namespace EngineEditor
                         float dropZoneWidth = ImGui.GetContentRegionAvailX();
                         float dropZoneHeight = ImGui.GetContentRegionAvailY();
 
-                        List<ComponentInspectorEntry> orderedEntries = GetOrderedComponentEntries(entityId);
+                        List<ComponentRegistryEntry> orderedEntries = GetOrderedComponentEntries(entityId);
                         if (_draggingComponentType >= 0 && _dragSourceEntityId == entityId)
                             _hoveredDropComponentType = -1;
 
                         for (int i = 0; i < orderedEntries.Count; ++i)
                         {
-                            ComponentInspectorEntry entry = orderedEntries[i];
+                            ComponentRegistryEntry entry = orderedEntries[i];
                             bool canMoveUp = entry.ComponentType != ComponentType.Transform
                                              && i > 0
                                              && orderedEntries[i - 1].ComponentType != ComponentType.Transform;
@@ -154,7 +163,7 @@ namespace EngineEditor
                 return;
 
             _componentRegistryInitialized = true;
-            InitializeComponentRegistry();
+            ComponentRegistry.EnsureInitialized();
         }
 
         private static bool DrawEntityHeaderInspector(uint entityId)
@@ -164,7 +173,10 @@ namespace EngineEditor
 
             if (ImGui.Button("Delete Entity"))
             {
-                EntityManager.DestroyEntity(entityId);
+                if (HierarchyWindow.Instance != null)
+                    HierarchyWindow.Instance.DeleteEntity(entityId);
+                else
+                    EntityManager.DestroyEntity(entityId);
                 SelectedEntityId = -1;
                 return false;
             }
@@ -203,7 +215,7 @@ namespace EngineEditor
         }
 
         private static ComponentCardAction DrawComponentCard(uint entityId,
-                                     ComponentInspectorEntry entry,
+                                     ComponentRegistryEntry entry,
                                      bool canMoveUp,
                                      bool canMoveDown)
         {
@@ -271,19 +283,20 @@ namespace EngineEditor
             }
 
             if (expanded)
-                entry.Draw(entityId);
+                entry.DrawInspector(entityId);
 
             return ComponentCardAction.None;
         }
 
-        private static List<ComponentInspectorEntry> GetOrderedComponentEntries(uint entityId)
+        private static List<ComponentRegistryEntry> GetOrderedComponentEntries(uint entityId)
         {
-            var attachedEntriesByType = new Dictionary<int, ComponentInspectorEntry>();
+            var attachedEntriesByType = new Dictionary<int, ComponentRegistryEntry>();
             var attachedTypes = new List<int>();
 
-            for (int i = 0; i < _componentEntries.Count; ++i)
+            var allEntries = ComponentRegistry.Entries;
+            for (int i = 0; i < allEntries.Count; ++i)
             {
-                ComponentInspectorEntry entry = _componentEntries[i];
+                ComponentRegistryEntry entry = allEntries[i];
                 if (!EntityManager.HasComponent(entityId, entry.ComponentType))
                     continue;
 
@@ -310,11 +323,11 @@ namespace EngineEditor
                     order.Add(attachedType);
             }
 
-            var orderedEntries = new List<ComponentInspectorEntry>();
+            var orderedEntries = new List<ComponentRegistryEntry>();
             for (int i = 0; i < order.Count; ++i)
             {
                 int orderedType = order[i];
-                if (attachedEntriesByType.TryGetValue(orderedType, out ComponentInspectorEntry entry))
+                if (attachedEntriesByType.TryGetValue(orderedType, out ComponentRegistryEntry entry))
                     orderedEntries.Add(entry);
             }
 
@@ -644,6 +657,71 @@ namespace EngineEditor
                 return true;
             }
 
+            if (componentType == ComponentType.UiCanvas)
+            {
+                int sortingOrder;
+                bool pixelPerfect;
+                return EntityManager.GetUiCanvasSettings(entityId, out enabled, out sortingOrder, out pixelPerfect);
+            }
+
+            if (componentType == ComponentType.UiImage)
+            {
+                ulong textureAssetHandle;
+                uint color;
+                bool preserveAspect;
+                float cornerRadius;
+                return EntityManager.GetUiImageSettings(entityId,
+                                                        out enabled,
+                                                        out textureAssetHandle,
+                                                        out color,
+                                                        out preserveAspect,
+                                                        out cornerRadius);
+            }
+
+            if (componentType == ComponentType.UiText)
+            {
+                float fontSize;
+                uint color;
+                int horizontalAlign;
+                bool wrap;
+                return EntityManager.GetUiTextSettings(entityId,
+                                                       out enabled,
+                                                       out fontSize,
+                                                       out color,
+                                                       out horizontalAlign,
+                                                       out wrap);
+            }
+
+            if (componentType == ComponentType.UiButton)
+            {
+                bool interactable;
+                uint normalColor;
+                uint highlightedColor;
+                uint pressedColor;
+                uint disabledColor;
+                return EntityManager.GetUiButtonSettings(entityId,
+                                                         out enabled,
+                                                         out interactable,
+                                                         out normalColor,
+                                                         out highlightedColor,
+                                                         out pressedColor,
+                                                         out disabledColor);
+            }
+
+            if (componentType == ComponentType.UiInputField)
+            {
+                bool interactable;
+                uint textColor;
+                uint placeholderColor;
+                uint maxLength;
+                return EntityManager.GetUiInputFieldSettings(entityId,
+                                                             out enabled,
+                                                             out interactable,
+                                                             out textColor,
+                                                             out placeholderColor,
+                                                             out maxLength);
+            }
+
             return false;
         }
 
@@ -668,7 +746,121 @@ namespace EngineEditor
             }
 
             if (componentType == ComponentType.Animator)
+            {
                 EditorBridge.SetAnimatorEnabled(entityId, enabled);
+                return;
+            }
+
+            if (componentType == ComponentType.UiCanvas)
+            {
+                int sortingOrder;
+                bool pixelPerfect;
+                bool currentEnabled;
+                if (EntityManager.GetUiCanvasSettings(entityId, out currentEnabled, out sortingOrder, out pixelPerfect))
+                    EntityManager.SetUiCanvasSettings(entityId, enabled, sortingOrder, pixelPerfect);
+                return;
+            }
+
+            if (componentType == ComponentType.UiImage)
+            {
+                ulong textureAssetHandle;
+                uint color;
+                bool preserveAspect;
+                float cornerRadius;
+                bool currentEnabled;
+                if (EntityManager.GetUiImageSettings(entityId,
+                                                     out currentEnabled,
+                                                     out textureAssetHandle,
+                                                     out color,
+                                                     out preserveAspect,
+                                                     out cornerRadius))
+                {
+                    EntityManager.SetUiImageSettings(entityId,
+                                                     enabled,
+                                                     textureAssetHandle,
+                                                     color,
+                                                     preserveAspect,
+                                                     cornerRadius);
+                }
+
+                return;
+            }
+
+            if (componentType == ComponentType.UiText)
+            {
+                float fontSize;
+                uint color;
+                int horizontalAlign;
+                bool wrap;
+                bool currentEnabled;
+                if (EntityManager.GetUiTextSettings(entityId,
+                                                    out currentEnabled,
+                                                    out fontSize,
+                                                    out color,
+                                                    out horizontalAlign,
+                                                    out wrap))
+                {
+                    EntityManager.SetUiTextSettings(entityId,
+                                                    enabled,
+                                                    fontSize,
+                                                    color,
+                                                    horizontalAlign,
+                                                    wrap);
+                }
+
+                return;
+            }
+
+            if (componentType == ComponentType.UiButton)
+            {
+                bool interactable;
+                uint normalColor;
+                uint highlightedColor;
+                uint pressedColor;
+                uint disabledColor;
+                bool currentEnabled;
+                if (EntityManager.GetUiButtonSettings(entityId,
+                                                      out currentEnabled,
+                                                      out interactable,
+                                                      out normalColor,
+                                                      out highlightedColor,
+                                                      out pressedColor,
+                                                      out disabledColor))
+                {
+                    EntityManager.SetUiButtonSettings(entityId,
+                                                      enabled,
+                                                      interactable,
+                                                      normalColor,
+                                                      highlightedColor,
+                                                      pressedColor,
+                                                      disabledColor);
+                }
+
+                return;
+            }
+
+            if (componentType == ComponentType.UiInputField)
+            {
+                bool interactable;
+                uint textColor;
+                uint placeholderColor;
+                uint maxLength;
+                bool currentEnabled;
+                if (EntityManager.GetUiInputFieldSettings(entityId,
+                                                          out currentEnabled,
+                                                          out interactable,
+                                                          out textColor,
+                                                          out placeholderColor,
+                                                          out maxLength))
+                {
+                    EntityManager.SetUiInputFieldSettings(entityId,
+                                                          enabled,
+                                                          interactable,
+                                                          textColor,
+                                                          placeholderColor,
+                                                          maxLength);
+                }
+            }
         }
 
         private static bool TryGetCameraEnabled(uint entityId, out bool enabled)
@@ -835,6 +1027,51 @@ namespace EngineEditor
             return true;
         }
 
+        private static string UiCanvasRenderModeToLabel(int renderMode)
+        {
+            if (renderMode == UiCanvasRenderModeScreenSpaceCamera)
+                return _uiCanvasRenderModeOptions[1];
+
+            if (renderMode == UiCanvasRenderModeWorldSpace)
+                return _uiCanvasRenderModeOptions[2];
+
+            return _uiCanvasRenderModeOptions[0];
+        }
+
+        private static int UiCanvasLabelToRenderMode(string label, int fallback)
+        {
+            if (string.Equals(label, _uiCanvasRenderModeOptions[1], StringComparison.Ordinal))
+                return UiCanvasRenderModeScreenSpaceCamera;
+
+            if (string.Equals(label, _uiCanvasRenderModeOptions[2], StringComparison.Ordinal))
+                return UiCanvasRenderModeWorldSpace;
+
+            if (string.Equals(label, _uiCanvasRenderModeOptions[0], StringComparison.Ordinal))
+                return UiCanvasRenderModeScreenSpaceOverlay;
+
+            return fallback;
+        }
+
+        private static string FormatUiCanvasShaderChannels(uint mask)
+        {
+            if (mask == 0u)
+                return "None";
+
+            var labels = new List<string>();
+            if ((mask & UiCanvasAdditionalShaderChannelTexCoord1) != 0u)
+                labels.Add("TexCoord1");
+            if ((mask & UiCanvasAdditionalShaderChannelTexCoord2) != 0u)
+                labels.Add("TexCoord2");
+            if ((mask & UiCanvasAdditionalShaderChannelTexCoord3) != 0u)
+                labels.Add("TexCoord3");
+            if ((mask & UiCanvasAdditionalShaderChannelNormal) != 0u)
+                labels.Add("Normal");
+            if ((mask & UiCanvasAdditionalShaderChannelTangent) != 0u)
+                labels.Add("Tangent");
+
+            return labels.Count == 0 ? "None" : string.Join(", ", labels.ToArray());
+        }
+
         private static string FormatLayerMaskSummary(uint mask)
         {
             if (mask == 0u)
@@ -904,56 +1141,40 @@ namespace EngineEditor
             return changed;
         }
 
-        private static void InitializeComponentRegistry()
+        public static void RegisterBuiltInComponents()
         {
-            RegisterInspectorComponent("Transform",
-                                       "Core",
-                                       ComponentType.Transform,
-                                       DrawTransformInspector,
-                                       false);
+            ComponentRegistry.Register("Transform", "Core", ComponentType.Transform,
+                                       DrawTransformInspector, false, false);
 
-            RegisterInspectorComponent("Sprite",
-                                       "Rendering",
-                                       ComponentType.Sprite,
-                                       DrawSpriteInspector,
-                                       true);
+            ComponentRegistry.Register("Sprite", "Rendering", ComponentType.Sprite,
+                                       DrawSpriteInspector, true);
 
-            RegisterInspectorComponent("Camera",
-                                       "Rendering",
-                                       ComponentType.Camera,
-                                       DrawCameraInspector,
-                                       true);
+            ComponentRegistry.Register("Camera", "Rendering", ComponentType.Camera,
+                                       DrawCameraInspector, true);
 
-            RegisterInspectorComponent("Script",
-                                       "Logic",
-                                       ComponentType.Script,
-                                       DrawScriptInspector,
-                                       true);
+            ComponentRegistry.Register("Script", "Logic", ComponentType.Script,
+                                       DrawScriptInspector, true);
 
-            RegisterInspectorComponent("Animator",
-                                       "Animation",
-                                       ComponentType.Animator,
-                                       DrawAnimatorInspector,
-                                       true);
-        }
+            ComponentRegistry.Register("Animator", "Animation", ComponentType.Animator,
+                                       DrawAnimatorInspector, true);
 
-        private static void RegisterInspectorComponent(string name,
-                                                       string category,
-                                                       int componentType,
-                                                       Action<uint> draw,
-                                                       bool canRemove)
-        {
-            string resolvedCategory = category;
-            if (string.IsNullOrEmpty(resolvedCategory))
-                resolvedCategory = "Others";
+            ComponentRegistry.Register("UI Canvas", "UI", ComponentType.UiCanvas,
+                                       DrawUiCanvasInspector, true);
 
-            var entry = new ComponentInspectorEntry();
-            entry.Name = name;
-            entry.Category = resolvedCategory;
-            entry.ComponentType = componentType;
-            entry.CanRemove = canRemove;
-            entry.Draw = draw;
-            _componentEntries.Add(entry);
+            ComponentRegistry.Register("UI RectTransform", "UI", ComponentType.UiRectTransform,
+                                       DrawUiRectTransformInspector, true);
+
+            ComponentRegistry.Register("UI Image", "UI", ComponentType.UiImage,
+                                       DrawUiImageInspector, true);
+
+            ComponentRegistry.Register("UI Text", "UI", ComponentType.UiText,
+                                       DrawUiTextInspector, true);
+
+            ComponentRegistry.Register("UI Button", "UI", ComponentType.UiButton,
+                                       DrawUiButtonInspector, true);
+
+            ComponentRegistry.Register("UI InputField", "UI", ComponentType.UiInputField,
+                                       DrawUiInputFieldInspector, true);
         }
 
         private static void DrawAddComponentMenu(uint entityId)
@@ -964,11 +1185,12 @@ namespace EngineEditor
             if (!ImGui.BeginPopupModal("Add Component Popup"))
                 return;
 
+            var allEntries = ComponentRegistry.Entries;
             bool hasAnyAddable = false;
             var categories = new List<string>();
-            for (int i = 0; i < _componentEntries.Count; ++i)
+            for (int i = 0; i < allEntries.Count; ++i)
             {
-                ComponentInspectorEntry entry = _componentEntries[i];
+                ComponentRegistryEntry entry = allEntries[i];
                 if (EntityManager.HasComponent(entityId, entry.ComponentType))
                     continue;
 
@@ -998,9 +1220,9 @@ namespace EngineEditor
                     string category = categories[c];
                     ImGui.Text(category);
 
-                    for (int i = 0; i < _componentEntries.Count; ++i)
+                    for (int i = 0; i < allEntries.Count; ++i)
                     {
-                        ComponentInspectorEntry entry = _componentEntries[i];
+                        ComponentRegistryEntry entry = allEntries[i];
                         if (entry.Category != category || EntityManager.HasComponent(entityId, entry.ComponentType))
                             continue;
 
@@ -1554,6 +1776,417 @@ namespace EngineEditor
                 EntityManager.SetAnimatorTime(entityId, time);
                 EntityManager.SetAnimatorPlaying(entityId, false);
             }
+        }
+
+        private static void DrawUiCanvasInspector(uint entityId)
+        {
+            bool enabled;
+            int sortingOrder;
+            bool pixelPerfect;
+            int renderMode;
+            int targetDisplay;
+            uint additionalShaderChannels;
+            bool vertexColorAlwaysGammaSpace;
+            if (!EntityManager.GetUiCanvasSettingsV2(entityId,
+                                                     out enabled,
+                                                     out sortingOrder,
+                                                     out pixelPerfect,
+                                                     out renderMode,
+                                                     out targetDisplay,
+                                                     out additionalShaderChannels,
+                                                     out vertexColorAlwaysGammaSpace))
+            {
+                ImGui.Text("UI Canvas data unavailable.");
+                return;
+            }
+
+            bool changed = false;
+            string renderModeLabel = UiCanvasRenderModeToLabel(renderMode);
+            if (InspectorInputs.SelectString("Render Mode", ref renderModeLabel, _uiCanvasRenderModeOptions))
+            {
+                int parsedRenderMode = UiCanvasLabelToRenderMode(renderModeLabel, renderMode);
+                if (parsedRenderMode != renderMode)
+                {
+                    renderMode = parsedRenderMode;
+                    changed = true;
+                }
+            }
+
+            float sortingOrderFloat = sortingOrder;
+            if (ImGui.InputFloat("Sort Order", ref sortingOrderFloat, 1.0f))
+            {
+                sortingOrder = (int)Math.Round(sortingOrderFloat);
+                changed = true;
+            }
+
+            changed |= InspectorInputs.Bool("Pixel Perfect", ref pixelPerfect);
+
+            float targetDisplayIndex = targetDisplay + 1;
+            if (ImGui.InputFloat("Target Display", ref targetDisplayIndex, 1.0f))
+            {
+                int resolvedTargetDisplay = (int)Math.Round(targetDisplayIndex) - 1;
+                if (resolvedTargetDisplay < 0)
+                    resolvedTargetDisplay = 0;
+                if (resolvedTargetDisplay > 7)
+                    resolvedTargetDisplay = 7;
+
+                if (resolvedTargetDisplay != targetDisplay)
+                {
+                    targetDisplay = resolvedTargetDisplay;
+                    changed = true;
+                }
+            }
+
+            ImGui.Text("Additional Shader Channels: " + FormatUiCanvasShaderChannels(additionalShaderChannels));
+
+            bool texCoord1 = (additionalShaderChannels & UiCanvasAdditionalShaderChannelTexCoord1) != 0u;
+            if (InspectorInputs.Bool("TexCoord1", ref texCoord1))
+            {
+                additionalShaderChannels = texCoord1
+                    ? (additionalShaderChannels | UiCanvasAdditionalShaderChannelTexCoord1)
+                    : (additionalShaderChannels & ~UiCanvasAdditionalShaderChannelTexCoord1);
+                changed = true;
+            }
+
+            bool texCoord2 = (additionalShaderChannels & UiCanvasAdditionalShaderChannelTexCoord2) != 0u;
+            if (InspectorInputs.Bool("TexCoord2", ref texCoord2))
+            {
+                additionalShaderChannels = texCoord2
+                    ? (additionalShaderChannels | UiCanvasAdditionalShaderChannelTexCoord2)
+                    : (additionalShaderChannels & ~UiCanvasAdditionalShaderChannelTexCoord2);
+                changed = true;
+            }
+
+            bool texCoord3 = (additionalShaderChannels & UiCanvasAdditionalShaderChannelTexCoord3) != 0u;
+            if (InspectorInputs.Bool("TexCoord3", ref texCoord3))
+            {
+                additionalShaderChannels = texCoord3
+                    ? (additionalShaderChannels | UiCanvasAdditionalShaderChannelTexCoord3)
+                    : (additionalShaderChannels & ~UiCanvasAdditionalShaderChannelTexCoord3);
+                changed = true;
+            }
+
+            bool normal = (additionalShaderChannels & UiCanvasAdditionalShaderChannelNormal) != 0u;
+            if (InspectorInputs.Bool("Normal", ref normal))
+            {
+                additionalShaderChannels = normal
+                    ? (additionalShaderChannels | UiCanvasAdditionalShaderChannelNormal)
+                    : (additionalShaderChannels & ~UiCanvasAdditionalShaderChannelNormal);
+                changed = true;
+            }
+
+            bool tangent = (additionalShaderChannels & UiCanvasAdditionalShaderChannelTangent) != 0u;
+            if (InspectorInputs.Bool("Tangent", ref tangent))
+            {
+                additionalShaderChannels = tangent
+                    ? (additionalShaderChannels | UiCanvasAdditionalShaderChannelTangent)
+                    : (additionalShaderChannels & ~UiCanvasAdditionalShaderChannelTangent);
+                changed = true;
+            }
+
+            changed |= InspectorInputs.Bool("Vertex Color Always Gamma", ref vertexColorAlwaysGammaSpace);
+
+            if (renderMode != UiCanvasRenderModeScreenSpaceOverlay)
+                ImGui.Text("Selected render mode is reserved; runtime currently renders Overlay mode.");
+
+            if ((additionalShaderChannels & (UiCanvasAdditionalShaderChannelNormal | UiCanvasAdditionalShaderChannelTangent)) != 0u)
+                ImGui.Text("Normal/Tangent channels are usually unnecessary for Overlay canvas rendering.");
+
+            if (vertexColorAlwaysGammaSpace)
+                ImGui.Text("Gamma vertex color keeps UI color precision when converting to linear space.");
+
+            if (changed)
+            {
+                EntityManager.SetUiCanvasSettingsV2(entityId,
+                                                    enabled,
+                                                    sortingOrder,
+                                                    pixelPerfect,
+                                                    renderMode,
+                                                    targetDisplay,
+                                                    additionalShaderChannels,
+                                                    vertexColorAlwaysGammaSpace);
+            }
+        }
+
+        private static void DrawUiRectTransformInspector(uint entityId)
+        {
+            float anchorMinX;
+            float anchorMinY;
+            float anchorMaxX;
+            float anchorMaxY;
+            float pivotX;
+            float pivotY;
+            float anchoredX;
+            float anchoredY;
+            float sizeDeltaX;
+            float sizeDeltaY;
+
+            if (!EntityManager.GetUiRectTransform(entityId,
+                                                  out anchorMinX,
+                                                  out anchorMinY,
+                                                  out anchorMaxX,
+                                                  out anchorMaxY,
+                                                  out pivotX,
+                                                  out pivotY,
+                                                  out anchoredX,
+                                                  out anchoredY,
+                                                  out sizeDeltaX,
+                                                  out sizeDeltaY))
+            {
+                ImGui.Text("UI RectTransform data unavailable.");
+                return;
+            }
+
+            bool changed = false;
+            changed |= InspectorInputs.Vector2("Anchor Min", ref anchorMinX, ref anchorMinY, 0.01f);
+            changed |= InspectorInputs.Vector2("Anchor Max", ref anchorMaxX, ref anchorMaxY, 0.01f);
+            changed |= InspectorInputs.Vector2("Pivot", ref pivotX, ref pivotY, 0.01f);
+            changed |= InspectorInputs.Vector2("Anchored Position", ref anchoredX, ref anchoredY, 1.0f);
+            changed |= InspectorInputs.Vector2("Size Delta", ref sizeDeltaX, ref sizeDeltaY, 1.0f);
+
+            if (changed)
+            {
+                EntityManager.SetUiRectTransform(entityId,
+                                                 anchorMinX,
+                                                 anchorMinY,
+                                                 anchorMaxX,
+                                                 anchorMaxY,
+                                                 pivotX,
+                                                 pivotY,
+                                                 anchoredX,
+                                                 anchoredY,
+                                                 sizeDeltaX,
+                                                 sizeDeltaY);
+            }
+        }
+
+        private static void DrawUiImageInspector(uint entityId)
+        {
+            bool enabled;
+            ulong textureAssetHandle;
+            uint color;
+            bool preserveAspect;
+            float cornerRadius;
+            if (!EntityManager.GetUiImageSettings(entityId,
+                                                  out enabled,
+                                                  out textureAssetHandle,
+                                                  out color,
+                                                  out preserveAspect,
+                                                  out cornerRadius))
+            {
+                ImGui.Text("UI Image data unavailable.");
+                return;
+            }
+
+            string texturePath = EntityManager.GetUiImageTexturePath(entityId) ?? string.Empty;
+            bool pathChanged = false;
+            if (InspectorInputs.String("Texture", ref texturePath))
+            {
+                pathChanged = true;
+                texturePath = texturePath.Trim();
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Browse##UiImageTexture" + entityId))
+            {
+                string initialDirectory = ProjectOperations.ActiveProjectPath;
+                if (string.IsNullOrWhiteSpace(initialDirectory) || !Directory.Exists(initialDirectory))
+                    initialDirectory = Directory.GetCurrentDirectory();
+
+                string pickedPath = Explorer.PickFile("Select UI image texture (png/jpg/bmp/tga)", initialDirectory);
+                if (!string.IsNullOrWhiteSpace(pickedPath))
+                {
+                    string normalizedPath = pickedPath;
+                    string projectRoot = ProjectOperations.ActiveProjectPath;
+                    if (!string.IsNullOrWhiteSpace(projectRoot) && Directory.Exists(projectRoot))
+                    {
+                        string relativePath = StringUtilities.MakeRelativePath(projectRoot, pickedPath);
+                        if (!relativePath.StartsWith("..", StringComparison.Ordinal))
+                            normalizedPath = relativePath;
+                    }
+
+                    texturePath = normalizedPath.Replace('\\', '/');
+                    pathChanged = true;
+                }
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Clear##UiImageTexture" + entityId))
+            {
+                texturePath = string.Empty;
+                pathChanged = true;
+            }
+
+            bool settingsChanged = false;
+            settingsChanged |= InspectorInputs.ColorRgba32("Color (RGBA 0-255)", ref color);
+            settingsChanged |= InspectorInputs.Bool("Preserve Aspect", ref preserveAspect);
+            settingsChanged |= ImGui.InputFloat("Corner Radius", ref cornerRadius, 0.5f);
+
+            ImGui.Text("Texture Handle: " + textureAssetHandle.ToString());
+
+            if (settingsChanged)
+            {
+                EntityManager.SetUiImageSettings(entityId,
+                                                 enabled,
+                                                 textureAssetHandle,
+                                                 color,
+                                                 preserveAspect,
+                                                 cornerRadius);
+            }
+
+            if (pathChanged)
+                EntityManager.SetUiImageTexturePath(entityId, texturePath);
+        }
+
+        private static string UiTextAlignToLabel(int horizontalAlign)
+        {
+            if (horizontalAlign == 1)
+                return "Center";
+            if (horizontalAlign == 2)
+                return "Right";
+            return "Left";
+        }
+
+        private static int UiTextAlignFromLabel(string label)
+        {
+            if (string.Equals(label, "Center", StringComparison.OrdinalIgnoreCase))
+                return 1;
+            if (string.Equals(label, "Right", StringComparison.OrdinalIgnoreCase))
+                return 2;
+            return 0;
+        }
+
+        private static void DrawUiTextInspector(uint entityId)
+        {
+            bool enabled;
+            float fontSize;
+            uint color;
+            int horizontalAlign;
+            bool wrap;
+            if (!EntityManager.GetUiTextSettings(entityId,
+                                                 out enabled,
+                                                 out fontSize,
+                                                 out color,
+                                                 out horizontalAlign,
+                                                 out wrap))
+            {
+                ImGui.Text("UI Text data unavailable.");
+                return;
+            }
+
+            string text = EntityManager.GetUiTextValue(entityId) ?? string.Empty;
+            bool textChanged = InspectorInputs.String("Text", ref text);
+
+            bool settingsChanged = false;
+            settingsChanged |= ImGui.InputFloat("Font Size", ref fontSize, 0.5f);
+            settingsChanged |= InspectorInputs.ColorRgba32("Color (RGBA 0-255)", ref color);
+            settingsChanged |= InspectorInputs.Bool("Wrap", ref wrap);
+
+            string align = UiTextAlignToLabel(horizontalAlign);
+            if (InspectorInputs.SelectString("Horizontal Align", ref align, new[] { "Left", "Center", "Right" }))
+            {
+                horizontalAlign = UiTextAlignFromLabel(align);
+                settingsChanged = true;
+            }
+
+            if (settingsChanged)
+            {
+                EntityManager.SetUiTextSettings(entityId,
+                                                enabled,
+                                                fontSize,
+                                                color,
+                                                horizontalAlign,
+                                                wrap);
+            }
+
+            if (textChanged)
+                EntityManager.SetUiTextValue(entityId, text);
+        }
+
+        private static void DrawUiButtonInspector(uint entityId)
+        {
+            bool enabled;
+            bool interactable;
+            uint normalColor;
+            uint highlightedColor;
+            uint pressedColor;
+            uint disabledColor;
+            if (!EntityManager.GetUiButtonSettings(entityId,
+                                                   out enabled,
+                                                   out interactable,
+                                                   out normalColor,
+                                                   out highlightedColor,
+                                                   out pressedColor,
+                                                   out disabledColor))
+            {
+                ImGui.Text("UI Button data unavailable.");
+                return;
+            }
+
+            bool changed = false;
+            changed |= InspectorInputs.Bool("Interactable", ref interactable);
+            changed |= InspectorInputs.ColorRgba32("Normal Color", ref normalColor);
+            changed |= InspectorInputs.ColorRgba32("Highlighted Color", ref highlightedColor);
+            changed |= InspectorInputs.ColorRgba32("Pressed Color", ref pressedColor);
+            changed |= InspectorInputs.ColorRgba32("Disabled Color", ref disabledColor);
+
+            if (changed)
+            {
+                EntityManager.SetUiButtonSettings(entityId,
+                                                  enabled,
+                                                  interactable,
+                                                  normalColor,
+                                                  highlightedColor,
+                                                  pressedColor,
+                                                  disabledColor);
+            }
+        }
+
+        private static void DrawUiInputFieldInspector(uint entityId)
+        {
+            bool enabled;
+            bool interactable;
+            uint textColor;
+            uint placeholderColor;
+            uint maxLength;
+            if (!EntityManager.GetUiInputFieldSettings(entityId,
+                                                       out enabled,
+                                                       out interactable,
+                                                       out textColor,
+                                                       out placeholderColor,
+                                                       out maxLength))
+            {
+                ImGui.Text("UI InputField data unavailable.");
+                return;
+            }
+
+            string text = EntityManager.GetUiInputFieldText(entityId) ?? string.Empty;
+            string placeholder = EntityManager.GetUiInputFieldPlaceholder(entityId) ?? string.Empty;
+
+            bool textChanged = InspectorInputs.String("Text", ref text);
+            bool placeholderChanged = InspectorInputs.String("Placeholder", ref placeholder);
+
+            bool settingsChanged = false;
+            settingsChanged |= InspectorInputs.Bool("Interactable", ref interactable);
+            settingsChanged |= InspectorInputs.ColorRgba32("Text Color", ref textColor);
+            settingsChanged |= InspectorInputs.ColorRgba32("Placeholder Color", ref placeholderColor);
+            settingsChanged |= InspectorInputs.UInt("Max Length (0 = unlimited)", ref maxLength);
+
+            if (settingsChanged)
+            {
+                EntityManager.SetUiInputFieldSettings(entityId,
+                                                      enabled,
+                                                      interactable,
+                                                      textColor,
+                                                      placeholderColor,
+                                                      maxLength);
+            }
+
+            if (textChanged)
+                EntityManager.SetUiInputFieldText(entityId, text);
+
+            if (placeholderChanged)
+                EntityManager.SetUiInputFieldPlaceholder(entityId, placeholder);
         }
 
         private static float Clamp(float value, float minValue, float maxValue)

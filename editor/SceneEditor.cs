@@ -11,7 +11,8 @@ namespace EngineEditor
 
         public static void ResetEditorState()
         {
-            HierarchySystem.ResetSelection();
+            if (HierarchyWindow.Instance != null)
+                HierarchyWindow.Instance.ResetSelection();
             SceneViewportSystem.ResetState();
             InspectorSystem.ResetState();
             DebugDraw.Clear();
@@ -29,27 +30,31 @@ namespace EngineEditor
 
         public static void ResetSelection()
         {
-            HierarchySystem.ResetSelection();
+            if (HierarchyWindow.Instance != null)
+                HierarchyWindow.Instance.ResetSelection();
         }
 
         public static void CreateEntityAndSelect()
         {
-            HierarchySystem.CreateEntityAndSelect();
+            if (HierarchyWindow.Instance != null)
+                HierarchyWindow.Instance.CreateEntityAndSelect();
         }
 
         public static bool HasSelectedEntity()
         {
-            return HierarchySystem.HasValidSelection();
+            return HierarchyWindow.Instance != null && HierarchyWindow.Instance.HasValidSelection();
         }
 
         public static void DuplicateSelectedEntity()
         {
-            HierarchySystem.DuplicateSelectedEntity();
+            if (HierarchyWindow.Instance != null)
+                HierarchyWindow.Instance.DuplicateSelectedEntity();
         }
 
         public static void DeleteSelectedEntity()
         {
-            HierarchySystem.DeleteSelectedEntity();
+            if (HierarchyWindow.Instance != null)
+                HierarchyWindow.Instance.DeleteSelectedEntity();
         }
 
         public static void NewScene()
@@ -124,7 +129,8 @@ namespace EngineEditor
 
         public static void DrawSceneTreePanel()
         {
-            HierarchySystem.DrawSceneTreePanel();
+            // HierarchyWindow now draws itself via the EditorWindowManager lifecycle.
+            // This method is kept for API compatibility but is no longer called.
         }
 
         public static void DrawInspectorPanel()

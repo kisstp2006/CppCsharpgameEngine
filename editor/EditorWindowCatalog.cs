@@ -20,7 +20,7 @@ namespace EngineEditor
             EditorWindowManager.Clear();
 
             EditorWindowManager.Register(IdProjectManager, new ProjectManagerWindow(), "Project Manager", 5);
-            EditorWindowManager.Register(IdSceneTree, new HierarchyWindow(), "Hierarchy", 10);
+            EditorWindowManager.Register(IdSceneTree, new HierarchyWindow(), "Hierarchy", 10); // standalone HierarchyWindow
             EditorWindowManager.Register(IdSceneViewport, new SceneViewportWindow(), "Game View", 20);
             EditorWindowManager.Register(IdRuntimeView, new RuntimeViewWindow(), "Game Runtime", 30);
             EditorWindowManager.Register(IdInspector, new InspectorWindow(), "Inspector", 40);
@@ -36,22 +36,7 @@ namespace EngineEditor
             return ProjectOperations.HasOpenProject() && !EditorContext.ShowProjectManagerView;
         }
 
-        private sealed class HierarchyWindow : EditorWindow
-        {
-            public override string Title => "Hierarchy";
-
-            public override int Order => 10;
-
-            public override bool ShouldDisplay()
-            {
-                return IsSceneWorkspaceVisible();
-            }
-
-            public override void OnGUI()
-            {
-                SceneEditor.DrawSceneTreePanel();
-            }
-        }
+        // HierarchyWindow is now a standalone top-level class in HierarchyWindow.cs
 
         private sealed class ProjectManagerWindow : EditorWindow
         {

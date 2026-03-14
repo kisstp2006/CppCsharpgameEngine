@@ -1,0 +1,88 @@
+{
+  "version": 3,
+  "targets": {
+    ".NETFramework,Version=v4.8": {
+      "EngineManagedApi/1.0.0": {
+        "type": "project",
+        "framework": ".NETFramework,Version=v4.7.2",
+        "compile": {
+          "bin/placeholder/EngineManagedApi.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/EngineManagedApi.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "EngineManagedApi/1.0.0": {
+      "type": "project",
+      "path": "../../scripts/EngineManagedApi.csproj",
+      "msbuildProject": "../../scripts/EngineManagedApi.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    ".NETFramework,Version=v4.8": [
+      "EngineManagedApi >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "C:\\Users\\tibig\\.nuget\\packages\\": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "C:\\Users\\tibig\\Documents\\CppCsharpgameEngine\\projects\\NewTIProject\\NewTIProject.csproj",
+      "projectName": "NewTIProject",
+      "projectPath": "C:\\Users\\tibig\\Documents\\CppCsharpgameEngine\\projects\\NewTIProject\\NewTIProject.csproj",
+      "packagesPath": "C:\\Users\\tibig\\.nuget\\packages\\",
+      "outputPath": "C:\\Users\\tibig\\Documents\\CppCsharpgameEngine\\projects\\NewTIProject\\obj\\",
+      "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+      ],
+      "configFilePaths": [
+        "C:\\Users\\tibig\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+      ],
+      "originalTargetFrameworks": [
+        "net48"
+      ],
+      "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "C:\\Users\\tibig\\AppData\\Local\\Stride\\NugetDev": {},
+        "https://api.nuget.org/v3/index.json": {},
+        "https://packages.stride3d.net/nuget": {}
+      },
+      "frameworks": {
+        "net48": {
+          "targetAlias": "net48",
+          "projectReferences": {
+            "C:\\Users\\tibig\\Documents\\CppCsharpgameEngine\\scripts\\EngineManagedApi.csproj": {
+              "projectPath": "C:\\Users\\tibig\\Documents\\CppCsharpgameEngine\\scripts\\EngineManagedApi.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      },
+      "SdkAnalysisLevel": "10.0.100"
+    },
+    "frameworks": {
+      "net48": {
+        "targetAlias": "net48",
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.103\\RuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}

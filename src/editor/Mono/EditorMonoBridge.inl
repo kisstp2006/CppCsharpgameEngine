@@ -29,7 +29,13 @@ enum class EditorComponentType : std::uint32_t
     Camera = 1,
     Sprite = 2,
     Script = 3,
-    Animator = 4
+    Animator = 4,
+    UiCanvas = 5,
+    UiRectTransform = 6,
+    UiImage = 7,
+    UiText = 8,
+    UiButton = 9,
+    UiInputField = 10
 };
 
 static std::string MonoStringToUtf8(MonoString* monoString)
@@ -250,6 +256,53 @@ static void ApplyCameraPosition(Scene* scene, entt::entity entity, CameraCompone
     }
 }
 
+static void NormalizeUiRectTransformValues(UiRectTransformComponent& rectTransform)
+{
+    rectTransform.anchorMinX = ClampFloatRange(rectTransform.anchorMinX, 0.0f, 1.0f);
+    rectTransform.anchorMinY = ClampFloatRange(rectTransform.anchorMinY, 0.0f, 1.0f);
+    rectTransform.anchorMaxX = ClampFloatRange(rectTransform.anchorMaxX, 0.0f, 1.0f);
+    rectTransform.anchorMaxY = ClampFloatRange(rectTransform.anchorMaxY, 0.0f, 1.0f);
+
+    if (rectTransform.anchorMaxX < rectTransform.anchorMinX)
+        rectTransform.anchorMaxX = rectTransform.anchorMinX;
+    if (rectTransform.anchorMaxY < rectTransform.anchorMinY)
+        rectTransform.anchorMaxY = rectTransform.anchorMinY;
+
+    rectTransform.pivotX = ClampFloatRange(rectTransform.pivotX, 0.0f, 1.0f);
+    rectTransform.pivotY = ClampFloatRange(rectTransform.pivotY, 0.0f, 1.0f);
+
+    if (!std::isfinite(rectTransform.anchoredX))
+        rectTransform.anchoredX = 0.0f;
+    if (!std::isfinite(rectTransform.anchoredY))
+        rectTransform.anchoredY = 0.0f;
+    if (!std::isfinite(rectTransform.sizeDeltaX))
+        rectTransform.sizeDeltaX = 100.0f;
+    if (!std::isfinite(rectTransform.sizeDeltaY))
+        rectTransform.sizeDeltaY = 100.0f;
+}
+
+static void NormalizeUiImageValues(UiImageComponent& image)
+{
+    if (!std::isfinite(image.cornerRadius) || image.cornerRadius < 0.0f)
+        image.cornerRadius = 0.0f;
+}
+
+static void NormalizeUiTextValues(UiTextComponent& text)
+{
+    if (!std::isfinite(text.fontSize) || text.fontSize < 6.0f)
+        text.fontSize = 16.0f;
+    if (text.horizontalAlign < 0)
+        text.horizontalAlign = 0;
+    if (text.horizontalAlign > 2)
+        text.horizontalAlign = 2;
+}
+
+static void NormalizeUiInputFieldValues(UiInputFieldComponent& inputField)
+{
+    if (inputField.maxLength > 4096u)
+        inputField.maxLength = 4096u;
+}
+
 static std::uint32_t EntityManager_CreateEntityInternal()
 {
     Scene* scene = GetSceneContextForEntityApi();
@@ -396,6 +449,18 @@ static bool EntityManager_HasComponentInternal(std::uint32_t entityId, int compo
         return scene->HasScript(entity);
     case EditorComponentType::Animator:
         return scene->HasAnimator(entity);
+    case EditorComponentType::UiCanvas:
+        return scene->HasUiCanvas(entity);
+    case EditorComponentType::UiRectTransform:
+        return scene->HasUiRectTransform(entity);
+    case EditorComponentType::UiImage:
+        return scene->HasUiImage(entity);
+    case EditorComponentType::UiText:
+        return scene->HasUiText(entity);
+    case EditorComponentType::UiButton:
+        return scene->HasUiButton(entity);
+    case EditorComponentType::UiInputField:
+        return scene->HasUiInputField(entity);
     default:
         return false;
     }
@@ -462,6 +527,36 @@ static void EntityManager_AddComponentInternal(std::uint32_t entityId, int compo
             return;
         scene->AddAnimator(entity);
         return;
+    case EditorComponentType::UiCanvas:
+        if (scene->HasUiCanvas(entity))
+            return;
+        scene->AddUiCanvas(entity);
+        return;
+    case EditorComponentType::UiRectTransform:
+        if (scene->HasUiRectTransform(entity))
+            return;
+        scene->AddUiRectTransform(entity);
+        return;
+    case EditorComponentType::UiImage:
+        if (scene->HasUiImage(entity))
+            return;
+        scene->AddUiImage(entity);
+        return;
+    case EditorComponentType::UiText:
+        if (scene->HasUiText(entity))
+            return;
+        scene->AddUiText(entity);
+        return;
+    case EditorComponentType::UiButton:
+        if (scene->HasUiButton(entity))
+            return;
+        scene->AddUiButton(entity);
+        return;
+    case EditorComponentType::UiInputField:
+        if (scene->HasUiInputField(entity))
+            return;
+        scene->AddUiInputField(entity);
+        return;
     default:
         return;
     }
@@ -493,6 +588,24 @@ static void EntityManager_RemoveComponentInternal(std::uint32_t entityId, int co
         return;
     case EditorComponentType::Animator:
         scene->RemoveAnimator(entity);
+        return;
+    case EditorComponentType::UiCanvas:
+        scene->RemoveUiCanvas(entity);
+        return;
+    case EditorComponentType::UiRectTransform:
+        scene->RemoveUiRectTransform(entity);
+        return;
+    case EditorComponentType::UiImage:
+        scene->RemoveUiImage(entity);
+        return;
+    case EditorComponentType::UiText:
+        scene->RemoveUiText(entity);
+        return;
+    case EditorComponentType::UiButton:
+        scene->RemoveUiButton(entity);
+        return;
+    case EditorComponentType::UiInputField:
+        scene->RemoveUiInputField(entity);
         return;
     default:
         return;
@@ -1032,6 +1145,586 @@ static void EntityManager_SetAnimatorApplyPoseWhenStoppedInternal(std::uint32_t 
         return;
 
     animator->applyPoseWhenStopped = value;
+}
+
+static bool EntityManager_HasUiCanvasInternal(std::uint32_t entityId)
+{
+    return EntityManager_HasComponentInternal(entityId, static_cast<int>(EditorComponentType::UiCanvas));
+}
+
+static void EntityManager_AddUiCanvasInternal(std::uint32_t entityId)
+{
+    EntityManager_AddComponentInternal(entityId, static_cast<int>(EditorComponentType::UiCanvas));
+}
+
+static void EntityManager_RemoveUiCanvasInternal(std::uint32_t entityId)
+{
+    EntityManager_RemoveComponentInternal(entityId, static_cast<int>(EditorComponentType::UiCanvas));
+}
+
+static bool EntityManager_GetUiCanvasSettingsInternal(std::uint32_t entityId,
+                                                      bool* enabled,
+                                                      std::int32_t* sortingOrder,
+                                                      bool* pixelPerfect,
+                                                      std::int32_t* renderMode,
+                                                      std::int32_t* targetDisplay,
+                                                      std::uint32_t* additionalShaderChannels,
+                                                      bool* vertexColorAlwaysGammaSpace)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const UiCanvasComponent* canvas = scene->TryGetUiCanvas(entity);
+    if (!canvas)
+        return false;
+
+    if (enabled)
+        *enabled = canvas->enabled;
+    if (sortingOrder)
+        *sortingOrder = canvas->sortingOrder;
+    if (pixelPerfect)
+        *pixelPerfect = canvas->pixelPerfect;
+    if (renderMode)
+        *renderMode = canvas->renderMode;
+    if (targetDisplay)
+        *targetDisplay = canvas->targetDisplay;
+    if (additionalShaderChannels)
+        *additionalShaderChannels = canvas->additionalShaderChannels;
+    if (vertexColorAlwaysGammaSpace)
+        *vertexColorAlwaysGammaSpace = canvas->vertexColorAlwaysGammaSpace;
+    return true;
+}
+
+static void EntityManager_SetUiCanvasSettingsInternal(std::uint32_t entityId,
+                                                      bool enabled,
+                                                      std::int32_t sortingOrder,
+                                                      bool pixelPerfect,
+                                                      std::int32_t renderMode,
+                                                      std::int32_t targetDisplay,
+                                                      std::uint32_t additionalShaderChannels,
+                                                      bool vertexColorAlwaysGammaSpace)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    UiCanvasComponent* canvas = scene->TryGetUiCanvas(entity);
+    if (!canvas)
+        return;
+
+    canvas->enabled = enabled;
+    canvas->sortingOrder = sortingOrder;
+    canvas->pixelPerfect = pixelPerfect;
+    canvas->renderMode = renderMode;
+    if (canvas->renderMode < UiCanvasComponent::RenderModeScreenSpaceOverlay ||
+        canvas->renderMode > UiCanvasComponent::RenderModeWorldSpace)
+    {
+        canvas->renderMode = UiCanvasComponent::RenderModeScreenSpaceOverlay;
+    }
+
+    canvas->targetDisplay = targetDisplay;
+    if (canvas->targetDisplay < 0)
+        canvas->targetDisplay = 0;
+    if (canvas->targetDisplay > 7)
+        canvas->targetDisplay = 7;
+
+    constexpr std::uint32_t kSupportedAdditionalChannelsMask =
+        UiCanvasComponent::AdditionalShaderChannelTexCoord1 |
+        UiCanvasComponent::AdditionalShaderChannelTexCoord2 |
+        UiCanvasComponent::AdditionalShaderChannelTexCoord3 |
+        UiCanvasComponent::AdditionalShaderChannelNormal |
+        UiCanvasComponent::AdditionalShaderChannelTangent;
+    canvas->additionalShaderChannels = additionalShaderChannels & kSupportedAdditionalChannelsMask;
+    canvas->vertexColorAlwaysGammaSpace = vertexColorAlwaysGammaSpace;
+}
+
+static bool EntityManager_HasUiRectTransformInternal(std::uint32_t entityId)
+{
+    return EntityManager_HasComponentInternal(entityId, static_cast<int>(EditorComponentType::UiRectTransform));
+}
+
+static void EntityManager_AddUiRectTransformInternal(std::uint32_t entityId)
+{
+    EntityManager_AddComponentInternal(entityId, static_cast<int>(EditorComponentType::UiRectTransform));
+}
+
+static void EntityManager_RemoveUiRectTransformInternal(std::uint32_t entityId)
+{
+    EntityManager_RemoveComponentInternal(entityId, static_cast<int>(EditorComponentType::UiRectTransform));
+}
+
+static bool EntityManager_GetUiRectTransformInternal(std::uint32_t entityId,
+                                                     float* anchorMinX,
+                                                     float* anchorMinY,
+                                                     float* anchorMaxX,
+                                                     float* anchorMaxY,
+                                                     float* pivotX,
+                                                     float* pivotY,
+                                                     float* anchoredX,
+                                                     float* anchoredY,
+                                                     float* sizeDeltaX,
+                                                     float* sizeDeltaY)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const UiRectTransformComponent* rectTransform = scene->TryGetUiRectTransform(entity);
+    if (!rectTransform)
+        return false;
+
+    if (anchorMinX)
+        *anchorMinX = rectTransform->anchorMinX;
+    if (anchorMinY)
+        *anchorMinY = rectTransform->anchorMinY;
+    if (anchorMaxX)
+        *anchorMaxX = rectTransform->anchorMaxX;
+    if (anchorMaxY)
+        *anchorMaxY = rectTransform->anchorMaxY;
+    if (pivotX)
+        *pivotX = rectTransform->pivotX;
+    if (pivotY)
+        *pivotY = rectTransform->pivotY;
+    if (anchoredX)
+        *anchoredX = rectTransform->anchoredX;
+    if (anchoredY)
+        *anchoredY = rectTransform->anchoredY;
+    if (sizeDeltaX)
+        *sizeDeltaX = rectTransform->sizeDeltaX;
+    if (sizeDeltaY)
+        *sizeDeltaY = rectTransform->sizeDeltaY;
+    return true;
+}
+
+static void EntityManager_SetUiRectTransformInternal(std::uint32_t entityId,
+                                                     float anchorMinX,
+                                                     float anchorMinY,
+                                                     float anchorMaxX,
+                                                     float anchorMaxY,
+                                                     float pivotX,
+                                                     float pivotY,
+                                                     float anchoredX,
+                                                     float anchoredY,
+                                                     float sizeDeltaX,
+                                                     float sizeDeltaY)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    UiRectTransformComponent* rectTransform = scene->TryGetUiRectTransform(entity);
+    if (!rectTransform)
+        return;
+
+    rectTransform->anchorMinX = anchorMinX;
+    rectTransform->anchorMinY = anchorMinY;
+    rectTransform->anchorMaxX = anchorMaxX;
+    rectTransform->anchorMaxY = anchorMaxY;
+    rectTransform->pivotX = pivotX;
+    rectTransform->pivotY = pivotY;
+    rectTransform->anchoredX = anchoredX;
+    rectTransform->anchoredY = anchoredY;
+    rectTransform->sizeDeltaX = sizeDeltaX;
+    rectTransform->sizeDeltaY = sizeDeltaY;
+    NormalizeUiRectTransformValues(*rectTransform);
+}
+
+static bool EntityManager_HasUiImageInternal(std::uint32_t entityId)
+{
+    return EntityManager_HasComponentInternal(entityId, static_cast<int>(EditorComponentType::UiImage));
+}
+
+static void EntityManager_AddUiImageInternal(std::uint32_t entityId)
+{
+    EntityManager_AddComponentInternal(entityId, static_cast<int>(EditorComponentType::UiImage));
+}
+
+static void EntityManager_RemoveUiImageInternal(std::uint32_t entityId)
+{
+    EntityManager_RemoveComponentInternal(entityId, static_cast<int>(EditorComponentType::UiImage));
+}
+
+static bool EntityManager_GetUiImageSettingsInternal(std::uint32_t entityId,
+                                                     bool* enabled,
+                                                     std::uint64_t* textureAssetHandle,
+                                                     std::uint32_t* color,
+                                                     bool* preserveAspect,
+                                                     float* cornerRadius)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const UiImageComponent* image = scene->TryGetUiImage(entity);
+    if (!image)
+        return false;
+
+    if (enabled)
+        *enabled = image->enabled;
+    if (textureAssetHandle)
+        *textureAssetHandle = image->textureAssetHandle;
+    if (color)
+        *color = image->color;
+    if (preserveAspect)
+        *preserveAspect = image->preserveAspect;
+    if (cornerRadius)
+        *cornerRadius = image->cornerRadius;
+    return true;
+}
+
+static void EntityManager_SetUiImageSettingsInternal(std::uint32_t entityId,
+                                                     bool enabled,
+                                                     std::uint64_t textureAssetHandle,
+                                                     std::uint32_t color,
+                                                     bool preserveAspect,
+                                                     float cornerRadius)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    UiImageComponent* image = scene->TryGetUiImage(entity);
+    if (!image)
+        return;
+
+    image->enabled = enabled;
+    image->textureAssetHandle = textureAssetHandle;
+    image->color = color;
+    image->preserveAspect = preserveAspect;
+    image->cornerRadius = cornerRadius;
+    NormalizeUiImageValues(*image);
+}
+
+static MonoString* EntityManager_GetUiImageTexturePathInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return nullptr;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const UiImageComponent* image = scene->TryGetUiImage(entity);
+    if (!image)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, image->textureAssetPath.c_str()) : nullptr;
+}
+
+static void EntityManager_SetUiImageTexturePathInternal(std::uint32_t entityId, MonoString* texturePath)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    UiImageComponent* image = scene->TryGetUiImage(entity);
+    if (!image)
+        return;
+
+    image->textureAssetPath = TrimWhitespace(MonoStringToUtf8(texturePath));
+    image->textureAssetHandle = 0;
+}
+
+static bool EntityManager_HasUiTextInternal(std::uint32_t entityId)
+{
+    return EntityManager_HasComponentInternal(entityId, static_cast<int>(EditorComponentType::UiText));
+}
+
+static void EntityManager_AddUiTextInternal(std::uint32_t entityId)
+{
+    EntityManager_AddComponentInternal(entityId, static_cast<int>(EditorComponentType::UiText));
+}
+
+static void EntityManager_RemoveUiTextInternal(std::uint32_t entityId)
+{
+    EntityManager_RemoveComponentInternal(entityId, static_cast<int>(EditorComponentType::UiText));
+}
+
+static bool EntityManager_GetUiTextSettingsInternal(std::uint32_t entityId,
+                                                    bool* enabled,
+                                                    float* fontSize,
+                                                    std::uint32_t* color,
+                                                    std::int32_t* horizontalAlign,
+                                                    bool* wrap)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const UiTextComponent* text = scene->TryGetUiText(entity);
+    if (!text)
+        return false;
+
+    if (enabled)
+        *enabled = text->enabled;
+    if (fontSize)
+        *fontSize = text->fontSize;
+    if (color)
+        *color = text->color;
+    if (horizontalAlign)
+        *horizontalAlign = text->horizontalAlign;
+    if (wrap)
+        *wrap = text->wrap;
+    return true;
+}
+
+static void EntityManager_SetUiTextSettingsInternal(std::uint32_t entityId,
+                                                    bool enabled,
+                                                    float fontSize,
+                                                    std::uint32_t color,
+                                                    std::int32_t horizontalAlign,
+                                                    bool wrap)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    UiTextComponent* text = scene->TryGetUiText(entity);
+    if (!text)
+        return;
+
+    text->enabled = enabled;
+    text->fontSize = fontSize;
+    text->color = color;
+    text->horizontalAlign = horizontalAlign;
+    text->wrap = wrap;
+    NormalizeUiTextValues(*text);
+}
+
+static MonoString* EntityManager_GetUiTextValueInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return nullptr;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const UiTextComponent* text = scene->TryGetUiText(entity);
+    if (!text)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, text->text.c_str()) : nullptr;
+}
+
+static void EntityManager_SetUiTextValueInternal(std::uint32_t entityId, MonoString* textValue)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    UiTextComponent* text = scene->TryGetUiText(entity);
+    if (!text)
+        return;
+
+    text->text = MonoStringToUtf8(textValue);
+}
+
+static bool EntityManager_HasUiButtonInternal(std::uint32_t entityId)
+{
+    return EntityManager_HasComponentInternal(entityId, static_cast<int>(EditorComponentType::UiButton));
+}
+
+static void EntityManager_AddUiButtonInternal(std::uint32_t entityId)
+{
+    EntityManager_AddComponentInternal(entityId, static_cast<int>(EditorComponentType::UiButton));
+}
+
+static void EntityManager_RemoveUiButtonInternal(std::uint32_t entityId)
+{
+    EntityManager_RemoveComponentInternal(entityId, static_cast<int>(EditorComponentType::UiButton));
+}
+
+static bool EntityManager_GetUiButtonSettingsInternal(std::uint32_t entityId,
+                                                      bool* enabled,
+                                                      bool* interactable,
+                                                      std::uint32_t* normalColor,
+                                                      std::uint32_t* highlightedColor,
+                                                      std::uint32_t* pressedColor,
+                                                      std::uint32_t* disabledColor)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const UiButtonComponent* button = scene->TryGetUiButton(entity);
+    if (!button)
+        return false;
+
+    if (enabled)
+        *enabled = button->enabled;
+    if (interactable)
+        *interactable = button->interactable;
+    if (normalColor)
+        *normalColor = button->normalColor;
+    if (highlightedColor)
+        *highlightedColor = button->highlightedColor;
+    if (pressedColor)
+        *pressedColor = button->pressedColor;
+    if (disabledColor)
+        *disabledColor = button->disabledColor;
+    return true;
+}
+
+static void EntityManager_SetUiButtonSettingsInternal(std::uint32_t entityId,
+                                                      bool enabled,
+                                                      bool interactable,
+                                                      std::uint32_t normalColor,
+                                                      std::uint32_t highlightedColor,
+                                                      std::uint32_t pressedColor,
+                                                      std::uint32_t disabledColor)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    UiButtonComponent* button = scene->TryGetUiButton(entity);
+    if (!button)
+        return;
+
+    button->enabled = enabled;
+    button->interactable = interactable;
+    button->normalColor = normalColor;
+    button->highlightedColor = highlightedColor;
+    button->pressedColor = pressedColor;
+    button->disabledColor = disabledColor;
+}
+
+static bool EntityManager_HasUiInputFieldInternal(std::uint32_t entityId)
+{
+    return EntityManager_HasComponentInternal(entityId, static_cast<int>(EditorComponentType::UiInputField));
+}
+
+static void EntityManager_AddUiInputFieldInternal(std::uint32_t entityId)
+{
+    EntityManager_AddComponentInternal(entityId, static_cast<int>(EditorComponentType::UiInputField));
+}
+
+static void EntityManager_RemoveUiInputFieldInternal(std::uint32_t entityId)
+{
+    EntityManager_RemoveComponentInternal(entityId, static_cast<int>(EditorComponentType::UiInputField));
+}
+
+static bool EntityManager_GetUiInputFieldSettingsInternal(std::uint32_t entityId,
+                                                          bool* enabled,
+                                                          bool* interactable,
+                                                          std::uint32_t* textColor,
+                                                          std::uint32_t* placeholderColor,
+                                                          std::uint32_t* maxLength)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const UiInputFieldComponent* inputField = scene->TryGetUiInputField(entity);
+    if (!inputField)
+        return false;
+
+    if (enabled)
+        *enabled = inputField->enabled;
+    if (interactable)
+        *interactable = inputField->interactable;
+    if (textColor)
+        *textColor = inputField->textColor;
+    if (placeholderColor)
+        *placeholderColor = inputField->placeholderColor;
+    if (maxLength)
+        *maxLength = inputField->maxLength;
+    return true;
+}
+
+static void EntityManager_SetUiInputFieldSettingsInternal(std::uint32_t entityId,
+                                                          bool enabled,
+                                                          bool interactable,
+                                                          std::uint32_t textColor,
+                                                          std::uint32_t placeholderColor,
+                                                          std::uint32_t maxLength)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    UiInputFieldComponent* inputField = scene->TryGetUiInputField(entity);
+    if (!inputField)
+        return;
+
+    inputField->enabled = enabled;
+    inputField->interactable = interactable;
+    inputField->textColor = textColor;
+    inputField->placeholderColor = placeholderColor;
+    inputField->maxLength = maxLength;
+    NormalizeUiInputFieldValues(*inputField);
+}
+
+static MonoString* EntityManager_GetUiInputFieldTextInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return nullptr;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const UiInputFieldComponent* inputField = scene->TryGetUiInputField(entity);
+    if (!inputField)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, inputField->text.c_str()) : nullptr;
+}
+
+static void EntityManager_SetUiInputFieldTextInternal(std::uint32_t entityId, MonoString* text)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    UiInputFieldComponent* inputField = scene->TryGetUiInputField(entity);
+    if (!inputField)
+        return;
+
+    inputField->text = MonoStringToUtf8(text);
+}
+
+static MonoString* EntityManager_GetUiInputFieldPlaceholderInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return nullptr;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const UiInputFieldComponent* inputField = scene->TryGetUiInputField(entity);
+    if (!inputField)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, inputField->placeholder.c_str()) : nullptr;
+}
+
+static void EntityManager_SetUiInputFieldPlaceholderInternal(std::uint32_t entityId, MonoString* placeholder)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    UiInputFieldComponent* inputField = scene->TryGetUiInputField(entity);
+    if (!inputField)
+        return;
+
+    inputField->placeholder = MonoStringToUtf8(placeholder);
 }
 
 static bool RuntimeSprite_Has(std::uint32_t entityId)
@@ -2076,6 +2769,18 @@ static bool EditorBridge_HasComponent(std::uint32_t entityId, int componentType)
         return g_editorSceneContext->HasScript(entity);
     case EditorComponentType::Animator:
         return g_editorSceneContext->HasAnimator(entity);
+    case EditorComponentType::UiCanvas:
+        return g_editorSceneContext->HasUiCanvas(entity);
+    case EditorComponentType::UiRectTransform:
+        return g_editorSceneContext->HasUiRectTransform(entity);
+    case EditorComponentType::UiImage:
+        return g_editorSceneContext->HasUiImage(entity);
+    case EditorComponentType::UiText:
+        return g_editorSceneContext->HasUiText(entity);
+    case EditorComponentType::UiButton:
+        return g_editorSceneContext->HasUiButton(entity);
+    case EditorComponentType::UiInputField:
+        return g_editorSceneContext->HasUiInputField(entity);
     default:
         return false;
     }
@@ -2141,6 +2846,36 @@ static void EditorBridge_AddComponent(std::uint32_t entityId, int componentType)
             return;
         g_editorSceneContext->AddAnimator(entity);
         return;
+    case EditorComponentType::UiCanvas:
+        if (g_editorSceneContext->HasUiCanvas(entity))
+            return;
+        g_editorSceneContext->AddUiCanvas(entity);
+        return;
+    case EditorComponentType::UiRectTransform:
+        if (g_editorSceneContext->HasUiRectTransform(entity))
+            return;
+        g_editorSceneContext->AddUiRectTransform(entity);
+        return;
+    case EditorComponentType::UiImage:
+        if (g_editorSceneContext->HasUiImage(entity))
+            return;
+        g_editorSceneContext->AddUiImage(entity);
+        return;
+    case EditorComponentType::UiText:
+        if (g_editorSceneContext->HasUiText(entity))
+            return;
+        g_editorSceneContext->AddUiText(entity);
+        return;
+    case EditorComponentType::UiButton:
+        if (g_editorSceneContext->HasUiButton(entity))
+            return;
+        g_editorSceneContext->AddUiButton(entity);
+        return;
+    case EditorComponentType::UiInputField:
+        if (g_editorSceneContext->HasUiInputField(entity))
+            return;
+        g_editorSceneContext->AddUiInputField(entity);
+        return;
     default:
         return;
     }
@@ -2171,6 +2906,24 @@ static void EditorBridge_RemoveComponent(std::uint32_t entityId, int componentTy
         return;
     case EditorComponentType::Animator:
         g_editorSceneContext->RemoveAnimator(entity);
+        return;
+    case EditorComponentType::UiCanvas:
+        g_editorSceneContext->RemoveUiCanvas(entity);
+        return;
+    case EditorComponentType::UiRectTransform:
+        g_editorSceneContext->RemoveUiRectTransform(entity);
+        return;
+    case EditorComponentType::UiImage:
+        g_editorSceneContext->RemoveUiImage(entity);
+        return;
+    case EditorComponentType::UiText:
+        g_editorSceneContext->RemoveUiText(entity);
+        return;
+    case EditorComponentType::UiButton:
+        g_editorSceneContext->RemoveUiButton(entity);
+        return;
+    case EditorComponentType::UiInputField:
+        g_editorSceneContext->RemoveUiInputField(entity);
         return;
     default:
         return;
@@ -4542,6 +5295,22 @@ static bool EditorImGui_BeginPopupModal(MonoString* popupId)
     return ImGui::BeginPopupModal(popupName, nullptr, ImGuiWindowFlags_AlwaysAutoResize);
 }
 
+static bool EditorImGui_BeginCombo(MonoString* label, MonoString* previewValue)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+
+    const std::string labelStr = MonoStringToUtf8(label);
+    const std::string previewStr = MonoStringToUtf8(previewValue);
+    return ImGui::BeginCombo(labelStr.c_str(), previewStr.c_str());
+}
+
+static void EditorImGui_EndCombo()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::EndCombo();
+}
+
 static bool EditorImGui_BeginPopup(MonoString* popupId)
 {
     if (!ImGui::GetCurrentContext())
@@ -5215,6 +5984,332 @@ static void EditorImGui_GetStyleColor(int colorIdx, float* r, float* g, float* b
     *g = col.y;
     *b = col.z;
     *a = col.w;
+}
+
+// ── Tree Node ──────────────────────────────────────────────────────────
+
+static bool EditorImGui_TreeNodeEx(MonoString* label, int flags)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+    const std::string value = MonoStringToUtf8(label);
+    const char* nodeLabel = value.empty() ? "Node" : value.c_str();
+    return ImGui::TreeNodeEx(nodeLabel, static_cast<ImGuiTreeNodeFlags>(flags));
+}
+
+static void EditorImGui_TreePop()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::TreePop();
+}
+
+static void EditorImGui_SetNextItemOpen(bool open, int condition)
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::SetNextItemOpen(open, static_cast<ImGuiCond>(condition));
+}
+
+// ── Drag & Drop ────────────────────────────────────────────────────────
+
+static bool EditorImGui_BeginDragDropSource(int flags)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+    return ImGui::BeginDragDropSource(static_cast<ImGuiDragDropFlags>(flags));
+}
+
+static bool EditorImGui_SetDragDropPayloadUint(MonoString* type, uint32_t data)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+    const std::string typeStr = MonoStringToUtf8(type);
+    if (typeStr.empty())
+        return false;
+    return ImGui::SetDragDropPayload(typeStr.c_str(), &data, sizeof(data));
+}
+
+static void EditorImGui_EndDragDropSource()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::EndDragDropSource();
+}
+
+static bool EditorImGui_BeginDragDropTarget()
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+    return ImGui::BeginDragDropTarget();
+}
+
+static uint32_t EditorImGui_AcceptDragDropPayloadUint(MonoString* type)
+{
+    if (!ImGui::GetCurrentContext())
+        return 0;
+    const std::string typeStr = MonoStringToUtf8(type);
+    if (typeStr.empty())
+        return 0;
+    const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(typeStr.c_str());
+    if (!payload || !payload->Data || payload->DataSize < static_cast<int>(sizeof(uint32_t)))
+        return 0;
+    uint32_t result = 0;
+    std::memcpy(&result, payload->Data, sizeof(result));
+    return result;
+}
+
+static void EditorImGui_EndDragDropTarget()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::EndDragDropTarget();
+}
+
+// ── Styling ────────────────────────────────────────────────────────────
+
+static void EditorImGui_PushStyleColor(int idx, float r, float g, float b, float a)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+    if (idx < 0 || idx >= ImGuiCol_COUNT)
+        return;
+    ImGui::PushStyleColor(static_cast<ImGuiCol>(idx), ImVec4(r, g, b, a));
+}
+
+static void EditorImGui_PopStyleColor(int count)
+{
+    if (ImGui::GetCurrentContext() && count > 0)
+        ImGui::PopStyleColor(count);
+}
+
+static void EditorImGui_PushStyleVar(int idx, float val)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+    ImGui::PushStyleVar(static_cast<ImGuiStyleVar>(idx), val);
+}
+
+static void EditorImGui_PushStyleVar2(int idx, float x, float y)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+    ImGui::PushStyleVar(static_cast<ImGuiStyleVar>(idx), ImVec2(x, y));
+}
+
+static void EditorImGui_PopStyleVar(int count)
+{
+    if (ImGui::GetCurrentContext() && count > 0)
+        ImGui::PopStyleVar(count);
+}
+
+// ── Layout / Cursor ────────────────────────────────────────────────────
+
+static void EditorImGui_SetCursorPosX(float x)
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::SetCursorPosX(x);
+}
+
+static float EditorImGui_GetCursorPosX()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetCursorPosX() : 0.0f;
+}
+
+static void EditorImGui_SetCursorPosY(float y)
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::SetCursorPosY(y);
+}
+
+static float EditorImGui_GetCursorPosY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetCursorPosY() : 0.0f;
+}
+
+static float EditorImGui_GetFrameHeight()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetFrameHeight() : 0.0f;
+}
+
+static void EditorImGui_Dummy(float width, float height)
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::Dummy(ImVec2(width, height));
+}
+
+static void EditorImGui_Spacing()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::Spacing();
+}
+
+static float EditorImGui_GetScrollY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetScrollY() : 0.0f;
+}
+
+static void EditorImGui_SetScrollY(float y)
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::SetScrollY(y);
+}
+
+static float EditorImGui_GetScrollMaxY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetScrollMaxY() : 0.0f;
+}
+
+static float EditorImGui_GetTreeNodeToLabelSpacing()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetTreeNodeToLabelSpacing() : 0.0f;
+}
+
+static float EditorImGui_GetItemRectMinY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetItemRectMin().y : 0.0f;
+}
+
+static float EditorImGui_GetItemRectMaxY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetItemRectMax().y : 0.0f;
+}
+
+static float EditorImGui_GetWindowPosY()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetWindowPos().y : 0.0f;
+}
+
+static float EditorImGui_GetWindowHeight()
+{
+    return ImGui::GetCurrentContext() ? ImGui::GetWindowHeight() : 0.0f;
+}
+
+// ── Input Queries ──────────────────────────────────────────────────────
+
+static bool EditorImGui_IsItemClicked(int mouseButton)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+    return ImGui::IsItemClicked(static_cast<ImGuiMouseButton>(mouseButton));
+}
+
+static bool EditorImGui_IsKeyDown(int scancode)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+    return ImGui::IsKeyDown(static_cast<ImGuiKey>(scancode));
+}
+
+static bool EditorImGui_IsKeyPressed(int key, bool repeat)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+    return ImGui::IsKeyPressed(static_cast<ImGuiKey>(key), repeat);
+}
+
+static bool EditorImGui_BeginPopupContextWindow(MonoString* id, int mouseButton)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+    const std::string idStr = MonoStringToUtf8(id);
+    const char* popupId = idStr.empty() ? nullptr : idStr.c_str();
+    return ImGui::BeginPopupContextWindow(popupId, static_cast<ImGuiPopupFlags>(mouseButton));
+}
+
+static bool EditorImGui_BeginPopupContextItem(MonoString* id, int mouseButton)
+{
+    if (!ImGui::GetCurrentContext())
+        return false;
+    const std::string idStr = MonoStringToUtf8(id);
+    const char* popupId = idStr.empty() ? nullptr : idStr.c_str();
+    return ImGui::BeginPopupContextItem(popupId, static_cast<ImGuiPopupFlags>(mouseButton));
+}
+
+// ── DrawList additions ─────────────────────────────────────────────────
+
+static void EditorImGui_DrawRectFilled(float x,
+                                       float y,
+                                       float width,
+                                       float height,
+                                       float r,
+                                       float g,
+                                       float b,
+                                       float a)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    if (!drawList)
+        return;
+    drawList->AddRectFilled(ImVec2(x, y),
+                            ImVec2(x + width, y + height),
+                            IM_COL32(static_cast<int>(r * 255.0f),
+                                     static_cast<int>(g * 255.0f),
+                                     static_cast<int>(b * 255.0f),
+                                     static_cast<int>(a * 255.0f)));
+}
+
+static void EditorImGui_DrawRectFilledRounded(float x,
+                                              float y,
+                                              float width,
+                                              float height,
+                                              float r,
+                                              float g,
+                                              float b,
+                                              float a,
+                                              float rounding)
+{
+    if (!ImGui::GetCurrentContext())
+        return;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    if (!drawList)
+        return;
+    drawList->AddRectFilled(ImVec2(x, y),
+                            ImVec2(x + width, y + height),
+                            IM_COL32(static_cast<int>(r * 255.0f),
+                                     static_cast<int>(g * 255.0f),
+                                     static_cast<int>(b * 255.0f),
+                                     static_cast<int>(a * 255.0f)),
+                            rounding);
+}
+
+static void EditorImGui_CalcTextSize(MonoString* monoText, float* outW, float* outH)
+{
+    if (!ImGui::GetCurrentContext() || !outW || !outH)
+        return;
+    *outW = 0.0f;
+    *outH = 0.0f;
+    if (!monoText)
+        return;
+    char* raw = mono_string_to_utf8(monoText);
+    if (!raw)
+        return;
+    ImVec2 size = ImGui::CalcTextSize(raw);
+    *outW = size.x;
+    *outH = size.y;
+    mono_free(raw);
+}
+
+static void EditorImGui_DrawText(float x,
+                                 float y,
+                                 MonoString* monoText,
+                                 float r,
+                                 float g,
+                                 float b,
+                                 float a)
+{
+    if (!ImGui::GetCurrentContext() || !monoText)
+        return;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    if (!drawList)
+        return;
+    char* raw = mono_string_to_utf8(monoText);
+    if (!raw)
+        return;
+    drawList->AddText(ImVec2(x, y),
+                      IM_COL32(static_cast<int>(r * 255.0f),
+                               static_cast<int>(g * 255.0f),
+                               static_cast<int>(b * 255.0f),
+                               static_cast<int>(a * 255.0f)),
+                      raw);
+    mono_free(raw);
 }
 
 static bool EditorImGuizmo_IsUsing()

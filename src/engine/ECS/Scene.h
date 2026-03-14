@@ -93,6 +93,12 @@ public:
     SpriteComponent& AddSprite(Entity entity, Texture* texture = nullptr);
     ScriptComponent& AddScript(Entity entity, const ScriptComponent& script = ScriptComponent{});
     AnimatorComponent& AddAnimator(Entity entity, const AnimatorComponent& animator = AnimatorComponent{});
+    UiCanvasComponent& AddUiCanvas(Entity entity, const UiCanvasComponent& canvas = UiCanvasComponent{});
+    UiRectTransformComponent& AddUiRectTransform(Entity entity, const UiRectTransformComponent& rectTransform = UiRectTransformComponent{});
+    UiImageComponent& AddUiImage(Entity entity, const UiImageComponent& image = UiImageComponent{});
+    UiTextComponent& AddUiText(Entity entity, const UiTextComponent& text = UiTextComponent{});
+    UiButtonComponent& AddUiButton(Entity entity, const UiButtonComponent& button = UiButtonComponent{});
+    UiInputFieldComponent& AddUiInputField(Entity entity, const UiInputFieldComponent& inputField = UiInputFieldComponent{});
     EntityMetadataComponent& AddMetadata(Entity entity, const EntityMetadataComponent& metadata = EntityMetadataComponent{});
 
     bool HasTransform(Entity entity) const;
@@ -100,6 +106,12 @@ public:
     bool HasSprite(Entity entity) const;
     bool HasScript(Entity entity) const;
     bool HasAnimator(Entity entity) const;
+    bool HasUiCanvas(Entity entity) const;
+    bool HasUiRectTransform(Entity entity) const;
+    bool HasUiImage(Entity entity) const;
+    bool HasUiText(Entity entity) const;
+    bool HasUiButton(Entity entity) const;
+    bool HasUiInputField(Entity entity) const;
     bool HasMetadata(Entity entity) const;
 
     TransformComponent* TryGetTransform(Entity entity);
@@ -112,6 +124,18 @@ public:
     const ScriptComponent* TryGetScript(Entity entity) const;
     AnimatorComponent* TryGetAnimator(Entity entity);
     const AnimatorComponent* TryGetAnimator(Entity entity) const;
+    UiCanvasComponent* TryGetUiCanvas(Entity entity);
+    const UiCanvasComponent* TryGetUiCanvas(Entity entity) const;
+    UiRectTransformComponent* TryGetUiRectTransform(Entity entity);
+    const UiRectTransformComponent* TryGetUiRectTransform(Entity entity) const;
+    UiImageComponent* TryGetUiImage(Entity entity);
+    const UiImageComponent* TryGetUiImage(Entity entity) const;
+    UiTextComponent* TryGetUiText(Entity entity);
+    const UiTextComponent* TryGetUiText(Entity entity) const;
+    UiButtonComponent* TryGetUiButton(Entity entity);
+    const UiButtonComponent* TryGetUiButton(Entity entity) const;
+    UiInputFieldComponent* TryGetUiInputField(Entity entity);
+    const UiInputFieldComponent* TryGetUiInputField(Entity entity) const;
     EntityMetadataComponent* TryGetMetadata(Entity entity);
     const EntityMetadataComponent* TryGetMetadata(Entity entity) const;
 
@@ -120,6 +144,12 @@ public:
     bool RemoveSprite(Entity entity);
     bool RemoveScript(Entity entity);
     bool RemoveAnimator(Entity entity);
+    bool RemoveUiCanvas(Entity entity);
+    bool RemoveUiRectTransform(Entity entity);
+    bool RemoveUiImage(Entity entity);
+    bool RemoveUiText(Entity entity);
+    bool RemoveUiButton(Entity entity);
+    bool RemoveUiInputField(Entity entity);
     bool RemoveMetadata(Entity entity);
 
     bool SaveToFile(const std::filesystem::path& path, SceneFileFormat format) const;

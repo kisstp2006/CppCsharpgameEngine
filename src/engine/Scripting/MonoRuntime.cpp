@@ -937,6 +937,44 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.EntityManager::SetAnimatorSpeedInternal", (const void*)&EntityManager_SetAnimatorSpeedInternal);
     mono_add_internal_call("Engine.EntityManager::GetAnimatorApplyPoseWhenStoppedInternal", (const void*)&EntityManager_GetAnimatorApplyPoseWhenStoppedInternal);
     mono_add_internal_call("Engine.EntityManager::SetAnimatorApplyPoseWhenStoppedInternal", (const void*)&EntityManager_SetAnimatorApplyPoseWhenStoppedInternal);
+    mono_add_internal_call("Engine.EntityManager::HasUiCanvasInternal", (const void*)&EntityManager_HasUiCanvasInternal);
+    mono_add_internal_call("Engine.EntityManager::AddUiCanvasInternal", (const void*)&EntityManager_AddUiCanvasInternal);
+    mono_add_internal_call("Engine.EntityManager::RemoveUiCanvasInternal", (const void*)&EntityManager_RemoveUiCanvasInternal);
+    mono_add_internal_call("Engine.EntityManager::GetUiCanvasSettingsInternal", (const void*)&EntityManager_GetUiCanvasSettingsInternal);
+    mono_add_internal_call("Engine.EntityManager::SetUiCanvasSettingsInternal", (const void*)&EntityManager_SetUiCanvasSettingsInternal);
+    mono_add_internal_call("Engine.EntityManager::HasUiRectTransformInternal", (const void*)&EntityManager_HasUiRectTransformInternal);
+    mono_add_internal_call("Engine.EntityManager::AddUiRectTransformInternal", (const void*)&EntityManager_AddUiRectTransformInternal);
+    mono_add_internal_call("Engine.EntityManager::RemoveUiRectTransformInternal", (const void*)&EntityManager_RemoveUiRectTransformInternal);
+    mono_add_internal_call("Engine.EntityManager::GetUiRectTransformInternal", (const void*)&EntityManager_GetUiRectTransformInternal);
+    mono_add_internal_call("Engine.EntityManager::SetUiRectTransformInternal", (const void*)&EntityManager_SetUiRectTransformInternal);
+    mono_add_internal_call("Engine.EntityManager::HasUiImageInternal", (const void*)&EntityManager_HasUiImageInternal);
+    mono_add_internal_call("Engine.EntityManager::AddUiImageInternal", (const void*)&EntityManager_AddUiImageInternal);
+    mono_add_internal_call("Engine.EntityManager::RemoveUiImageInternal", (const void*)&EntityManager_RemoveUiImageInternal);
+    mono_add_internal_call("Engine.EntityManager::GetUiImageSettingsInternal", (const void*)&EntityManager_GetUiImageSettingsInternal);
+    mono_add_internal_call("Engine.EntityManager::SetUiImageSettingsInternal", (const void*)&EntityManager_SetUiImageSettingsInternal);
+    mono_add_internal_call("Engine.EntityManager::GetUiImageTexturePathInternal", (const void*)&EntityManager_GetUiImageTexturePathInternal);
+    mono_add_internal_call("Engine.EntityManager::SetUiImageTexturePathInternal", (const void*)&EntityManager_SetUiImageTexturePathInternal);
+    mono_add_internal_call("Engine.EntityManager::HasUiTextInternal", (const void*)&EntityManager_HasUiTextInternal);
+    mono_add_internal_call("Engine.EntityManager::AddUiTextInternal", (const void*)&EntityManager_AddUiTextInternal);
+    mono_add_internal_call("Engine.EntityManager::RemoveUiTextInternal", (const void*)&EntityManager_RemoveUiTextInternal);
+    mono_add_internal_call("Engine.EntityManager::GetUiTextSettingsInternal", (const void*)&EntityManager_GetUiTextSettingsInternal);
+    mono_add_internal_call("Engine.EntityManager::SetUiTextSettingsInternal", (const void*)&EntityManager_SetUiTextSettingsInternal);
+    mono_add_internal_call("Engine.EntityManager::GetUiTextValueInternal", (const void*)&EntityManager_GetUiTextValueInternal);
+    mono_add_internal_call("Engine.EntityManager::SetUiTextValueInternal", (const void*)&EntityManager_SetUiTextValueInternal);
+    mono_add_internal_call("Engine.EntityManager::HasUiButtonInternal", (const void*)&EntityManager_HasUiButtonInternal);
+    mono_add_internal_call("Engine.EntityManager::AddUiButtonInternal", (const void*)&EntityManager_AddUiButtonInternal);
+    mono_add_internal_call("Engine.EntityManager::RemoveUiButtonInternal", (const void*)&EntityManager_RemoveUiButtonInternal);
+    mono_add_internal_call("Engine.EntityManager::GetUiButtonSettingsInternal", (const void*)&EntityManager_GetUiButtonSettingsInternal);
+    mono_add_internal_call("Engine.EntityManager::SetUiButtonSettingsInternal", (const void*)&EntityManager_SetUiButtonSettingsInternal);
+    mono_add_internal_call("Engine.EntityManager::HasUiInputFieldInternal", (const void*)&EntityManager_HasUiInputFieldInternal);
+    mono_add_internal_call("Engine.EntityManager::AddUiInputFieldInternal", (const void*)&EntityManager_AddUiInputFieldInternal);
+    mono_add_internal_call("Engine.EntityManager::RemoveUiInputFieldInternal", (const void*)&EntityManager_RemoveUiInputFieldInternal);
+    mono_add_internal_call("Engine.EntityManager::GetUiInputFieldSettingsInternal", (const void*)&EntityManager_GetUiInputFieldSettingsInternal);
+    mono_add_internal_call("Engine.EntityManager::SetUiInputFieldSettingsInternal", (const void*)&EntityManager_SetUiInputFieldSettingsInternal);
+    mono_add_internal_call("Engine.EntityManager::GetUiInputFieldTextInternal", (const void*)&EntityManager_GetUiInputFieldTextInternal);
+    mono_add_internal_call("Engine.EntityManager::SetUiInputFieldTextInternal", (const void*)&EntityManager_SetUiInputFieldTextInternal);
+    mono_add_internal_call("Engine.EntityManager::GetUiInputFieldPlaceholderInternal", (const void*)&EntityManager_GetUiInputFieldPlaceholderInternal);
+    mono_add_internal_call("Engine.EntityManager::SetUiInputFieldPlaceholderInternal", (const void*)&EntityManager_SetUiInputFieldPlaceholderInternal);
     mono_add_internal_call("Engine.Glm::Vec2AddInternal", (const void*)&RuntimeGlm_Vec2Add);
     mono_add_internal_call("Engine.Glm::Vec2SubInternal", (const void*)&RuntimeGlm_Vec2Sub);
     mono_add_internal_call("Engine.Glm::Vec2ScaleInternal", (const void*)&RuntimeGlm_Vec2Scale);
@@ -973,6 +1011,8 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.ImGui::Button", (const void*)&EditorImGui_Button);
         mono_add_internal_call("Engine.ImGui::OpenPopup", (const void*)&EditorImGui_OpenPopup);
         mono_add_internal_call("Engine.ImGui::BeginPopupModal", (const void*)&EditorImGui_BeginPopupModal);
+        mono_add_internal_call("Engine.ImGui::BeginCombo", (const void*)&EditorImGui_BeginCombo);
+        mono_add_internal_call("Engine.ImGui::EndCombo", (const void*)&EditorImGui_EndCombo);
         mono_add_internal_call("Engine.ImGui::BeginPopup", (const void*)&EditorImGui_BeginPopup);
         mono_add_internal_call("Engine.ImGui::EndPopup", (const void*)&EditorImGui_EndPopup);
         mono_add_internal_call("Engine.ImGui::CloseCurrentPopup", (const void*)&EditorImGui_CloseCurrentPopup);
@@ -1012,6 +1052,56 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.ImGui::DrawRect", (const void*)&EditorImGui_DrawRect);
         mono_add_internal_call("Engine.ImGui::SetStyleColor", (const void*)&EditorImGui_SetStyleColor);
         mono_add_internal_call("Engine.ImGui::GetStyleColor", (const void*)&EditorImGui_GetStyleColor);
+
+        // Tree Node
+        mono_add_internal_call("Engine.ImGui::TreeNodeEx", (const void*)&EditorImGui_TreeNodeEx);
+        mono_add_internal_call("Engine.ImGui::TreePop", (const void*)&EditorImGui_TreePop);
+        mono_add_internal_call("Engine.ImGui::SetNextItemOpen", (const void*)&EditorImGui_SetNextItemOpen);
+
+        // Drag & Drop
+        mono_add_internal_call("Engine.ImGui::BeginDragDropSource", (const void*)&EditorImGui_BeginDragDropSource);
+        mono_add_internal_call("Engine.ImGui::SetDragDropPayloadUint", (const void*)&EditorImGui_SetDragDropPayloadUint);
+        mono_add_internal_call("Engine.ImGui::EndDragDropSource", (const void*)&EditorImGui_EndDragDropSource);
+        mono_add_internal_call("Engine.ImGui::BeginDragDropTarget", (const void*)&EditorImGui_BeginDragDropTarget);
+        mono_add_internal_call("Engine.ImGui::AcceptDragDropPayloadUint", (const void*)&EditorImGui_AcceptDragDropPayloadUint);
+        mono_add_internal_call("Engine.ImGui::EndDragDropTarget", (const void*)&EditorImGui_EndDragDropTarget);
+
+        // Styling
+        mono_add_internal_call("Engine.ImGui::PushStyleColor", (const void*)&EditorImGui_PushStyleColor);
+        mono_add_internal_call("Engine.ImGui::PopStyleColor", (const void*)&EditorImGui_PopStyleColor);
+        mono_add_internal_call("Engine.ImGui::PushStyleVar", (const void*)&EditorImGui_PushStyleVar);
+        mono_add_internal_call("Engine.ImGui::PushStyleVar2", (const void*)&EditorImGui_PushStyleVar2);
+        mono_add_internal_call("Engine.ImGui::PopStyleVar", (const void*)&EditorImGui_PopStyleVar);
+
+        // Layout / Cursor
+        mono_add_internal_call("Engine.ImGui::SetCursorPosX", (const void*)&EditorImGui_SetCursorPosX);
+        mono_add_internal_call("Engine.ImGui::GetCursorPosX", (const void*)&EditorImGui_GetCursorPosX);
+        mono_add_internal_call("Engine.ImGui::SetCursorPosY", (const void*)&EditorImGui_SetCursorPosY);
+        mono_add_internal_call("Engine.ImGui::GetCursorPosY", (const void*)&EditorImGui_GetCursorPosY);
+        mono_add_internal_call("Engine.ImGui::GetFrameHeight", (const void*)&EditorImGui_GetFrameHeight);
+        mono_add_internal_call("Engine.ImGui::Dummy", (const void*)&EditorImGui_Dummy);
+        mono_add_internal_call("Engine.ImGui::Spacing", (const void*)&EditorImGui_Spacing);
+        mono_add_internal_call("Engine.ImGui::GetScrollY", (const void*)&EditorImGui_GetScrollY);
+        mono_add_internal_call("Engine.ImGui::SetScrollY", (const void*)&EditorImGui_SetScrollY);
+        mono_add_internal_call("Engine.ImGui::GetScrollMaxY", (const void*)&EditorImGui_GetScrollMaxY);
+        mono_add_internal_call("Engine.ImGui::GetTreeNodeToLabelSpacing", (const void*)&EditorImGui_GetTreeNodeToLabelSpacing);
+        mono_add_internal_call("Engine.ImGui::GetItemRectMinY", (const void*)&EditorImGui_GetItemRectMinY);
+        mono_add_internal_call("Engine.ImGui::GetItemRectMaxY", (const void*)&EditorImGui_GetItemRectMaxY);
+        mono_add_internal_call("Engine.ImGui::GetWindowPosY", (const void*)&EditorImGui_GetWindowPosY);
+        mono_add_internal_call("Engine.ImGui::GetWindowHeight", (const void*)&EditorImGui_GetWindowHeight);
+
+        // Input Queries
+        mono_add_internal_call("Engine.ImGui::IsItemClicked", (const void*)&EditorImGui_IsItemClicked);
+        mono_add_internal_call("Engine.ImGui::IsKeyDown", (const void*)&EditorImGui_IsKeyDown);
+        mono_add_internal_call("Engine.ImGui::IsKeyPressed", (const void*)&EditorImGui_IsKeyPressed);
+        mono_add_internal_call("Engine.ImGui::BeginPopupContextWindow", (const void*)&EditorImGui_BeginPopupContextWindow);
+        mono_add_internal_call("Engine.ImGui::BeginPopupContextItem", (const void*)&EditorImGui_BeginPopupContextItem);
+
+        // DrawList additions
+        mono_add_internal_call("Engine.ImGui::DrawRectFilled", (const void*)&EditorImGui_DrawRectFilled);
+        mono_add_internal_call("Engine.ImGui::DrawRectFilledRounded", (const void*)&EditorImGui_DrawRectFilledRounded);
+        mono_add_internal_call("Engine.ImGui::CalcTextSize", (const void*)&EditorImGui_CalcTextSize);
+        mono_add_internal_call("Engine.ImGui::DrawText", (const void*)&EditorImGui_DrawText);
 
         mono_add_internal_call("Engine.ImGuizmo::IsUsing", (const void*)&EditorImGuizmo_IsUsing);
         mono_add_internal_call("Engine.ImGuizmo::Manipulate2DTranslate", (const void*)&EditorImGuizmo_Manipulate2DTranslate);
