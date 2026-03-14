@@ -33,6 +33,7 @@ struct CameraComponent
 
 struct SpriteComponent
 {
+    bool enabled = true;
     Texture* texture = nullptr;
     std::uint64_t textureAssetHandle = 0;
     std::string textureAssetPath;
@@ -73,6 +74,7 @@ struct ScriptComponent
 
 struct AnimatorComponent
 {
+    bool enabled = true;
     std::string clipAssetPath;
     float time = 0.0f;
     bool playing = false;

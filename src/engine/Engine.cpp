@@ -840,6 +840,8 @@ void Engine::EndFrame()
 
             const auto& transform = view.get<const TransformComponent>(entity);
             auto& sprite = m_scene->Registry().get<SpriteComponent>(entity);
+            if (!sprite.enabled)
+                continue;
 
             float drawX = transform.x + sprite.offsetX;
             float drawY = transform.y + sprite.offsetY;

@@ -14,7 +14,7 @@
 
 namespace
 {
-    constexpr std::uint32_t kSceneFileVersion = 8;
+    constexpr std::uint32_t kSceneFileVersion = 9;
 
     enum ComponentFlags : std::uint8_t
     {
@@ -45,6 +45,7 @@ namespace
         std::uint64_t spriteTextureAssetHandle = 0;
         std::string spriteTexturePath;
         std::uint32_t spriteFallbackColor = 0xFFFFFFFF;
+        bool spriteEnabled = true;
         bool spriteCentered = true;
         float spriteOffsetX = 0.0f;
         float spriteOffsetY = 0.0f;
@@ -63,6 +64,7 @@ namespace
         ScriptComponent script;
 
         bool hasAnimator = false;
+        bool animatorEnabled = true;
         AnimatorComponent animator;
     };
 
@@ -380,6 +382,7 @@ namespace
                 persisted.spriteTextureAssetHandle = sprite->textureAssetHandle;
                 persisted.spriteTexturePath = sprite->textureAssetPath;
                 persisted.spriteFallbackColor = sprite->fallbackColor;
+                persisted.spriteEnabled = sprite->enabled;
                 persisted.spriteCentered = sprite->centered;
                 persisted.spriteOffsetX = sprite->offsetX;
                 persisted.spriteOffsetY = sprite->offsetY;
@@ -405,6 +408,7 @@ namespace
             if (const AnimatorComponent* animator = scene.TryGetAnimator(entity))
             {
                 persisted.hasAnimator = true;
+                persisted.animatorEnabled = animator->enabled;
                 persisted.animator = *animator;
                 NormalizeAnimatorState(persisted);
             }
@@ -1062,6 +1066,8 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
                 WriteBinary(output, entity.spriteTextureAssetHandle);
                 WriteStringBinary(output, entity.spriteTexturePath);
                 WriteBinary(output, entity.spriteFallbackColor);
+                const std::uint8_t spriteEnabled = entity.spriteEnabled ? 1 : 0;
+                WriteBinary(output, spriteEnabled);
                 const std::uint8_t centered = entity.spriteCentered ? 1 : 0;
                 WriteBinary(output, centered);
                 WriteBinary(output, entity.spriteOffsetX);
@@ -1093,6 +1099,8 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             if (entity.hasAnimator)
             {
                 WriteStringBinary(output, entity.animator.clipAssetPath);
+                const std::uint8_t animatorEnabled = entity.animatorEnabled ? 1 : 0;
+                WriteBinary(output, animatorEnabled);
                 WriteBinary(output, entity.animator.time);
                 const std::uint8_t playing = entity.animator.playing ? 1 : 0;
                 const std::uint8_t loop = entity.animator.loop ? 1 : 0;
@@ -1179,6 +1187,7 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             texturePathValue.SetString(entity.spriteTexturePath.c_str(), static_cast<rapidjson::SizeType>(entity.spriteTexturePath.size()), allocator);
             spriteObject.AddMember("textureAssetPath", texturePathValue, allocator);
             spriteObject.AddMember("fallbackColor", entity.spriteFallbackColor, allocator);
+            spriteObject.AddMember("enabled", entity.spriteEnabled, allocator);
             spriteObject.AddMember("centered", entity.spriteCentered, allocator);
             spriteObject.AddMember("offsetX", entity.spriteOffsetX, allocator);
             spriteObject.AddMember("offsetY", entity.spriteOffsetY, allocator);
@@ -1225,6 +1234,7 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
                                     static_cast<rapidjson::SizeType>(entity.animator.clipAssetPath.size()),
                                     allocator);
             animatorObject.AddMember("clipAssetPath", clipPathValue, allocator);
+            animatorObject.AddMember("enabled", entity.animatorEnabled, allocator);
             animatorObject.AddMember("time", entity.animator.time, allocator);
             animatorObject.AddMember("playing", entity.animator.playing, allocator);
             animatorObject.AddMember("loop", entity.animator.loop, allocator);
@@ -1466,6 +1476,21 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                         }
                     }
 
+                    if (fileVersion >= 9)
+                    {
+                        std::uint8_t enabled = 1;
+                        if (!ReadBinary(input, enabled))
+                        {
+                            m_lastIoError = "Failed to read binary sprite enabled state.";
+                            return false;
+                        }
+                        entity.spriteEnabled = enabled != 0;
+                    }
+                    else
+                    {
+                        entity.spriteEnabled = true;
+                    }
+
                     std::uint8_t centered = 0;
                     std::uint8_t flipH = 0;
                     std::uint8_t flipV = 0;
@@ -1514,11 +1539,26 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
 
             if (entity.hasAnimator)
             {
+                std::uint8_t enabled = 1;
                 std::uint8_t playing = 0;
                 std::uint8_t loop = 0;
                 std::uint8_t applyPoseWhenStopped = 0;
-                if (!ReadStringBinary(input, entity.animator.clipAssetPath) ||
-                    !ReadBinary(input, entity.animator.time) ||
+                if (!ReadStringBinary(input, entity.animator.clipAssetPath))
+                {
+                    m_lastIoError = "Failed to read binary animator component.";
+                    return false;
+                }
+
+                if (fileVersion >= 9)
+                {
+                    if (!ReadBinary(input, enabled))
+                    {
+                        m_lastIoError = "Failed to read binary animator enabled state.";
+                        return false;
+                    }
+                }
+
+                if (!ReadBinary(input, entity.animator.time) ||
                     !ReadBinary(input, playing) ||
                     !ReadBinary(input, loop) ||
                     !ReadBinary(input, entity.animator.speed) ||
@@ -1528,6 +1568,8 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                     return false;
                 }
 
+                entity.animatorEnabled = enabled != 0;
+                entity.animator.enabled = entity.animatorEnabled;
                 entity.animator.playing = playing != 0;
                 entity.animator.loop = loop != 0;
                 entity.animator.applyPoseWhenStopped = applyPoseWhenStopped != 0;
@@ -1698,6 +1740,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                     if (!ReadOptionalUInt64(sprite, "textureAssetHandle", entity.spriteTextureAssetHandle, parseError) ||
                         !ReadOptionalString(sprite, "textureAssetPath", entity.spriteTexturePath, parseError) ||
                         !ReadOptionalUInt32(sprite, "fallbackColor", entity.spriteFallbackColor, parseError) ||
+                        !ReadOptionalBool(sprite, "enabled", entity.spriteEnabled, parseError) ||
                         !ReadOptionalBool(sprite, "centered", entity.spriteCentered, parseError) ||
                         !ReadOptionalFloat(sprite, "offsetX", entity.spriteOffsetX, parseError) ||
                         !ReadOptionalFloat(sprite, "offsetY", entity.spriteOffsetY, parseError) ||
@@ -1750,6 +1793,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
 
                     entity.hasAnimator = true;
                     if (!ReadOptionalString(animator, "clipAssetPath", entity.animator.clipAssetPath, parseError) ||
+                        !ReadOptionalBool(animator, "enabled", entity.animatorEnabled, parseError) ||
                         !ReadOptionalFloat(animator, "time", entity.animator.time, parseError) ||
                         !ReadOptionalBool(animator, "playing", entity.animator.playing, parseError) ||
                         !ReadOptionalBool(animator, "loop", entity.animator.loop, parseError) ||
@@ -1761,6 +1805,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                     }
 
                     NormalizeAnimatorState(entity);
+                    entity.animator.enabled = entity.animatorEnabled;
                 }
             }
 
@@ -1829,6 +1874,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             sprite.textureAssetHandle = persisted.spriteTextureAssetHandle;
             sprite.textureAssetPath = persisted.spriteTexturePath;
             sprite.fallbackColor = persisted.spriteFallbackColor;
+            sprite.enabled = persisted.spriteEnabled;
             sprite.centered = persisted.spriteCentered;
             sprite.offsetX = persisted.spriteOffsetX;
             sprite.offsetY = persisted.spriteOffsetY;
@@ -1858,6 +1904,13 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             AddAnimator(entity, persisted.animator);
         else
             RemoveAnimator(entity);
+
+        if (persisted.hasAnimator)
+        {
+            AnimatorComponent* animator = TryGetAnimator(entity);
+            if (animator)
+                animator->enabled = persisted.animatorEnabled;
+        }
     }
 
     auto metadataView = m_registry.view<EntityMetadataComponent>();

@@ -3315,6 +3315,29 @@ static void EditorBridge_RemoveAnimator(std::uint32_t entityId)
     g_editorSceneContext->RemoveAnimator(entity);
 }
 
+static bool EditorBridge_GetAnimatorEnabled(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    return animator ? animator->enabled : false;
+}
+
+static void EditorBridge_SetAnimatorEnabled(std::uint32_t entityId, bool enabled)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    animator->enabled = enabled;
+}
+
 static MonoString* EditorBridge_GetAnimatorClipPath(std::uint32_t entityId)
 {
     if (!g_editorSceneContext)
@@ -4083,6 +4106,29 @@ static void EditorBridge_RemoveSprite(std::uint32_t entityId)
 
     const auto entity = g_editorSceneContext->FromEntityId(entityId);
     g_editorSceneContext->RemoveSprite(entity);
+}
+
+static bool EditorBridge_GetSpriteEnabled(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const SpriteComponent* sprite = g_editorSceneContext->TryGetSprite(entity);
+    return sprite ? sprite->enabled : false;
+}
+
+static void EditorBridge_SetSpriteEnabled(std::uint32_t entityId, bool enabled)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    SpriteComponent* sprite = g_editorSceneContext->TryGetSprite(entity);
+    if (!sprite)
+        return;
+
+    sprite->enabled = enabled;
 }
 
 static MonoString* EditorBridge_GetSpriteTexturePath(std::uint32_t entityId)

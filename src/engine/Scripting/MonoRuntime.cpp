@@ -814,6 +814,8 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::HasSprite", (const void*)&EditorBridge_HasSprite);
         mono_add_internal_call("Engine.EditorBridge::AddSprite", (const void*)&EditorBridge_AddSprite);
         mono_add_internal_call("Engine.EditorBridge::RemoveSprite", (const void*)&EditorBridge_RemoveSprite);
+        mono_add_internal_call("Engine.EditorBridge::GetSpriteEnabled", (const void*)&EditorBridge_GetSpriteEnabled);
+        mono_add_internal_call("Engine.EditorBridge::SetSpriteEnabled", (const void*)&EditorBridge_SetSpriteEnabled);
         mono_add_internal_call("Engine.EditorBridge::GetSpriteTexturePath", (const void*)&EditorBridge_GetSpriteTexturePath);
         mono_add_internal_call("Engine.EditorBridge::SetSpriteTexturePath", (const void*)&EditorBridge_SetSpriteTexturePath);
         mono_add_internal_call("Engine.EditorBridge::GetSpriteFallbackColor", (const void*)&EditorBridge_GetSpriteFallbackColor);
@@ -832,6 +834,8 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::HasAnimator", (const void*)&EditorBridge_HasAnimator);
         mono_add_internal_call("Engine.EditorBridge::AddAnimator", (const void*)&EditorBridge_AddAnimator);
         mono_add_internal_call("Engine.EditorBridge::RemoveAnimator", (const void*)&EditorBridge_RemoveAnimator);
+        mono_add_internal_call("Engine.EditorBridge::GetAnimatorEnabled", (const void*)&EditorBridge_GetAnimatorEnabled);
+        mono_add_internal_call("Engine.EditorBridge::SetAnimatorEnabled", (const void*)&EditorBridge_SetAnimatorEnabled);
         mono_add_internal_call("Engine.EditorBridge::GetAnimatorClipPath", (const void*)&EditorBridge_GetAnimatorClipPath);
         mono_add_internal_call("Engine.EditorBridge::SetAnimatorClipPath", (const void*)&EditorBridge_SetAnimatorClipPath);
         mono_add_internal_call("Engine.EditorBridge::GetAnimatorTime", (const void*)&EditorBridge_GetAnimatorTime);

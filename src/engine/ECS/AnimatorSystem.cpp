@@ -213,6 +213,9 @@ void AnimatorSystem::Update(Scene& scene, float deltaTime, const ProjectContext*
     for (const auto entity : view)
     {
         AnimatorComponent& animator = view.get<AnimatorComponent>(entity);
+        if (!animator.enabled)
+            continue;
+
         if (animator.clipAssetPath.empty())
             continue;
 

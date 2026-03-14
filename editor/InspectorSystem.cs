@@ -12,6 +12,7 @@ namespace EngineEditor
         private static readonly List<ComponentInspectorEntry> _componentEntries = new List<ComponentInspectorEntry>();
         private static readonly Dictionary<uint, string> _scriptAssignmentErrors = new Dictionary<uint, string>();
         private static readonly Dictionary<string, bool> _componentFoldoutStates = new Dictionary<string, bool>();
+        private static readonly Dictionary<uint, List<int>> _componentOrderByEntity = new Dictionary<uint, List<int>>();
 
         private static readonly string[] _defaultTags = new string[]
         {
@@ -40,6 +41,14 @@ namespace EngineEditor
             public Action<uint> Draw;
         }
 
+        private enum ComponentCardAction
+        {
+            None,
+            MoveUp,
+            MoveDown,
+            Removed
+        }
+
         public static void ResetState()
         {
             ResetTransientState();
@@ -49,6 +58,7 @@ namespace EngineEditor
         {
             _scriptAssignmentErrors.Clear();
             _componentFoldoutStates.Clear();
+            _componentOrderByEntity.Clear();
         }
 
         public static void DrawInspectorPanel()
@@ -81,13 +91,36 @@ namespace EngineEditor
                         ImGui.Separator();
                         DrawAddComponentMenu(entityId);
 
-                        for (int i = 0; i < _componentEntries.Count; ++i)
+                        List<ComponentInspectorEntry> orderedEntries = GetOrderedComponentEntries(entityId);
+                        for (int i = 0; i < orderedEntries.Count; ++i)
                         {
-                            ComponentInspectorEntry entry = _componentEntries[i];
-                            if (!EntityManager.HasComponent(entityId, entry.ComponentType))
-                                continue;
+                            ComponentInspectorEntry entry = orderedEntries[i];
+                            bool canMoveUp = entry.ComponentType != ComponentType.Transform
+                                             && i > 0
+                                             && orderedEntries[i - 1].ComponentType != ComponentType.Transform;
+                            bool canMoveDown = entry.ComponentType != ComponentType.Transform
+                                               && i + 1 < orderedEntries.Count;
+                            ComponentCardAction action = DrawComponentCard(entityId,
+                                                                           entry,
+                                                                           canMoveUp,
+                                                                           canMoveDown);
+                            if (action == ComponentCardAction.Removed)
+                            {
+                                RemoveComponentFromOrder(entityId, entry.ComponentType);
+                                break;
+                            }
 
-                            DrawComponentCard(entityId, entry);
+                            if (action == ComponentCardAction.MoveUp)
+                            {
+                                MoveComponentInOrder(entityId, entry.ComponentType, -1);
+                                break;
+                            }
+
+                            if (action == ComponentCardAction.MoveDown)
+                            {
+                                MoveComponentInOrder(entityId, entry.ComponentType, 1);
+                                break;
+                            }
                         }
                     }
                 }
@@ -150,7 +183,10 @@ namespace EngineEditor
             return true;
         }
 
-        private static void DrawComponentCard(uint entityId, ComponentInspectorEntry entry)
+        private static ComponentCardAction DrawComponentCard(uint entityId,
+                                     ComponentInspectorEntry entry,
+                                     bool canMoveUp,
+                                     bool canMoveDown)
         {
             string foldoutKey = entityId + ":" + entry.ComponentType;
             bool expanded;
@@ -168,6 +204,28 @@ namespace EngineEditor
                 _componentFoldoutStates[foldoutKey] = expanded;
             }
 
+            if (canMoveUp)
+            {
+                ImGui.SameLine();
+                if (ImGui.Button("Up##" + foldoutKey))
+                    return ComponentCardAction.MoveUp;
+            }
+
+            if (canMoveDown)
+            {
+                ImGui.SameLine();
+                if (ImGui.Button("Down##" + foldoutKey))
+                    return ComponentCardAction.MoveDown;
+            }
+
+            if (TryGetComponentEnabled(entityId, entry.ComponentType, out bool enabled))
+            {
+                ImGui.SameLine();
+                bool enabledValue = enabled;
+                if (ImGui.Checkbox("Enabled##" + foldoutKey, ref enabledValue) && enabledValue != enabled)
+                    SetComponentEnabled(entityId, entry.ComponentType, enabledValue);
+            }
+
             if (entry.CanRemove)
             {
                 ImGui.SameLine();
@@ -175,12 +233,227 @@ namespace EngineEditor
                 {
                     EntityManager.RemoveComponent(entityId, entry.ComponentType);
                     _componentFoldoutStates.Remove(foldoutKey);
-                    return;
+                    return ComponentCardAction.Removed;
                 }
             }
 
             if (expanded)
                 entry.Draw(entityId);
+
+            return ComponentCardAction.None;
+        }
+
+        private static List<ComponentInspectorEntry> GetOrderedComponentEntries(uint entityId)
+        {
+            var attachedEntriesByType = new Dictionary<int, ComponentInspectorEntry>();
+            var attachedTypes = new List<int>();
+
+            for (int i = 0; i < _componentEntries.Count; ++i)
+            {
+                ComponentInspectorEntry entry = _componentEntries[i];
+                if (!EntityManager.HasComponent(entityId, entry.ComponentType))
+                    continue;
+
+                attachedEntriesByType[entry.ComponentType] = entry;
+                attachedTypes.Add(entry.ComponentType);
+            }
+
+            if (!_componentOrderByEntity.TryGetValue(entityId, out List<int> order))
+            {
+                order = new List<int>();
+                _componentOrderByEntity[entityId] = order;
+            }
+
+            for (int i = order.Count - 1; i >= 0; --i)
+            {
+                if (!attachedTypes.Contains(order[i]))
+                    order.RemoveAt(i);
+            }
+
+            for (int i = 0; i < attachedTypes.Count; ++i)
+            {
+                int attachedType = attachedTypes[i];
+                if (!order.Contains(attachedType))
+                    order.Add(attachedType);
+            }
+
+            var orderedEntries = new List<ComponentInspectorEntry>();
+            for (int i = 0; i < order.Count; ++i)
+            {
+                int orderedType = order[i];
+                if (attachedEntriesByType.TryGetValue(orderedType, out ComponentInspectorEntry entry))
+                    orderedEntries.Add(entry);
+            }
+
+            return orderedEntries;
+        }
+
+        private static void RemoveComponentFromOrder(uint entityId, int componentType)
+        {
+            if (_componentOrderByEntity.TryGetValue(entityId, out List<int> order))
+                order.Remove(componentType);
+        }
+
+        private static void MoveComponentInOrder(uint entityId, int componentType, int delta)
+        {
+            if (delta == 0)
+                return;
+
+            if (!_componentOrderByEntity.TryGetValue(entityId, out List<int> order))
+                return;
+
+            int index = order.IndexOf(componentType);
+            if (index < 0)
+                return;
+
+            int targetIndex = index + delta;
+            if (targetIndex < 0 || targetIndex >= order.Count)
+                return;
+
+            if (order[targetIndex] == ComponentType.Transform)
+                return;
+
+            int current = order[index];
+            order[index] = order[targetIndex];
+            order[targetIndex] = current;
+        }
+
+        private static bool TryGetComponentEnabled(uint entityId, int componentType, out bool enabled)
+        {
+            enabled = false;
+
+            if (componentType == ComponentType.Camera)
+                return TryGetCameraEnabled(entityId, out enabled);
+
+            if (componentType == ComponentType.Sprite)
+            {
+                enabled = EditorBridge.GetSpriteEnabled(entityId);
+                return true;
+            }
+
+            if (componentType == ComponentType.Script)
+            {
+                enabled = EditorBridge.GetScriptEnabled(entityId);
+                return true;
+            }
+
+            if (componentType == ComponentType.Animator)
+            {
+                enabled = EditorBridge.GetAnimatorEnabled(entityId);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void SetComponentEnabled(uint entityId, int componentType, bool enabled)
+        {
+            if (componentType == ComponentType.Camera)
+            {
+                SetCameraEnabled(entityId, enabled);
+                return;
+            }
+
+            if (componentType == ComponentType.Sprite)
+            {
+                EditorBridge.SetSpriteEnabled(entityId, enabled);
+                return;
+            }
+
+            if (componentType == ComponentType.Script)
+            {
+                EditorBridge.SetScriptEnabled(entityId, enabled);
+                return;
+            }
+
+            if (componentType == ComponentType.Animator)
+                EditorBridge.SetAnimatorEnabled(entityId, enabled);
+        }
+
+        private static bool TryGetCameraEnabled(uint entityId, out bool enabled)
+        {
+            enabled = false;
+
+            float camX;
+            float camY;
+            float camZoom;
+            bool primary;
+            bool clearColor;
+            uint backgroundColor;
+            uint cullingMask;
+            float viewportX;
+            float viewportY;
+            float viewportWidth;
+            float viewportHeight;
+            float orthographicSize;
+
+            return EntityManager.GetCameraSettingsV2(entityId,
+                                                     out camX,
+                                                     out camY,
+                                                     out camZoom,
+                                                     out enabled,
+                                                     out primary,
+                                                     out clearColor,
+                                                     out backgroundColor,
+                                                     out cullingMask,
+                                                     out viewportX,
+                                                     out viewportY,
+                                                     out viewportWidth,
+                                                     out viewportHeight,
+                                                     out orthographicSize);
+        }
+
+        private static void SetCameraEnabled(uint entityId, bool enabled)
+        {
+            float camX;
+            float camY;
+            float camZoom;
+            bool currentEnabled;
+            bool primary;
+            bool clearColor;
+            uint backgroundColor;
+            uint cullingMask;
+            float viewportX;
+            float viewportY;
+            float viewportWidth;
+            float viewportHeight;
+            float orthographicSize;
+
+            if (!EntityManager.GetCameraSettingsV2(entityId,
+                                                   out camX,
+                                                   out camY,
+                                                   out camZoom,
+                                                   out currentEnabled,
+                                                   out primary,
+                                                   out clearColor,
+                                                   out backgroundColor,
+                                                   out cullingMask,
+                                                   out viewportX,
+                                                   out viewportY,
+                                                   out viewportWidth,
+                                                   out viewportHeight,
+                                                   out orthographicSize))
+            {
+                return;
+            }
+
+            if (currentEnabled == enabled)
+                return;
+
+            EntityManager.SetCameraSettingsV2(entityId,
+                                              camX,
+                                              camY,
+                                              camZoom,
+                                              enabled,
+                                              primary,
+                                              clearColor,
+                                              backgroundColor,
+                                              cullingMask,
+                                              viewportX,
+                                              viewportY,
+                                              viewportWidth,
+                                              viewportHeight,
+                                              orthographicSize);
         }
 
         private static string[] BuildTagOptions(uint selectedEntityId)
@@ -668,7 +941,6 @@ namespace EngineEditor
             bool cameraChanged = false;
 
             EditorUIHelpers.DrawSectionHeader("General");
-            cameraChanged |= InspectorInputs.Bool("Enabled", ref enabled);
             cameraChanged |= InspectorInputs.Bool("Main Camera", ref primary);
 
             EditorUIHelpers.DrawSectionHeader("Transform");
@@ -817,14 +1089,7 @@ namespace EngineEditor
                 ImGui.Text("No registered C# script classes found in the loaded script assembly.");
             }
 
-            bool scriptEnabled = EditorBridge.GetScriptEnabled(entityId);
-            ImGui.Text("Enabled: " + (scriptEnabled ? "yes" : "no"));
-
-            bool enabledValue = scriptEnabled;
-            if (InspectorInputs.Bool("Script Enabled", ref enabledValue) && enabledValue != scriptEnabled)
-                EditorBridge.SetScriptEnabled(entityId, enabledValue);
-
-            ImGui.Text("Lifecycle: toggling Script Enabled invokes OnEnable/OnDisable when implemented.");
+            ImGui.Text("Lifecycle: toggling component Enabled invokes OnEnable/OnDisable when implemented.");
 
             if (ImGui.Button("Refresh Script Fields"))
             {

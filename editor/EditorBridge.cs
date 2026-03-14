@@ -314,6 +314,12 @@ namespace Engine
         public static extern void RemoveSprite(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool GetSpriteEnabled(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetSpriteEnabled(uint entityId, bool enabled);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern string GetSpriteTexturePath(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -392,6 +398,12 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void RemoveAnimator(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool GetAnimatorEnabled(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetAnimatorEnabled(uint entityId, bool enabled);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern string GetAnimatorClipPath(uint entityId);
