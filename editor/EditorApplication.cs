@@ -57,7 +57,17 @@ namespace EngineEditor
             {
                 EditorContext.ShowProjectManagerView = true;
                 DockspaceManager.DisableRuntimeDockspace();
-                EditorWindowManager.DrawAll(deltaTime);
+
+                ProjectManager.DrawProjectPanelBuiltInUi(deltaTime);
+
+                return;
+            }
+
+            if (bootPhase == 1)
+            {
+                EditorContext.ShowProjectManagerView = true;
+                DockspaceManager.DisableRuntimeDockspace();
+                SplashUiSystem.DrawLoadingOverlay(deltaTime);
                 return;
             }
 
@@ -514,3 +524,6 @@ namespace EngineEditor
         }
     }
 }
+
+
+

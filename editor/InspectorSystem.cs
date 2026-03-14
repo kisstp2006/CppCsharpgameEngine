@@ -13,6 +13,12 @@ namespace EngineEditor
         private static readonly Dictionary<uint, string> _scriptAssignmentErrors = new Dictionary<uint, string>();
         private static readonly Dictionary<string, bool> _componentFoldoutStates = new Dictionary<string, bool>();
         private static readonly Dictionary<uint, List<int>> _componentOrderByEntity = new Dictionary<uint, List<int>>();
+        private static int _dragCandidateComponentType = -1;
+        private static int _draggingComponentType = -1;
+        private static int _hoveredDropComponentType = -1;
+        private static uint _dragSourceEntityId;
+        private static float _dragStartMouseX;
+        private static float _dragStartMouseY;
 
         private static readonly string[] _defaultTags = new string[]
         {
@@ -59,6 +65,7 @@ namespace EngineEditor
             _scriptAssignmentErrors.Clear();
             _componentFoldoutStates.Clear();
             _componentOrderByEntity.Clear();
+            ResetComponentCardDragState();
         }
 
         public static void DrawInspectorPanel()
@@ -91,7 +98,15 @@ namespace EngineEditor
                         ImGui.Separator();
                         DrawAddComponentMenu(entityId);
 
+                        float dropZoneX = ImGui.GetCursorScreenPosX();
+                        float dropZoneY = ImGui.GetCursorScreenPosY();
+                        float dropZoneWidth = ImGui.GetContentRegionAvailX();
+                        float dropZoneHeight = ImGui.GetContentRegionAvailY();
+
                         List<ComponentInspectorEntry> orderedEntries = GetOrderedComponentEntries(entityId);
+                        if (_draggingComponentType >= 0 && _dragSourceEntityId == entityId)
+                            _hoveredDropComponentType = -1;
+
                         for (int i = 0; i < orderedEntries.Count; ++i)
                         {
                             ComponentInspectorEntry entry = orderedEntries[i];
@@ -122,6 +137,10 @@ namespace EngineEditor
                                 break;
                             }
                         }
+
+                        DrawInspectorAssetDropOverlay(entityId, dropZoneX, dropZoneY, dropZoneWidth, dropZoneHeight);
+                        HandleComponentReorderDragState(entityId);
+                        HandleAssetDropOnInspector(entityId);
                     }
                 }
             }
@@ -202,6 +221,20 @@ namespace EngineEditor
             {
                 expanded = !expanded;
                 _componentFoldoutStates[foldoutKey] = expanded;
+            }
+
+            RegisterComponentCardDrag(entityId, entry.ComponentType);
+            if (_draggingComponentType >= 0
+                && _dragSourceEntityId == entityId
+                && ImGui.IsItemHovered())
+            {
+                _hoveredDropComponentType = entry.ComponentType;
+            }
+
+            if (_draggingComponentType == entry.ComponentType && _dragSourceEntityId == entityId)
+            {
+                ImGui.SameLine();
+                ImGui.Text("[dragging]");
             }
 
             if (canMoveUp)
@@ -316,6 +349,274 @@ namespace EngineEditor
             int current = order[index];
             order[index] = order[targetIndex];
             order[targetIndex] = current;
+        }
+
+        private static void RegisterComponentCardDrag(uint entityId, int componentType)
+        {
+            if (componentType == ComponentType.Transform)
+                return;
+
+            if (!ImGui.IsItemHovered() || !ImGui.IsMouseClicked(MouseButton.Left))
+                return;
+
+            _dragSourceEntityId = entityId;
+            _dragCandidateComponentType = componentType;
+            _dragStartMouseX = ImGui.GetMousePosX();
+            _dragStartMouseY = ImGui.GetMousePosY();
+        }
+
+        private static void HandleComponentReorderDragState(uint entityId)
+        {
+            if (_dragSourceEntityId != 0 && _dragSourceEntityId != entityId)
+            {
+                ResetComponentCardDragState();
+                return;
+            }
+
+            if (_dragCandidateComponentType >= 0
+                && _draggingComponentType < 0
+                && ImGui.IsMouseDown(MouseButton.Left))
+            {
+                float dx = ImGui.GetMousePosX() - _dragStartMouseX;
+                float dy = ImGui.GetMousePosY() - _dragStartMouseY;
+                float dragDistanceSq = dx * dx + dy * dy;
+                if (dragDistanceSq >= 25.0f)
+                    _draggingComponentType = _dragCandidateComponentType;
+            }
+
+            if (ImGui.IsMouseDown(MouseButton.Left))
+                return;
+
+            if (_draggingComponentType >= 0
+                && _hoveredDropComponentType >= 0
+                && _hoveredDropComponentType != _draggingComponentType)
+            {
+                MoveComponentToTarget(entityId, _draggingComponentType, _hoveredDropComponentType);
+            }
+
+            ResetComponentCardDragState();
+        }
+
+        private static void MoveComponentToTarget(uint entityId, int componentType, int targetComponentType)
+        {
+            if (!_componentOrderByEntity.TryGetValue(entityId, out List<int> order))
+                return;
+
+            int sourceIndex = order.IndexOf(componentType);
+            int targetIndex = order.IndexOf(targetComponentType);
+            if (sourceIndex < 0 || targetIndex < 0 || sourceIndex == targetIndex)
+                return;
+
+            if (order[sourceIndex] == ComponentType.Transform)
+                return;
+
+            int minIndex = 0;
+            if (order.Count > 0 && order[0] == ComponentType.Transform)
+                minIndex = 1;
+
+            if (targetIndex < minIndex)
+                targetIndex = minIndex;
+
+            order.RemoveAt(sourceIndex);
+            if (targetIndex > sourceIndex)
+                targetIndex -= 1;
+
+            if (targetIndex < minIndex)
+                targetIndex = minIndex;
+            if (targetIndex > order.Count)
+                targetIndex = order.Count;
+
+            order.Insert(targetIndex, componentType);
+        }
+
+        private static void ResetComponentCardDragState()
+        {
+            _dragSourceEntityId = 0;
+            _dragCandidateComponentType = -1;
+            _draggingComponentType = -1;
+            _hoveredDropComponentType = -1;
+            _dragStartMouseX = 0.0f;
+            _dragStartMouseY = 0.0f;
+        }
+
+        private static void HandleAssetDropOnInspector(uint entityId)
+        {
+            if (!ImGui.IsWindowHovered() || !EditorContext.AssetDragActive)
+                return;
+
+            if (!Input.GetMouseButtonUp(MouseButton.Left))
+                return;
+
+            string droppedPath = EditorContext.DraggedAssetPath;
+            EditorContext.ClearDraggedAsset();
+
+            if (string.IsNullOrWhiteSpace(droppedPath) || !File.Exists(droppedPath))
+                return;
+
+            if (!TryApplyDroppedAssetToEntity(entityId, droppedPath))
+                ProjectOperations.SetStatusMessage("Inspector drop not supported for: " + Path.GetFileName(droppedPath));
+        }
+
+        private static void DrawInspectorAssetDropOverlay(uint entityId,
+                                                          float x,
+                                                          float y,
+                                                          float width,
+                                                          float height)
+        {
+            if (!EditorContext.AssetDragActive || !ImGui.IsWindowHovered())
+                return;
+
+            if (width < 1.0f || height < 1.0f)
+                return;
+
+            string droppedPath = EditorContext.DraggedAssetPath;
+            bool supported = IsDroppedAssetSupportedForInspector(entityId, droppedPath);
+
+            float r = supported ? 0.20f : 0.95f;
+            float g = supported ? 0.85f : 0.35f;
+            float b = supported ? 0.35f : 0.25f;
+            ImGui.DrawRect(x, y, width, height, r, g, b, 0.95f, 2.0f);
+
+            string fileName = Path.GetFileName(droppedPath);
+            if (string.IsNullOrEmpty(fileName))
+                fileName = "<asset>";
+
+            if (supported)
+                ImGui.SetTooltip("Drop to Inspector: " + fileName);
+            else
+                ImGui.SetTooltip("Unsupported in Inspector drop: " + fileName);
+        }
+
+        private static bool IsDroppedAssetSupportedForInspector(uint entityId, string path)
+        {
+            if (!EntityManager.IsEntityValid(entityId))
+                return false;
+
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                return false;
+
+            return IsImageAssetPath(path)
+                   || IsAnimationAssetPath(path)
+                   || IsScriptAssetPath(path);
+        }
+
+        private static bool TryApplyDroppedAssetToEntity(uint entityId, string droppedPath)
+        {
+            string normalizedPath = NormalizeAssetPathForSerialization(droppedPath);
+
+            if (IsImageAssetPath(droppedPath))
+            {
+                EnsureComponent(entityId, ComponentType.Sprite);
+                EditorBridge.SetSpriteTexturePath(entityId, normalizedPath);
+                ProjectOperations.SetStatusMessage("Assigned sprite texture from drop: " + Path.GetFileName(droppedPath));
+                return true;
+            }
+
+            if (IsAnimationAssetPath(droppedPath))
+            {
+                EnsureComponent(entityId, ComponentType.Animator);
+                EntityManager.SetAnimatorClipPath(entityId, normalizedPath);
+                ProjectOperations.SetStatusMessage("Assigned animator clip from drop: " + Path.GetFileName(droppedPath));
+                return true;
+            }
+
+            if (IsScriptAssetPath(droppedPath))
+            {
+                EnsureComponent(entityId, ComponentType.Script);
+                string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(droppedPath);
+                string resolvedType = TryResolveScriptTypeFromFileName(fileNameWithoutExtension);
+                if (!string.IsNullOrEmpty(resolvedType))
+                {
+                    EditorBridge.SetScriptTypeName(entityId, resolvedType);
+                    ProjectOperations.SetStatusMessage("Assigned script from drop: " + resolvedType);
+                }
+                else
+                {
+                    ProjectOperations.SetStatusMessage("Script dropped, but type not found in loaded assembly: " + fileNameWithoutExtension);
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
+        private static void EnsureComponent(uint entityId, int componentType)
+        {
+            if (!EntityManager.HasComponent(entityId, componentType))
+                EntityManager.AddComponent(entityId, componentType);
+        }
+
+        private static bool IsImageAssetPath(string path)
+        {
+            string lower = (path ?? string.Empty).ToLowerInvariant();
+            return lower.EndsWith(".png")
+                   || lower.EndsWith(".jpg")
+                   || lower.EndsWith(".jpeg")
+                   || lower.EndsWith(".bmp")
+                   || lower.EndsWith(".tga")
+                   || lower.EndsWith(".dds");
+        }
+
+        private static bool IsAnimationAssetPath(string path)
+        {
+            return (path ?? string.Empty).EndsWith(".anim", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsScriptAssetPath(string path)
+        {
+            return (path ?? string.Empty).EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeAssetPathForSerialization(string absolutePath)
+        {
+            if (string.IsNullOrWhiteSpace(absolutePath))
+                return string.Empty;
+
+            string normalizedPath = absolutePath;
+            string projectRoot = ProjectOperations.ActiveProjectPath;
+            if (!string.IsNullOrWhiteSpace(projectRoot) && Directory.Exists(projectRoot))
+            {
+                string relative = StringUtilities.MakeRelativePath(projectRoot, absolutePath);
+                if (!relative.StartsWith("..", StringComparison.Ordinal))
+                    normalizedPath = relative;
+            }
+
+            return normalizedPath.Replace('\\', '/');
+        }
+
+        private static string TryResolveScriptTypeFromFileName(string fileNameWithoutExtension)
+        {
+            if (string.IsNullOrWhiteSpace(fileNameWithoutExtension))
+                return string.Empty;
+
+            ScriptValidationSnapshot snapshot = ScriptComponentValidation.GetSnapshot();
+            string[] types = snapshot.RegisteredScriptTypes;
+            if (types == null || types.Length == 0)
+                return string.Empty;
+
+            string bestSimpleMatch = string.Empty;
+            for (int i = 0; i < types.Length; ++i)
+            {
+                string typeName = types[i] ?? string.Empty;
+                if (typeName.Length == 0)
+                    continue;
+
+                if (string.Equals(typeName, fileNameWithoutExtension, StringComparison.OrdinalIgnoreCase))
+                    return typeName;
+
+                int lastDotIndex = typeName.LastIndexOf('.');
+                string simpleName = lastDotIndex >= 0 ? typeName.Substring(lastDotIndex + 1) : typeName;
+                if (string.Equals(simpleName, fileNameWithoutExtension, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.IsNullOrEmpty(bestSimpleMatch))
+                        return string.Empty;
+
+                    bestSimpleMatch = typeName;
+                }
+            }
+
+            return bestSimpleMatch;
         }
 
         private static bool TryGetComponentEnabled(uint entityId, int componentType, out bool enabled)
@@ -1059,48 +1360,128 @@ namespace EngineEditor
 
             ScriptTypeValidationResult currentTypeValidation = ScriptComponentValidation.ValidateTypeName(currentScriptTypeName, validationSnapshot);
             if (currentTypeValidation.IsValid)
-            {
-                ImGui.Text("Script status: OK");
-            }
+                ImGui.Text("[OK] Script type: " + currentTypeValidation.NormalizedTypeName);
             else
-            {
-                ImGui.Text("Script error: " + currentTypeValidation.Message);
-            }
+                ImGui.Text("[ERROR] Script type: " + currentTypeValidation.Message);
 
             if (_scriptAssignmentErrors.TryGetValue(entityId, out string assignmentError) && !string.IsNullOrEmpty(assignmentError))
-                ImGui.Text(assignmentError);
+                ImGui.Text("[WARN] " + assignmentError);
 
             if (validationSnapshot.IsCompiling)
             {
-                ImGui.Text("Compile: checking script project...");
+                ImGui.Text("[INFO] Compile: checking script project...");
             }
             else
             {
-                ImGui.Text("Compile: " + validationSnapshot.CompileSummary);
+                if (validationSnapshot.HasCompileErrors)
+                    ImGui.Text("[ERROR] Compile: " + validationSnapshot.CompileSummary);
+                else
+                    ImGui.Text("[OK] Compile: " + validationSnapshot.CompileSummary);
             }
 
-            if (validationSnapshot.HasCompileErrors)
-            {
-                for (int i = 0; i < validationSnapshot.CompileErrorLines.Length; ++i)
-                    ImGui.Text(validationSnapshot.CompileErrorLines[i]);
-            }
-            else if (validationSnapshot.RegisteredScriptTypes.Length == 0)
-            {
-                ImGui.Text("No registered C# script classes found in the loaded script assembly.");
-            }
+            if (ImGui.Button("Compile Now##ScriptInspectorCompile" + entityId))
+                ScriptComponentValidation.RequestImmediateBuildForActiveProject();
 
-            ImGui.Text("Lifecycle: toggling component Enabled invokes OnEnable/OnDisable when implemented.");
+            ImGui.SameLine();
+            if (ImGui.Button("Reload Runtime##ScriptInspectorReload" + entityId))
+                ScriptComponentValidation.RequestImmediateRuntimeReload();
 
-            if (ImGui.Button("Refresh Script Fields"))
+            ImGui.SameLine();
+            if (ImGui.Button("Refresh Script Fields##" + entityId))
             {
                 ScriptFieldInspector.InvalidateCache();
                 ScriptComponentValidation.RequestImmediateRuntimeReload();
                 ProjectOperations.SetStatusMessage("Requested script assembly reload and inspector field refresh.");
             }
 
+            if (validationSnapshot.HasCompileErrors)
+            {
+                for (int i = 0; i < validationSnapshot.CompileErrorLines.Length; ++i)
+                    ImGui.Text(validationSnapshot.CompileErrorLines[i]);
+
+                if (validationSnapshot.CompileErrorLines.Length > 0
+                    && ImGui.Button("Show First Error In Status##ScriptInspectorError" + entityId))
+                {
+                    ProjectOperations.SetStatusMessage(validationSnapshot.CompileErrorLines[0]);
+                }
+            }
+            else if (validationSnapshot.RegisteredScriptTypes.Length == 0)
+            {
+                ImGui.Text("[WARN] No registered C# script classes found in the loaded script assembly.");
+                if (ImGui.Button("Create Script Asset##ScriptInspectorCreate" + entityId))
+                    AssetBrowserSystem.RequestOpenCreateScriptPopup();
+            }
+
+            if (!currentTypeValidation.IsValid)
+            {
+                if (ImGui.Button("Clear Script Type##ScriptInspectorClear" + entityId))
+                {
+                    EditorBridge.SetScriptTypeName(entityId, string.Empty);
+                    currentScriptTypeName = string.Empty;
+                    currentTypeValidation = ScriptComponentValidation.ValidateTypeName(currentScriptTypeName, validationSnapshot);
+                }
+
+                string suggestedType = TrySuggestScriptTypeReplacement(currentScriptTypeName, validationSnapshot.RegisteredScriptTypes);
+                if (!string.IsNullOrEmpty(suggestedType))
+                {
+                    ImGui.SameLine();
+                    if (ImGui.Button("Use Suggested Type##ScriptInspectorUseSuggestion" + entityId))
+                    {
+                        EditorBridge.SetScriptTypeName(entityId, suggestedType);
+                        currentScriptTypeName = suggestedType;
+                        currentTypeValidation = ScriptComponentValidation.ValidateTypeName(currentScriptTypeName, validationSnapshot);
+                        _scriptAssignmentErrors.Remove(entityId);
+                    }
+
+                    ImGui.Text("Suggested: " + suggestedType);
+                }
+            }
+
+            ImGui.Text("Lifecycle: toggling component Enabled invokes OnEnable/OnDisable when implemented.");
+
             if (currentTypeValidation.IsValid)
                 ScriptFieldInspector.DrawScriptFields(entityId, currentTypeValidation.NormalizedTypeName, validationSnapshot);
 
+        }
+
+        private static string TrySuggestScriptTypeReplacement(string currentScriptTypeName, string[] registeredTypes)
+        {
+            if (registeredTypes == null || registeredTypes.Length == 0)
+                return string.Empty;
+
+            string normalizedCurrent = (currentScriptTypeName ?? string.Empty).Trim();
+            if (normalizedCurrent.Length == 0)
+                return string.Empty;
+
+            for (int i = 0; i < registeredTypes.Length; ++i)
+            {
+                string candidate = registeredTypes[i] ?? string.Empty;
+                if (string.Equals(candidate, normalizedCurrent, StringComparison.OrdinalIgnoreCase))
+                    return candidate;
+            }
+
+            int dotIndex = normalizedCurrent.LastIndexOf('.');
+            string simpleName = dotIndex >= 0 ? normalizedCurrent.Substring(dotIndex + 1) : normalizedCurrent;
+
+            string bestSimpleMatch = string.Empty;
+            for (int i = 0; i < registeredTypes.Length; ++i)
+            {
+                string candidate = registeredTypes[i] ?? string.Empty;
+                if (candidate.Length == 0)
+                    continue;
+
+                int candidateDotIndex = candidate.LastIndexOf('.');
+                string candidateSimple = candidateDotIndex >= 0 ? candidate.Substring(candidateDotIndex + 1) : candidate;
+                if (!string.Equals(candidateSimple, simpleName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (!string.IsNullOrEmpty(bestSimpleMatch))
+                    return string.Empty;
+
+                bestSimpleMatch = candidate;
+            }
+
+            return bestSimpleMatch;
         }
 
         private static void DrawAnimatorInspector(uint entityId)

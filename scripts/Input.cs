@@ -11,11 +11,20 @@ namespace Engine
 
     public static class KeyCode
     {
+        public const int Return = 40;
+        public const int Enter = 40;
         public const int W = 26;
         public const int A = 4;
         public const int S = 22;
         public const int D = 7;
         public const int Space = 44;
+        public const int Backspace = 42;
+        public const int Tab = 43;
+        public const int LeftArrow = 80;
+        public const int RightArrow = 79;
+        public const int Delete = 76;
+        public const int Home = 74;
+        public const int End = 77;
         public const int LeftShift = 225;
         public const int RightShift = 229;
         public const int Escape = 41;
@@ -55,5 +64,8 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool GetKeyUp(int scancode);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern string GetTextInput();
     }
 }

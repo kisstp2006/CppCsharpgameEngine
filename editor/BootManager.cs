@@ -12,6 +12,7 @@ namespace EngineEditor
         public static void OnEditorStart(int bootPhase)
         {
             _phase2AttachAttemptedPath = string.Empty;
+            SplashUiSystem.Reset();
 
             if (bootPhase == 2)
             {

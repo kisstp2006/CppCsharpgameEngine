@@ -28,6 +28,8 @@ namespace EngineEditor
         private static string _statusMessage = "No project loaded.";
         private static string _activeProjectPath = string.Empty;
         private static bool _showProjectManagerView = true;
+        private static bool _assetDragActive;
+        private static string _draggedAssetPath = string.Empty;
 
         public static event Action SelectionChanged;
         public static event Action SceneChanged;
@@ -41,6 +43,7 @@ namespace EngineEditor
         public static event Action StatusChanged;
         public static event Action ProjectChanged;
         public static event Action ShowProjectManagerViewChanged;
+        public static event Action AssetDragStateChanged;
 
         public static int SelectedEntityId
         {
@@ -254,6 +257,42 @@ namespace EngineEditor
             }
         }
 
+        public static bool AssetDragActive
+        {
+            get => _assetDragActive;
+            set
+            {
+                if (_assetDragActive == value)
+                    return;
+
+                _assetDragActive = value;
+                AssetDragStateChanged?.Invoke();
+            }
+        }
+
+        public static string DraggedAssetPath
+        {
+            get => _draggedAssetPath;
+            set
+            {
+                string next = value ?? string.Empty;
+                if (string.Equals(_draggedAssetPath, next, StringComparison.Ordinal))
+                    return;
+
+                _draggedAssetPath = next;
+                AssetDragStateChanged?.Invoke();
+            }
+        }
+
+        public static void ClearDraggedAsset()
+        {
+            bool changed = _assetDragActive || !string.IsNullOrEmpty(_draggedAssetPath);
+            _assetDragActive = false;
+            _draggedAssetPath = string.Empty;
+            if (changed)
+                AssetDragStateChanged?.Invoke();
+        }
+
         public static void ResetForNoProject()
         {
             SelectedEntityId = -1;
@@ -269,6 +308,7 @@ namespace EngineEditor
             PreviewCameraZoom = 1.0f;
             PreviewCameraEnabled = false;
             ShowProjectManagerView = true;
+            ClearDraggedAsset();
             StatusMessage = "No project loaded.";
         }
     }

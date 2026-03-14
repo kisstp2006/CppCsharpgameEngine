@@ -287,6 +287,8 @@ namespace EngineEditor
 
             HandleViewportSelectionAndDrag(viewportCanHandleMouse);
             DrawGridAndGizmos(deltaTime);
+            HandleAssetDropOnViewport(itemHovered);
+            DrawAssetDropOverlay(itemHovered);
 
             ImGui.End();
         }
@@ -766,6 +768,245 @@ namespace EngineEditor
                 _isDraggingEntity = false;
                 _dragEntityId = -1;
             }
+        }
+
+        private static void HandleAssetDropOnViewport(bool hovered)
+        {
+            if (!hovered || !EditorContext.AssetDragActive)
+                return;
+
+            if (!Input.GetMouseButtonUp(MouseButton.Left))
+                return;
+
+            string droppedPath = EditorContext.DraggedAssetPath;
+            EditorContext.ClearDraggedAsset();
+
+            if (string.IsNullOrWhiteSpace(droppedPath) || !File.Exists(droppedPath))
+                return;
+
+            if (SceneEditor.IsSceneFilePath(droppedPath))
+            {
+                SceneEditor.LoadSceneFromPath(droppedPath);
+                return;
+            }
+
+            if (!TryGetViewportMouseWorldPosition(out float worldX, out float worldY))
+                return;
+
+            if (!TryInstantiateDroppedAsset(droppedPath, worldX, worldY))
+                ProjectOperations.SetStatusMessage("Drop not supported in Scene View: " + Path.GetFileName(droppedPath));
+        }
+
+        private static void DrawAssetDropOverlay(bool hovered)
+        {
+            if (!EditorContext.AssetDragActive)
+                return;
+
+            if (_gameViewWidth <= 1.0f || _gameViewHeight <= 1.0f)
+                return;
+
+            string droppedPath = EditorContext.DraggedAssetPath;
+            bool supported = IsDroppedAssetSupportedForScene(droppedPath);
+
+            if (!hovered)
+                return;
+
+            float r = supported ? 0.20f : 0.95f;
+            float g = supported ? 0.85f : 0.35f;
+            float b = supported ? 0.35f : 0.25f;
+            ImGui.DrawRect(_gameViewPosX,
+                           _gameViewPosY,
+                           _gameViewWidth,
+                           _gameViewHeight,
+                           r,
+                           g,
+                           b,
+                           0.95f,
+                           3.0f);
+
+            string fileName = Path.GetFileName(droppedPath);
+            if (string.IsNullOrEmpty(fileName))
+                fileName = "<asset>";
+
+            if (supported)
+                ImGui.SetTooltip("Drop to Scene: " + fileName);
+            else
+                ImGui.SetTooltip("Unsupported in Scene drop: " + fileName);
+        }
+
+        private static bool IsDroppedAssetSupportedForScene(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                return false;
+
+            return SceneEditor.IsSceneFilePath(path)
+                   || IsImageAssetPath(path)
+                   || IsAnimationAssetPath(path)
+                   || IsScriptAssetPath(path);
+        }
+
+        private static bool TryGetViewportMouseWorldPosition(out float worldX, out float worldY)
+        {
+            worldX = 0.0f;
+            worldY = 0.0f;
+
+            if (_gameViewWidth <= 1.0f || _gameViewHeight <= 1.0f)
+                return false;
+
+            float centerX = _gameViewWidth * 0.5f;
+            float centerY = _gameViewHeight * 0.5f;
+
+            float mouseX = Input.GetMousePosX();
+            float mouseYTopLeft = Input.GetMousePosY();
+            float mouseLocalX = mouseX - _gameViewPosX;
+            float mouseLocalYTopLeft = mouseYTopLeft - _gameViewPosY;
+            float mouseLocalYBottomLeft = _gameViewHeight - mouseLocalYTopLeft;
+
+            worldX = _editorCamera.ScreenToWorldX(mouseLocalX, centerX);
+            worldY = _editorCamera.ScreenToWorldY(mouseLocalYBottomLeft, centerY);
+            return true;
+        }
+
+        private static bool TryInstantiateDroppedAsset(string droppedPath, float worldX, float worldY)
+        {
+            string normalizedPath = NormalizeAssetPathForSerialization(droppedPath);
+            string fileNameWithoutExt = Path.GetFileNameWithoutExtension(droppedPath);
+
+            if (IsImageAssetPath(droppedPath))
+            {
+                uint entityId = CreateEntityAt(worldX, worldY, 128.0f, 128.0f, fileNameWithoutExt);
+                EnsureComponent(entityId, ComponentType.Sprite);
+                EditorBridge.SetSpriteTexturePath(entityId, normalizedPath);
+                EditorContext.SelectedEntityId = (int)entityId;
+                ProjectOperations.SetStatusMessage("Created sprite entity from drop: " + Path.GetFileName(droppedPath));
+                return true;
+            }
+
+            if (IsAnimationAssetPath(droppedPath))
+            {
+                uint entityId = CreateEntityAt(worldX, worldY, 128.0f, 128.0f, fileNameWithoutExt);
+                EnsureComponent(entityId, ComponentType.Animator);
+                EntityManager.SetAnimatorClipPath(entityId, normalizedPath);
+                EditorContext.SelectedEntityId = (int)entityId;
+                ProjectOperations.SetStatusMessage("Created animator entity from drop: " + Path.GetFileName(droppedPath));
+                return true;
+            }
+
+            if (IsScriptAssetPath(droppedPath))
+            {
+                uint entityId = CreateEntityAt(worldX, worldY, 128.0f, 128.0f, fileNameWithoutExt);
+                EnsureComponent(entityId, ComponentType.Script);
+
+                string resolvedType = TryResolveScriptTypeFromFileName(fileNameWithoutExt);
+                if (!string.IsNullOrEmpty(resolvedType))
+                {
+                    EditorBridge.SetScriptTypeName(entityId, resolvedType);
+                    ProjectOperations.SetStatusMessage("Created scripted entity from drop: " + resolvedType);
+                }
+                else
+                {
+                    ProjectOperations.SetStatusMessage("Script dropped, but compiled type not found yet: " + fileNameWithoutExt);
+                }
+
+                EditorContext.SelectedEntityId = (int)entityId;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static uint CreateEntityAt(float x, float y, float width, float height, string baseName)
+        {
+            uint entityId = EntityManager.CreateEntity();
+            if (EntityManager.HasTransform(entityId))
+                EntityManager.SetTransform(entityId, x, y, width, height);
+            else
+                EntityManager.AddTransform(entityId);
+
+            EntityManager.SetTransform(entityId, x, y, width, height);
+
+            string entityName = string.IsNullOrWhiteSpace(baseName) ? ("Entity " + entityId) : baseName;
+            EntityManager.SetEntityName(entityId, entityName);
+            EditorBridge.SetParentEntity(entityId, 0);
+            return entityId;
+        }
+
+        private static void EnsureComponent(uint entityId, int componentType)
+        {
+            if (!EntityManager.HasComponent(entityId, componentType))
+                EntityManager.AddComponent(entityId, componentType);
+        }
+
+        private static bool IsImageAssetPath(string path)
+        {
+            string lower = (path ?? string.Empty).ToLowerInvariant();
+            return lower.EndsWith(".png")
+                   || lower.EndsWith(".jpg")
+                   || lower.EndsWith(".jpeg")
+                   || lower.EndsWith(".bmp")
+                   || lower.EndsWith(".tga")
+                   || lower.EndsWith(".dds");
+        }
+
+        private static bool IsAnimationAssetPath(string path)
+        {
+            return (path ?? string.Empty).EndsWith(".anim", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsScriptAssetPath(string path)
+        {
+            return (path ?? string.Empty).EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeAssetPathForSerialization(string absolutePath)
+        {
+            if (string.IsNullOrWhiteSpace(absolutePath))
+                return string.Empty;
+
+            string normalizedPath = absolutePath;
+            string projectRoot = ProjectOperations.ActiveProjectPath;
+            if (!string.IsNullOrWhiteSpace(projectRoot) && Directory.Exists(projectRoot))
+            {
+                string relative = StringUtilities.MakeRelativePath(projectRoot, absolutePath);
+                if (!relative.StartsWith("..", StringComparison.Ordinal))
+                    normalizedPath = relative;
+            }
+
+            return normalizedPath.Replace('\\', '/');
+        }
+
+        private static string TryResolveScriptTypeFromFileName(string fileNameWithoutExtension)
+        {
+            if (string.IsNullOrWhiteSpace(fileNameWithoutExtension))
+                return string.Empty;
+
+            ScriptValidationSnapshot snapshot = ScriptComponentValidation.GetSnapshot();
+            string[] types = snapshot.RegisteredScriptTypes;
+            if (types == null || types.Length == 0)
+                return string.Empty;
+
+            string bestSimpleMatch = string.Empty;
+            for (int i = 0; i < types.Length; ++i)
+            {
+                string typeName = types[i] ?? string.Empty;
+                if (typeName.Length == 0)
+                    continue;
+
+                if (string.Equals(typeName, fileNameWithoutExtension, StringComparison.OrdinalIgnoreCase))
+                    return typeName;
+
+                int lastDotIndex = typeName.LastIndexOf('.');
+                string simpleName = lastDotIndex >= 0 ? typeName.Substring(lastDotIndex + 1) : typeName;
+                if (string.Equals(simpleName, fileNameWithoutExtension, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.IsNullOrEmpty(bestSimpleMatch))
+                        return string.Empty;
+
+                    bestSimpleMatch = typeName;
+                }
+            }
+
+            return bestSimpleMatch;
         }
 
         private static void DrawGridAndGizmos(float deltaTime)

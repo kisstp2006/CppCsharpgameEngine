@@ -55,6 +55,10 @@ namespace EngineEditor
         private static string _renameValue = string.Empty;
         private static string _deleteTargetPath = string.Empty;
         private static string _assetContextPath = string.Empty;
+        private static string _dragCandidatePath = string.Empty;
+        private static string _draggingPath = string.Empty;
+        private static float _dragStartMouseX;
+        private static float _dragStartMouseY;
 
         private static bool _openCreateScenePopupRequested = false;
         private static bool _openCreateScriptPopupRequested = false;
@@ -66,6 +70,7 @@ namespace EngineEditor
         {
             if (!ImGui.Begin("Asset Panel"))
             {
+                EndAssetDragIfReleased();
                 ImGui.End();
                 return;
             }
@@ -73,6 +78,7 @@ namespace EngineEditor
             string projectPath = ProjectOperations.ActiveProjectPath;
             if (string.IsNullOrEmpty(projectPath) || !Directory.Exists(projectPath))
             {
+                EndAssetDragIfReleased();
                 ImGui.Text("No active project.");
                 ImGui.End();
                 return;
@@ -162,6 +168,7 @@ namespace EngineEditor
             DrawRenamePopup(projectPath);
             DrawDeletePopup(projectPath);
             DrawAssetContextMenu(projectPath);
+            EndAssetDragIfReleased();
 
             ImGui.End();
         }
@@ -194,6 +201,23 @@ namespace EngineEditor
                 _contextTargetPath = ResolveContextPath(projectPath);
                 _assetContextPath = "Create";
                 ImGui.OpenPopup(AssetContextPopupId);
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("New Folder##AssetPanelNewFolder"))
+            {
+                _contextTargetPath = ResolveContextPath(projectPath);
+                _openCreateFolderPopupRequested = true;
+            }
+
+            ImGui.SameLine();
+            if (ImGui.Button("Rename##AssetPanelRename"))
+            {
+                string target = ResolveContextPath(projectPath);
+                if (ExistsPath(target))
+                    RequestRename(target);
+                else
+                    ProjectOperations.SetStatusMessage("Rename failed: no valid selection.");
             }
 
             ImGui.SameLine();
@@ -334,6 +358,9 @@ namespace EngineEditor
                     openedContextFromItem = true;
                 }
 
+                if (ImGui.IsItemHovered() && ImGui.IsMouseClicked(MouseButton.Left))
+                    BeginAssetDragCandidate(item.Path, item.IsDirectory);
+
                 ++visibleCount;
                 ++columnIndex;
                 if (columnIndex >= columns)
@@ -349,6 +376,8 @@ namespace EngineEditor
                 _assetContextPath = string.Empty;
                 ImGui.OpenPopup(AssetContextPopupId);
             }
+
+            UpdateAssetDragState();
         }
 
         private static string BuildGridLabel(BrowserItem item, int index)
@@ -433,7 +462,15 @@ namespace EngineEditor
             if (string.IsNullOrEmpty(selectedDisplay))
                 selectedDisplay = "<none>";
 
-            ImGui.Text("Folder: " + currentDisplay + " | Selected: " + selectedDisplay);
+            string dragDisplay = "<none>";
+            if (EditorContext.AssetDragActive)
+            {
+                dragDisplay = ToDisplayPath(projectPath, EditorContext.DraggedAssetPath);
+                if (string.IsNullOrEmpty(dragDisplay))
+                    dragDisplay = "<none>";
+            }
+
+            ImGui.Text("Folder: " + currentDisplay + " | Selected: " + selectedDisplay + " | Drag: " + dragDisplay);
         }
 
         internal static void RequestOpenCreateScenePopup(int preferredFormat = -1)
@@ -852,8 +889,15 @@ namespace EngineEditor
                     return false;
                 }
 
-                if (isFile && string.IsNullOrEmpty(Path.GetExtension(trimmedName)))
-                    trimmedName += Path.GetExtension(target);
+                if (isFile)
+                {
+                    string preservedExtension = Path.GetExtension(target);
+                    string stem = Path.GetFileNameWithoutExtension(trimmedName);
+                    if (string.IsNullOrWhiteSpace(stem))
+                        stem = Path.GetFileNameWithoutExtension(target);
+
+                    trimmedName = stem + preservedExtension;
+                }
 
                 if (!StringUtilities.IsValidProjectName(trimmedName))
                 {
@@ -1137,6 +1181,7 @@ namespace EngineEditor
                 return;
 
             EditorUIHelpers.DrawPopupHeader("Create C# Script");
+            ImGui.Text("Target folder: " + ToDisplayPath(projectPath, ResolveCreateParentPath(projectPath, _contextTargetPath)));
 
             EditorUIHelpers.InputTextWithWidth("Script Name", ref _newScriptName, EditorUIHelpers.CompactPopupFieldWidth);
 
@@ -1164,6 +1209,7 @@ namespace EngineEditor
                 return;
 
             EditorUIHelpers.DrawPopupHeader("Create Folder");
+            ImGui.Text("Parent: " + ToDisplayPath(projectPath, ResolveCreateParentPath(projectPath, _contextTargetPath)));
 
             EditorUIHelpers.InputTextWithWidth("Folder Name", ref _newFolderName, EditorUIHelpers.CompactPopupFieldWidth);
 
@@ -1228,6 +1274,8 @@ namespace EngineEditor
 
             EditorUIHelpers.DrawPopupHeader("Rename Asset");
             ImGui.Text("Target: " + Path.GetFileName(_renameTargetPath));
+            if (File.Exists(_renameTargetPath))
+                ImGui.Text("File extension is preserved automatically.");
 
             EditorUIHelpers.InputTextWithWidth("New Name", ref _renameValue, EditorUIHelpers.MediumPopupFieldWidth);
 
@@ -1422,6 +1470,46 @@ namespace EngineEditor
             {
                 return string.Empty;
             }
+        }
+
+        private static void BeginAssetDragCandidate(string path, bool isDirectory)
+        {
+            if (isDirectory || !File.Exists(path))
+                return;
+
+            _dragCandidatePath = path;
+            _dragStartMouseX = ImGui.GetMousePosX();
+            _dragStartMouseY = ImGui.GetMousePosY();
+        }
+
+        private static void UpdateAssetDragState()
+        {
+            if (!string.IsNullOrEmpty(_dragCandidatePath)
+                && string.IsNullOrEmpty(_draggingPath)
+                && ImGui.IsMouseDown(MouseButton.Left))
+            {
+                float dx = ImGui.GetMousePosX() - _dragStartMouseX;
+                float dy = ImGui.GetMousePosY() - _dragStartMouseY;
+                float dragDistanceSq = dx * dx + dy * dy;
+                if (dragDistanceSq >= 25.0f)
+                {
+                    _draggingPath = _dragCandidatePath;
+                    EditorContext.DraggedAssetPath = _draggingPath;
+                    EditorContext.AssetDragActive = true;
+                }
+            }
+
+            EndAssetDragIfReleased();
+        }
+
+        private static void EndAssetDragIfReleased()
+        {
+            if (ImGui.IsMouseDown(MouseButton.Left))
+                return;
+
+            _dragCandidatePath = string.Empty;
+            _draggingPath = string.Empty;
+            EditorContext.ClearDraggedAsset();
         }
     }
 }

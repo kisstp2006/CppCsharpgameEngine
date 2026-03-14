@@ -155,9 +155,12 @@ namespace EngineEditor
 
         private static string BuildProjectJsonContent(string projectName, string templateName, ProjectGenerationResult generation)
         {
+            string createdAt = DateTime.UtcNow.ToString("o");
+
             return "{\n" +
                    "  \"name\": \"" + StringUtilities.EscapeJson(projectName) + "\",\n" +
                    "  \"template\": \"" + StringUtilities.EscapeJson(templateName) + "\",\n" +
+                                     "  \"createdAt\": \"" + StringUtilities.EscapeJson(createdAt) + "\",\n" +
                    "  \"version\": " + GeneratedProjectFileVersion + ",\n" +
                    "  \"engineVersion\": \"" + GeneratedEngineVersion + "\",\n" +
                    "  \"assetsRoot\": \"Assets\",\n" +
