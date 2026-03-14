@@ -4,6 +4,7 @@ namespace EngineEditor
 {
     internal static class EditorWindowCatalog
     {
+        private const string IdProjectManager = "project.manager";
         private const string IdSceneTree = "scene.tree";
         private const string IdSceneViewport = "scene.viewport";
         private const string IdRuntimeView = "scene.runtime";
@@ -18,6 +19,7 @@ namespace EngineEditor
         {
             EditorWindowManager.Clear();
 
+            EditorWindowManager.Register(IdProjectManager, new ProjectManagerWindow(), "Project Manager", 5);
             EditorWindowManager.Register(IdSceneTree, new HierarchyWindow(), "Scene Tree", 10);
             EditorWindowManager.Register(IdSceneViewport, new SceneViewportWindow(), "Game View", 20);
             EditorWindowManager.Register(IdRuntimeView, new RuntimeViewWindow(), "Game Runtime", 30);
@@ -48,6 +50,41 @@ namespace EngineEditor
             public override void OnGUI()
             {
                 SceneEditor.DrawSceneTreePanel();
+            }
+        }
+
+        private sealed class ProjectManagerWindow : EditorWindow
+        {
+            public override string Title => "Project Manager";
+
+            public override bool IsOpen
+            {
+                get
+                {
+                    if (!ProjectOperations.HasOpenProject())
+                        return true;
+
+                    return EditorContext.ShowProjectManagerView;
+                }
+                set
+                {
+                    EditorContext.ShowProjectManagerView = value;
+                }
+            }
+
+            public override int Order => 5;
+
+            public override bool ShouldDisplay()
+            {
+                if (!ProjectOperations.HasOpenProject())
+                    return true;
+
+                return EditorContext.ShowProjectManagerView;
+            }
+
+            public override void OnGUI()
+            {
+                ProjectManager.DrawProjectPanel();
             }
         }
 

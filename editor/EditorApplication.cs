@@ -57,9 +57,7 @@ namespace EngineEditor
             {
                 EditorContext.ShowProjectManagerView = true;
                 DockspaceManager.DisableRuntimeDockspace();
-                ProjectManager.DrawProjectPanel();
-                OptionsSystem.DrawWindow();
-                AboutSystem.DrawWindow();
+                EditorWindowManager.DrawAll(deltaTime);
                 return;
             }
 
@@ -103,23 +101,17 @@ namespace EngineEditor
                 DockspaceManager.DisableRuntimeDockspace();
                 EditorContext.ShowProjectManagerView = true;
                 SceneEditor.ResetEditorState();
-                ProjectManager.DrawProjectPanel();
-                OptionsSystem.DrawWindow();
-                AboutSystem.DrawWindow();
-                return;
             }
-
-            if (EditorContext.ShowProjectManagerView)
+            else if (EditorContext.ShowProjectManagerView)
             {
                 DockspaceManager.DisableRuntimeDockspace();
                 SceneEditor.ResetEditorState();
-                ProjectManager.DrawProjectPanel();
-                OptionsSystem.DrawWindow();
-                AboutSystem.DrawWindow();
-                return;
+            }
+            else
+            {
+                DockspaceManager.EnableRuntimeDockspace();
             }
 
-            DockspaceManager.EnableRuntimeDockspace();
             EditorWindowManager.DrawAll(deltaTime);
         }
 
@@ -268,23 +260,17 @@ namespace EngineEditor
                                   10);
 
             MenuRegistry.Register("menu.window.scene",
-                                  "Window/Open Scene Workspace",
+                                  "Windows/Open Scene Workspace",
                                   () => SetShowProjectManagerView(false),
                                   () => ProjectOperations.HasOpenProject(),
                                   10);
 
-            MenuRegistry.Register("menu.window.projectManager",
-                                  "Window/Project Manager",
-                                  () => SetShowProjectManagerView(true),
-                                  () => ProjectOperations.HasOpenProject(),
-                                  60);
-
-            EditorWindowManager.RegisterWindowMenuItems("Window",
+            EditorWindowManager.RegisterWindowMenuItems("Windows",
                                                         () => ProjectOperations.HasOpenProject(),
                                                         100);
 
             MenuRegistry.Register("menu.window.layout.saveDefault",
-                                  "Window/Layout/Save Default",
+                                  "Windows/Layout/Save Default",
                                   () =>
                                   {
                                       DockspaceManager.SaveLayout("default", out string saveMessage);
@@ -294,7 +280,7 @@ namespace EngineEditor
                                   500);
 
             MenuRegistry.Register("menu.window.layout.loadDefault",
-                                  "Window/Layout/Load Default",
+                                  "Windows/Layout/Load Default",
                                   () =>
                                   {
                                       DockspaceManager.LoadLayout("default", out string loadMessage);
@@ -304,7 +290,7 @@ namespace EngineEditor
                                   510);
 
             MenuRegistry.Register("menu.window.layout.reset",
-                                  "Window/Layout/Reset",
+                                  "Windows/Layout/Reset",
                                   () =>
                                   {
                                       DockspaceManager.ResetLayout(out string resetMessage);
@@ -372,6 +358,11 @@ namespace EngineEditor
         {
             if (!ImGui.BeginTopBar("##EditorMenuBar", 34.0f))
                 return;
+
+            // Keep Windows menu toggle labels synced with current open state.
+            EditorWindowManager.RegisterWindowMenuItems("Windows",
+                                                        () => ProjectOperations.HasOpenProject(),
+                                                        100);
 
             MenuRegistry.MenuNode[] roots = MenuRegistry.GetRootNodes();
             for (int i = 0; i < roots.Length; ++i)

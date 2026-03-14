@@ -84,7 +84,8 @@ namespace EngineEditor
             {
                 WindowRegistration registration = _orderedWindows[i];
                 string menuId = "menu.window.dynamic." + registration.Id;
-                string menuPath = normalizedRoot + "/" + registration.MenuLabel;
+                string statePrefix = registration.Window != null && registration.Window.IsOpen ? "[x] " : "[ ] ";
+                string menuPath = normalizedRoot + "/" + statePrefix + registration.MenuLabel;
                 int order = baseOrder + registration.MenuOrder;
 
                 string idCapture = registration.Id;
