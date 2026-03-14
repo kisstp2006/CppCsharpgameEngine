@@ -194,7 +194,7 @@ namespace EngineEditor
 
         private void DrawToolbar()
         {
-            if (ImGui.Button("+"))
+            if (ImGui.Button(IconsFA.CIRCLE_PLUS))
                 ImGui.OpenPopup("##HierarchyCreateMenu");
 
             DrawCreateMenu();
@@ -547,7 +547,7 @@ namespace EngineEditor
 
         private void DrawEntityContextMenu(uint entityId, string entityName)
         {
-            if (ImGui.Selectable("Create Empty Child", false))
+            if (ImGui.Selectable(IconsFA.CUBES + " Create Empty Child", false))
             {
                 uint created = EntityManager.CreateEntity();
                 if (EntityManager.IsEntityValid(created))
@@ -566,7 +566,7 @@ namespace EngineEditor
                 }
             }
 
-            if (ImGui.Selectable("Duplicate", false))
+            if (ImGui.Selectable(IconsFA.COPY + " Duplicate", false))
             {
                 uint duplicated = EditorBridge.DuplicateEntity(entityId);
                 if (EntityManager.IsEntityValid(duplicated))
@@ -576,14 +576,14 @@ namespace EngineEditor
                 }
             }
 
-            if (ImGui.Selectable("Rename", false))
+            if (ImGui.Selectable(IconsFA.PEN + " Rename", false))
             {
                 _renameEntityId = entityId;
                 _renameValue = entityName;
                 ImGui.OpenPopup("Rename Entity");
             }
 
-            if (ImGui.Selectable("Unparent", false))
+            if (ImGui.Selectable(IconsFA.LINK_SLASH + " Unparent", false))
             {
                 if (_cache.GetParent(entityId) != 0)
                 {
@@ -594,7 +594,7 @@ namespace EngineEditor
                 }
             }
 
-            if (ImGui.Selectable("Delete", false))
+            if (ImGui.Selectable(IconsFA.TRASH + " Delete", false))
             {
                 // Delete all selected if this entity is in the selection, otherwise just this one
                 if (_selectedEntities.Contains(entityId) && _selectedEntities.Count > 1)
@@ -605,7 +605,7 @@ namespace EngineEditor
 
             ImGui.Separator();
 
-            if (ImGui.Selectable("Focus", false))
+            if (ImGui.Selectable(IconsFA.CROSSHAIRS + " Focus", false))
                 FocusEntity(entityId);
         }
 
@@ -614,15 +614,15 @@ namespace EngineEditor
             if (!ImGui.BeginPopupContextWindow("##HierarchyBgCtx", ImGui.PopupFlags_MouseButtonRight))
                 return;
 
-            if (ImGui.Selectable("Create Empty Entity", false))
+            if (ImGui.Selectable(IconsFA.CUBE + " Create Empty Entity", false))
                 CreateEntityAndSelect();
 
             ImGui.Separator();
 
-            if (ImGui.Selectable("Expand All", false))
+            if (ImGui.Selectable(IconsFA.FOLDER_OPEN + " Expand All", false))
                 SetAllExpanded(true);
 
-            if (ImGui.Selectable("Collapse All", false))
+            if (ImGui.Selectable(IconsFA.FOLDER + " Collapse All", false))
                 SetAllExpanded(false);
 
             ImGui.EndPopup();
@@ -770,10 +770,10 @@ namespace EngineEditor
             uint selectedId = hasSelection ? (uint)EditorContext.SelectedEntityId : 0;
 
             // ── Basic entities ──
-            if (ImGui.Selectable("Create Empty", false))
+            if (ImGui.Selectable(IconsFA.CUBE + " Create Empty", false))
                 CreateEntityAndSelect();
 
-            if (hasSelection && ImGui.Selectable("Create Empty Child", false))
+            if (hasSelection && ImGui.Selectable(IconsFA.CUBES + " Create Empty Child", false))
                 CreateChildEntity(selectedId);
 
             ImGui.Separator();
@@ -816,7 +816,7 @@ namespace EngineEditor
             ImGui.Separator();
 
             // ── Parenting ──
-            if (hasSelection && ImGui.Selectable("Clear Parent", false))
+            if (hasSelection && ImGui.Selectable(IconsFA.LINK_SLASH + " Clear Parent", false))
             {
                 if (_cache.GetParent(selectedId) != 0)
                 {

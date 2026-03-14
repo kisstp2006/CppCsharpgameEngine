@@ -246,13 +246,13 @@ namespace EngineEditor
             ImGui.SameLine();
             DrawResolutionSelector();
             ImGui.SameLine();
-            if (ImGui.Button(_showStats ? "[Stats]" : "Stats"))
+            if (ImGui.Button(IconsFA.CHART_BAR + (_showStats ? " [Stats]" : " Stats")))
                 _showStats = !_showStats;
 
             // ── Toolbar row 2: Gizmo tools ──
             if (!simulationRunning)
             {
-                if (ImGui.Button("Reset Camera"))
+                if (ImGui.Button(IconsFA.VIDEO + " Reset Camera"))
                 {
                     _editorCamera.Reset();
                     SyncPreviewCameraState(true);
@@ -393,10 +393,10 @@ namespace EngineEditor
             ImGui.SameLine();
             DrawResolutionSelector();
             ImGui.SameLine();
-            if (ImGui.Button(_showStats ? "[Stats]" : "Stats"))
+            if (ImGui.Button(IconsFA.CHART_BAR + (_showStats ? " [Stats]" : " Stats")))
                 _showStats = !_showStats;
             ImGui.SameLine();
-            ImGui.Text(paused ? "[Paused]" : "[Playing]");
+            ImGui.Text(paused ? IconsFA.PAUSE + " Paused" : IconsFA.PLAY + " Playing");
 
             ImGui.Separator();
 
@@ -584,17 +584,17 @@ namespace EngineEditor
 
         private static void DrawGameViewTopBar()
         {
-            ImGui.Text("Tool:");
+            ImGui.Text(IconsFA.WRENCH + " Tool:");
             ImGui.SameLine();
-            if (ImGui.Button((EditorContext.ActiveTool == EditorTool.Move ? "[Move]" : "Move") + " (W)"))
+            if (ImGui.Button(IconsFA.ARROWS_UP_DOWN_LEFT_RIGHT + (EditorContext.ActiveTool == EditorTool.Move ? " [Move]" : " Move") + " (W)"))
                 EditorContext.ActiveTool = EditorTool.Move;
 
             ImGui.SameLine();
-            if (ImGui.Button((EditorContext.ActiveTool == EditorTool.Rotate ? "[Rotate]" : "Rotate") + " (E)"))
+            if (ImGui.Button(IconsFA.ROTATE + (EditorContext.ActiveTool == EditorTool.Rotate ? " [Rotate]" : " Rotate") + " (E)"))
                 EditorContext.ActiveTool = EditorTool.Rotate;
 
             ImGui.SameLine();
-            if (ImGui.Button((EditorContext.ActiveTool == EditorTool.Scale ? "[Scale]" : "Scale") + " (R)"))
+            if (ImGui.Button(IconsFA.UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER + (EditorContext.ActiveTool == EditorTool.Scale ? " [Scale]" : " Scale") + " (R)"))
                 EditorContext.ActiveTool = EditorTool.Scale;
 
             ImGui.SameLine();
@@ -614,11 +614,11 @@ namespace EngineEditor
                 GizmoSnapStep = Clamp(step, 1.0f, 1024.0f);
 
             ImGui.SameLine();
-            if (ImGui.Button("Focus"))
+            if (ImGui.Button(IconsFA.CROSSHAIRS + " Focus"))
                 FocusCamera();
 
             ImGui.SameLine();
-            if (ImGui.Button("Frame Selected"))
+            if (ImGui.Button(IconsFA.EXPAND + " Frame Selected"))
                 FrameSelectedEntity();
         }
 
@@ -633,23 +633,23 @@ namespace EngineEditor
 
             if (isEdit)
             {
-                if (ImGui.Button("Play"))
+                if (ImGui.Button(IconsFA.PLAY + " Play"))
                     EditorApplication.EnterPlayMode();
             }
             else
             {
-                if (ImGui.Button("Stop"))
+                if (ImGui.Button(IconsFA.STOP + " Stop"))
                     EditorApplication.StopPlayMode();
 
                 ImGui.SameLine();
                 if (isPlaying)
                 {
-                    if (ImGui.Button("Pause"))
+                    if (ImGui.Button(IconsFA.PAUSE + " Pause"))
                         EditorApplication.TogglePauseState();
                 }
                 else if (isPaused)
                 {
-                    if (ImGui.Button("Resume"))
+                    if (ImGui.Button(IconsFA.PLAY + " Resume"))
                         EditorApplication.TogglePauseState();
                 }
             }

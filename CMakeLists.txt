@@ -214,6 +214,9 @@ if(USE_THIRDPARTY)
   # stb_image.h — vendored directly in thirdparty/
   target_include_directories(Engine PUBLIC ${CMAKE_SOURCE_DIR}/thirdparty)
 
+  # IconFontCppHeaders
+  target_include_directories(Engine PUBLIC ${CMAKE_SOURCE_DIR}/thirdparty/IconFontCppHeaders)
+
   # ImGui headers (submodule or FetchContent)
   if(DEFINED imgui_SOURCE_DIR)
     target_include_directories(Engine PUBLIC ${imgui_SOURCE_DIR})

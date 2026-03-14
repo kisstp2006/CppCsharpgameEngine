@@ -171,7 +171,7 @@ namespace EngineEditor
             ImGui.Text("Entity " + entityId);
             ImGui.SameLine();
 
-            if (ImGui.Button("Delete Entity"))
+            if (ImGui.Button(IconsFA.TRASH + " Delete Entity"))
             {
                 if (HierarchyWindow.Instance != null)
                     HierarchyWindow.Instance.DeleteEntity(entityId);
@@ -1179,7 +1179,7 @@ namespace EngineEditor
 
         private static void DrawAddComponentMenu(uint entityId)
         {
-            if (ImGui.Button("Add Component"))
+            if (ImGui.Button(IconsFA.CIRCLE_PLUS + " Add Component"))
                 ImGui.OpenPopup("Add Component Popup");
 
             if (!ImGui.BeginPopupModal("Add Component Popup"))

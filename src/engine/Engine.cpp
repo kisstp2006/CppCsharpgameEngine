@@ -17,6 +17,7 @@
 #include <imgui.h>
 #include <backends/imgui_impl_sdl2.h>
 #include <backends/imgui_impl_opengl3.h>
+#include <IconsFontAwesome6.h>
 
 #include <SDL.h>
 
@@ -1538,20 +1539,40 @@ bool Engine::InitializeImGui(const char* iniPath)
     const std::filesystem::path fontRoot = std::filesystem::current_path() / "assets" / "font";
     const std::filesystem::path regularFontPath = fontRoot / "Inconsolata-LGC.otf";
     const std::filesystem::path boldFontPath = fontRoot / "Inconsolata-LGC-Bold.otf";
+    const std::filesystem::path iconFontPath = fontRoot / FONT_ICON_FILE_NAME_FAS;
+
+    // Icon font merge config (shared across all font sizes)
+    static const ImWchar iconRanges[] = { ICON_MIN_FA, ICON_MAX_16_FA, 0 };
+
+    auto mergeIconFont = [&](float size)
+    {
+        std::error_code ec;
+        if (!std::filesystem::exists(iconFontPath, ec) || ec)
+            return;
+        ImFontConfig iconCfg;
+        iconCfg.MergeMode = true;
+        iconCfg.PixelSnapH = true;
+        iconCfg.GlyphMinAdvanceX = size;
+        io.Fonts->AddFontFromFileTTF(iconFontPath.string().c_str(), size, &iconCfg, iconRanges);
+    };
 
     ImFont* defaultFont = nullptr;
     std::error_code fontExistsError;
     if (std::filesystem::exists(regularFontPath, fontExistsError) && !fontExistsError)
     {
         defaultFont = io.Fonts->AddFontFromFileTTF(regularFontPath.string().c_str(), 14.0f);
+        mergeIconFont(14.0f);
         io.Fonts->AddFontFromFileTTF(regularFontPath.string().c_str(), 16.0f);
+        mergeIconFont(16.0f);
     }
 
     fontExistsError.clear();
     if (std::filesystem::exists(boldFontPath, fontExistsError) && !fontExistsError)
     {
         io.Fonts->AddFontFromFileTTF(boldFontPath.string().c_str(), 16.0f);
+        mergeIconFont(16.0f);
         io.Fonts->AddFontFromFileTTF(boldFontPath.string().c_str(), 18.0f);
+        mergeIconFont(18.0f);
     }
 
     if (defaultFont)
