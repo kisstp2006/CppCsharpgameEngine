@@ -54,6 +54,27 @@ namespace Engine
         public static extern void DestroyEntity(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern uint DuplicateEntity(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern uint GetParentEntity(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool SetParentEntity(uint childEntityId, uint parentEntityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern int GetRootEntityCount();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern uint GetRootEntityAt(int index);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern int GetChildEntityCount(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern uint GetChildEntityAt(uint entityId, int index);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void NewScene();
 
         [MethodImpl(MethodImplOptions.InternalCall)]

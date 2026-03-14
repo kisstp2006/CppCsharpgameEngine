@@ -14,7 +14,7 @@
 
 namespace
 {
-    constexpr std::uint32_t kSceneFileVersion = 7;
+    constexpr std::uint32_t kSceneFileVersion = 8;
 
     enum ComponentFlags : std::uint8_t
     {
@@ -28,6 +28,7 @@ namespace
     struct PersistedEntity
     {
         std::uint64_t sceneEntityId = 0;
+        std::uint64_t parentSceneEntityId = 0;
         std::string name;
         std::string tag = "Untagged";
         std::uint32_t layer = 0;
@@ -341,6 +342,7 @@ namespace
             if (metadata && metadata->sceneEntityId != 0)
             {
                 persisted.sceneEntityId = metadata->sceneEntityId;
+                persisted.parentSceneEntityId = metadata->parentSceneEntityId;
                 persisted.name = metadata->name;
                 persisted.tag = metadata->tag;
                 persisted.layer = metadata->layer;
@@ -417,6 +419,90 @@ namespace
 
         return entities;
     }
+
+    static std::uint64_t ResolveSceneEntityId(const Scene& scene, Scene::Entity entity)
+    {
+        if (!scene.IsValid(entity))
+            return 0;
+
+        const EntityMetadataComponent* metadata = scene.TryGetMetadata(entity);
+        if (metadata && metadata->sceneEntityId != 0)
+            return metadata->sceneEntityId;
+
+        return static_cast<std::uint64_t>(scene.ToEntityId(entity));
+    }
+
+    static void SortEntitiesBySceneId(const Scene& scene, std::vector<Scene::Entity>& entities)
+    {
+        std::sort(entities.begin(), entities.end(), [&scene](Scene::Entity lhs, Scene::Entity rhs)
+        {
+            const std::uint64_t lhsId = ResolveSceneEntityId(scene, lhs);
+            const std::uint64_t rhsId = ResolveSceneEntityId(scene, rhs);
+            if (lhsId == rhsId)
+                return entt::to_integral(lhs) < entt::to_integral(rhs);
+
+            return lhsId < rhsId;
+        });
+    }
+
+    static std::vector<Scene::Entity> CollectChildrenSorted(const Scene& scene, Scene::Entity parent)
+    {
+        std::vector<Scene::Entity> children;
+        if (!scene.IsValid(parent))
+            return children;
+
+        const EntityMetadataComponent* parentMetadata = scene.TryGetMetadata(parent);
+        if (!parentMetadata || parentMetadata->sceneEntityId == 0)
+            return children;
+
+        const std::uint64_t parentSceneEntityId = parentMetadata->sceneEntityId;
+
+        auto view = scene.Registry().view<EntityMetadataComponent>();
+        for (const auto entity : view)
+        {
+            if (!scene.IsValid(entity) || entity == parent)
+                continue;
+
+            const EntityMetadataComponent& metadata = view.get<EntityMetadataComponent>(entity);
+            if (metadata.parentSceneEntityId == parentSceneEntityId)
+                children.push_back(entity);
+        }
+
+        SortEntitiesBySceneId(scene, children);
+        return children;
+    }
+
+    static std::vector<Scene::Entity> CollectRootEntitiesSorted(const Scene& scene)
+    {
+        std::vector<Scene::Entity> roots;
+
+        auto entities = scene.Registry().view<entt::entity>();
+        for (const auto entity : entities)
+        {
+            if (!scene.IsValid(entity))
+                continue;
+
+            const EntityMetadataComponent* metadata = scene.TryGetMetadata(entity);
+            if (!metadata)
+            {
+                roots.push_back(entity);
+                continue;
+            }
+
+            if (metadata->parentSceneEntityId == 0)
+            {
+                roots.push_back(entity);
+                continue;
+            }
+
+            const Scene::Entity parent = scene.FindBySceneEntityId(metadata->parentSceneEntityId);
+            if (parent == entt::null || parent == entity)
+                roots.push_back(entity);
+        }
+
+        SortEntitiesBySceneId(scene, roots);
+        return roots;
+    }
 }
 
 Scene::Entity Scene::CreateEntity()
@@ -449,16 +535,34 @@ Scene::Entity Scene::CreateEntityWithSceneEntityId(std::uint64_t sceneEntityId, 
 
 void Scene::DestroyEntity(Entity entity)
 {
-    if (m_registry.valid(entity))
-    {
-        const EntityMetadataComponent* metadata = m_registry.try_get<EntityMetadataComponent>(entity);
-        if (metadata)
-            m_sceneEntityLookup.erase(metadata->sceneEntityId);
+    if (!m_registry.valid(entity))
+        return;
 
-        m_registry.destroy(entity);
-        if (m_entityCount > 0)
-            --m_entityCount;
+    const std::vector<Entity> children = CollectChildrenSorted(*this, entity);
+    for (Entity child : children)
+        DestroyEntity(child);
+
+    const EntityMetadataComponent* metadata = m_registry.try_get<EntityMetadataComponent>(entity);
+    if (metadata)
+    {
+        const std::uint64_t removedSceneEntityId = metadata->sceneEntityId;
+        m_sceneEntityLookup.erase(removedSceneEntityId);
+
+        auto metadataView = m_registry.view<EntityMetadataComponent>();
+        for (const auto candidate : metadataView)
+        {
+            if (candidate == entity)
+                continue;
+
+            EntityMetadataComponent& candidateMetadata = metadataView.get<EntityMetadataComponent>(candidate);
+            if (candidateMetadata.parentSceneEntityId == removedSceneEntityId)
+                candidateMetadata.parentSceneEntityId = 0;
+        }
     }
+
+    m_registry.destroy(entity);
+    if (m_entityCount > 0)
+        --m_entityCount;
 }
 
 void Scene::Clear()
@@ -491,6 +595,173 @@ Scene::Entity Scene::FindBySceneEntityId(std::uint64_t sceneEntityId) const
         return entt::null;
 
     return m_registry.valid(it->second) ? it->second : entt::null;
+}
+
+Scene::Entity Scene::GetParent(Entity child) const
+{
+    if (!IsValid(child))
+        return entt::null;
+
+    const EntityMetadataComponent* metadata = TryGetMetadata(child);
+    if (!metadata || metadata->parentSceneEntityId == 0)
+        return entt::null;
+
+    const Entity parent = FindBySceneEntityId(metadata->parentSceneEntityId);
+    if (parent == child)
+        return entt::null;
+
+    return IsValid(parent) ? parent : entt::null;
+}
+
+bool Scene::SetParent(Entity child, Entity parent)
+{
+    if (!IsValid(child))
+        return false;
+
+    if (parent != entt::null && !IsValid(parent))
+        return false;
+
+    if (child == parent)
+        return false;
+
+    if (parent != entt::null && IsAncestor(child, parent))
+        return false;
+
+    EntityMetadataComponent* childMetadata = TryGetMetadata(child);
+    if (!childMetadata)
+        childMetadata = &AddMetadata(child);
+
+    if (parent == entt::null)
+    {
+        childMetadata->parentSceneEntityId = 0;
+        return true;
+    }
+
+    EntityMetadataComponent* parentMetadata = TryGetMetadata(parent);
+    if (!parentMetadata)
+        parentMetadata = &AddMetadata(parent);
+
+    childMetadata->parentSceneEntityId = parentMetadata->sceneEntityId;
+    return true;
+}
+
+bool Scene::IsAncestor(Entity potentialAncestor, Entity entity) const
+{
+    if (!IsValid(potentialAncestor) || !IsValid(entity) || potentialAncestor == entity)
+        return false;
+
+    Entity current = GetParent(entity);
+    std::size_t remaining = m_entityCount + 1;
+    while (current != entt::null && remaining-- > 0)
+    {
+        if (current == potentialAncestor)
+            return true;
+
+        current = GetParent(current);
+    }
+
+    return false;
+}
+
+std::size_t Scene::GetChildCount(Entity parent) const
+{
+    return CollectChildrenSorted(*this, parent).size();
+}
+
+Scene::Entity Scene::GetChildAt(Entity parent, std::size_t index) const
+{
+    const std::vector<Entity> children = CollectChildrenSorted(*this, parent);
+    if (index >= children.size())
+        return entt::null;
+
+    return children[index];
+}
+
+std::size_t Scene::GetRootEntityCount() const
+{
+    return CollectRootEntitiesSorted(*this).size();
+}
+
+Scene::Entity Scene::GetRootEntityAt(std::size_t index) const
+{
+    const std::vector<Entity> roots = CollectRootEntitiesSorted(*this);
+    if (index >= roots.size())
+        return entt::null;
+
+    return roots[index];
+}
+
+Scene::Entity Scene::DuplicateEntity(Entity source)
+{
+    if (!IsValid(source))
+        return entt::null;
+
+    const Entity sourceParent = GetParent(source);
+
+    const auto duplicateRecursive = [this](auto&& self, Entity sourceEntity, Entity duplicatedParent, bool isRoot) -> Entity
+    {
+        if (!IsValid(sourceEntity))
+            return entt::null;
+
+        const Entity duplicated = CreateEntity();
+        if (duplicated == entt::null)
+            return entt::null;
+
+        const EntityMetadataComponent* sourceMetadata = TryGetMetadata(sourceEntity);
+        EntityMetadataComponent* duplicatedMetadata = TryGetMetadata(duplicated);
+        if (!duplicatedMetadata)
+            duplicatedMetadata = &AddMetadata(duplicated);
+
+        if (sourceMetadata)
+        {
+            duplicatedMetadata->name = sourceMetadata->name;
+            if (isRoot)
+                duplicatedMetadata->name += " (Copy)";
+
+            if (duplicatedMetadata->name.empty())
+                duplicatedMetadata->name = "Entity " + std::to_string(duplicatedMetadata->sceneEntityId);
+
+            duplicatedMetadata->tag = sourceMetadata->tag.empty() ? "Untagged" : sourceMetadata->tag;
+            duplicatedMetadata->layer = sourceMetadata->layer > 31 ? 31 : sourceMetadata->layer;
+            duplicatedMetadata->active = sourceMetadata->active;
+            duplicatedMetadata->isStatic = sourceMetadata->isStatic;
+        }
+
+        if (const TransformComponent* sourceTransform = TryGetTransform(sourceEntity))
+            AddTransform(duplicated, *sourceTransform);
+        else
+            RemoveTransform(duplicated);
+
+        if (const CameraComponent* sourceCamera = TryGetCamera(sourceEntity))
+            AddCamera(duplicated, *sourceCamera);
+        else
+            RemoveCamera(duplicated);
+
+        if (const SpriteComponent* sourceSprite = TryGetSprite(sourceEntity))
+            AddComponent<SpriteComponent>(duplicated, *sourceSprite);
+        else
+            RemoveSprite(duplicated);
+
+        if (const ScriptComponent* sourceScript = TryGetScript(sourceEntity))
+            AddScript(duplicated, *sourceScript);
+        else
+            RemoveScript(duplicated);
+
+        if (const AnimatorComponent* sourceAnimator = TryGetAnimator(sourceEntity))
+            AddAnimator(duplicated, *sourceAnimator);
+        else
+            RemoveAnimator(duplicated);
+
+        SetParent(duplicated, duplicatedParent);
+
+        const std::vector<Entity> children = CollectChildrenSorted(*this, sourceEntity);
+        for (Entity child : children)
+            self(self, child, duplicated, false);
+
+        return duplicated;
+    };
+
+    return duplicateRecursive(duplicateRecursive, source, sourceParent, true);
 }
 
 std::size_t Scene::EntityCount() const
@@ -562,6 +833,9 @@ EntityMetadataComponent& Scene::AddMetadata(Entity entity, const EntityMetadataC
 
     if (value.layer > 31)
         value.layer = 31;
+
+    if (value.parentSceneEntityId == value.sceneEntityId)
+        value.parentSceneEntityId = 0;
 
     m_sceneEntityLookup[value.sceneEntityId] = entity;
 
@@ -751,6 +1025,7 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             WriteBinary(output, entity.layer);
             const std::uint8_t isStatic = entity.isStatic ? 1 : 0;
             WriteBinary(output, isStatic);
+            WriteBinary(output, entity.parentSceneEntityId);
             WriteBinary(output, componentMask);
 
             if (entity.hasTransform)
@@ -861,6 +1136,7 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
         entityObject.AddMember("layer", entity.layer, allocator);
         entityObject.AddMember("active", entity.active, allocator);
         entityObject.AddMember("static", entity.isStatic, allocator);
+        entityObject.AddMember("parentId", entity.parentSceneEntityId, allocator);
 
         rapidjson::Value componentsObject(rapidjson::kObjectType);
 
@@ -1048,10 +1324,24 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             {
                 if (!ReadStringBinary(input, entity.tag) ||
                     !ReadBinary(input, entity.layer) ||
-                    !ReadBinary(input, isStatic) ||
-                    !ReadBinary(input, componentMask))
+                    !ReadBinary(input, isStatic))
                 {
                     m_lastIoError = "Failed to read binary entity metadata data.";
+                    return false;
+                }
+
+                if (fileVersion >= 8)
+                {
+                    if (!ReadBinary(input, entity.parentSceneEntityId))
+                    {
+                        m_lastIoError = "Failed to read binary entity parent id.";
+                        return false;
+                    }
+                }
+
+                if (!ReadBinary(input, componentMask))
+                {
+                    m_lastIoError = "Failed to read binary entity component mask.";
                     return false;
                 }
             }
@@ -1065,6 +1355,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
 
                 entity.tag = "Untagged";
                 entity.layer = 0;
+                entity.parentSceneEntityId = 0;
                 isStatic = 0;
             }
 
@@ -1317,7 +1608,8 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             if (!ReadOptionalString(entityValue, "name", entity.name, parseError) ||
                 !ReadOptionalString(entityValue, "tag", entity.tag, parseError) ||
                 !ReadOptionalUInt32(entityValue, "layer", entity.layer, parseError) ||
-                !ReadOptionalBool(entityValue, "active", entity.active, parseError))
+                !ReadOptionalBool(entityValue, "active", entity.active, parseError) ||
+                !ReadOptionalUInt64(entityValue, "parentId", entity.parentSceneEntityId, parseError))
             {
                 m_lastIoError = "Invalid JSON entity header: " + parseError;
                 return false;
@@ -1510,6 +1802,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             metadata->tag = persisted.tag.empty() ? "Untagged" : persisted.tag;
             metadata->layer = persisted.layer > 31 ? 31 : persisted.layer;
             metadata->isStatic = persisted.isStatic;
+            metadata->parentSceneEntityId = persisted.parentSceneEntityId;
         }
 
         if (persisted.hasTransform)
@@ -1565,6 +1858,18 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             AddAnimator(entity, persisted.animator);
         else
             RemoveAnimator(entity);
+    }
+
+    auto metadataView = m_registry.view<EntityMetadataComponent>();
+    for (const auto entity : metadataView)
+    {
+        EntityMetadataComponent& metadata = metadataView.get<EntityMetadataComponent>(entity);
+        if (metadata.parentSceneEntityId == 0)
+            continue;
+
+        const Entity parent = FindBySceneEntityId(metadata.parentSceneEntityId);
+        if (parent == entt::null || parent == entity || IsAncestor(entity, parent))
+            metadata.parentSceneEntityId = 0;
     }
 
     return true;

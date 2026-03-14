@@ -235,6 +235,34 @@ namespace EngineEditor
                                   () => CanStopPlayMode(),
                                   30);
 
+            MenuRegistry.Register("menu.edit.duplicate",
+                                  "Edit/Duplicate",
+                                  () => SceneEditor.DuplicateSelectedEntity(),
+                                  () => IsSceneWorkspaceActive() && SceneEditor.HasSelectedEntity(),
+                                  40);
+
+            MenuRegistry.Register("menu.edit.delete",
+                                  "Edit/Delete",
+                                  () => SceneEditor.DeleteSelectedEntity(),
+                                  () => IsSceneWorkspaceActive() && SceneEditor.HasSelectedEntity(),
+                                  50);
+
+            MenuRegistry.Register("menu.edit.frameSelected",
+                                  "Edit/Frame Selected Entity",
+                                  () =>
+                                  {
+                                      if (!SceneEditor.FrameSelectedEntity())
+                                          SetStatusMessage("Frame selected failed: no valid selection.");
+                                  },
+                                  () => IsSceneWorkspaceActive() && SceneEditor.HasSelectedEntity(),
+                                  60);
+
+            MenuRegistry.Register("menu.edit.focusCamera",
+                                  "Edit/Focus Camera",
+                                  () => SceneEditor.FocusCamera(),
+                                  () => IsSceneWorkspaceActive(),
+                                  70);
+
             MenuRegistry.Register("menu.assets.refreshProjects",
                                   "Assets/Refresh Project List",
                                   () => ProjectManager.RefreshProjectList(),

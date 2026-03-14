@@ -12,6 +12,11 @@ namespace Engine
             EditorBridge.DestroyEntity(entityId);
         }
 
+        public static uint DuplicateEntity(uint entityId)
+        {
+            return EditorBridge.DuplicateEntity(entityId);
+        }
+
         public static bool Exists(uint entityId)
         {
             return EditorBridge.IsEntityValid(entityId);
@@ -30,6 +35,36 @@ namespace Engine
         public static uint GetEntityIdAtIndex(int index)
         {
             return EditorBridge.GetEntityIdAtIndex(index);
+        }
+
+        public static uint GetParentEntity(uint entityId)
+        {
+            return EditorBridge.GetParentEntity(entityId);
+        }
+
+        public static bool SetParentEntity(uint childEntityId, uint parentEntityId)
+        {
+            return EditorBridge.SetParentEntity(childEntityId, parentEntityId);
+        }
+
+        public static int GetRootEntityCount()
+        {
+            return EditorBridge.GetRootEntityCount();
+        }
+
+        public static uint GetRootEntityAt(int index)
+        {
+            return EditorBridge.GetRootEntityAt(index);
+        }
+
+        public static int GetChildEntityCount(uint entityId)
+        {
+            return EditorBridge.GetChildEntityCount(entityId);
+        }
+
+        public static uint GetChildEntityAt(uint entityId, int index)
+        {
+            return EditorBridge.GetChildEntityAt(entityId, index);
         }
 
         public static string GetEntityName(uint entityId)

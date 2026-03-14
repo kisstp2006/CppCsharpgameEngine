@@ -20,7 +20,7 @@ namespace EngineEditor
             EditorWindowManager.Clear();
 
             EditorWindowManager.Register(IdProjectManager, new ProjectManagerWindow(), "Project Manager", 5);
-            EditorWindowManager.Register(IdSceneTree, new HierarchyWindow(), "Scene Tree", 10);
+            EditorWindowManager.Register(IdSceneTree, new HierarchyWindow(), "Hierarchy", 10);
             EditorWindowManager.Register(IdSceneViewport, new SceneViewportWindow(), "Game View", 20);
             EditorWindowManager.Register(IdRuntimeView, new RuntimeViewWindow(), "Game Runtime", 30);
             EditorWindowManager.Register(IdInspector, new InspectorWindow(), "Inspector", 40);
@@ -38,7 +38,7 @@ namespace EngineEditor
 
         private sealed class HierarchyWindow : EditorWindow
         {
-            public override string Title => "Scene Tree";
+            public override string Title => "Hierarchy";
 
             public override int Order => 10;
 

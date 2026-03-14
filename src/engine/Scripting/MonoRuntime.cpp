@@ -760,6 +760,13 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::SetEntityActive", (const void*)&EditorBridge_SetEntityActive);
         mono_add_internal_call("Engine.EditorBridge::CreateEntity", (const void*)&EditorBridge_CreateEntity);
         mono_add_internal_call("Engine.EditorBridge::DestroyEntity", (const void*)&EditorBridge_DestroyEntity);
+        mono_add_internal_call("Engine.EditorBridge::DuplicateEntity", (const void*)&EditorBridge_DuplicateEntity);
+        mono_add_internal_call("Engine.EditorBridge::GetParentEntity", (const void*)&EditorBridge_GetParentEntity);
+        mono_add_internal_call("Engine.EditorBridge::SetParentEntity", (const void*)&EditorBridge_SetParentEntity);
+        mono_add_internal_call("Engine.EditorBridge::GetRootEntityCount", (const void*)&EditorBridge_GetRootEntityCount);
+        mono_add_internal_call("Engine.EditorBridge::GetRootEntityAt", (const void*)&EditorBridge_GetRootEntityAt);
+        mono_add_internal_call("Engine.EditorBridge::GetChildEntityCount", (const void*)&EditorBridge_GetChildEntityCount);
+        mono_add_internal_call("Engine.EditorBridge::GetChildEntityAt", (const void*)&EditorBridge_GetChildEntityAt);
         mono_add_internal_call("Engine.EditorBridge::NewScene", (const void*)&EditorBridge_NewScene);
         mono_add_internal_call("Engine.EditorBridge::SaveScene", (const void*)&EditorBridge_SaveScene);
         mono_add_internal_call("Engine.EditorBridge::LoadScene", (const void*)&EditorBridge_LoadScene);

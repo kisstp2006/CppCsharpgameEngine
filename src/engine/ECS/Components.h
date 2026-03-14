@@ -55,6 +55,7 @@ struct SpriteComponent
 struct EntityMetadataComponent
 {
     std::uint64_t sceneEntityId = 0;
+    std::uint64_t parentSceneEntityId = 0;
     std::string name;
     std::string tag = "Untagged";
     std::uint32_t layer = 0;

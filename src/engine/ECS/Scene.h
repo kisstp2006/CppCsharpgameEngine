@@ -35,6 +35,14 @@ public:
     Entity FromEntityId(EntityId entityId) const;
     EntityId ToEntityId(Entity entity) const;
     Entity FindBySceneEntityId(std::uint64_t sceneEntityId) const;
+    Entity GetParent(Entity child) const;
+    bool SetParent(Entity child, Entity parent);
+    bool IsAncestor(Entity potentialAncestor, Entity entity) const;
+    std::size_t GetChildCount(Entity parent) const;
+    Entity GetChildAt(Entity parent, std::size_t index) const;
+    std::size_t GetRootEntityCount() const;
+    Entity GetRootEntityAt(std::size_t index) const;
+    Entity DuplicateEntity(Entity source);
 
     std::size_t EntityCount() const;
 

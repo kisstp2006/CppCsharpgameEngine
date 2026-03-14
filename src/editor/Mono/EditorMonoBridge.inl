@@ -1545,6 +1545,106 @@ static void EditorBridge_DestroyEntity(std::uint32_t entityId)
     g_editorSceneContext->DestroyEntity(g_editorSceneContext->FromEntityId(entityId));
 }
 
+static std::uint32_t EditorBridge_DuplicateEntity(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return static_cast<std::uint32_t>(entt::null);
+
+    const Scene::Entity source = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(source))
+        return static_cast<std::uint32_t>(entt::null);
+
+    const Scene::Entity duplicated = g_editorSceneContext->DuplicateEntity(source);
+    if (!g_editorSceneContext->IsValid(duplicated))
+        return static_cast<std::uint32_t>(entt::null);
+
+    return g_editorSceneContext->ToEntityId(duplicated);
+}
+
+static std::uint32_t EditorBridge_GetParentEntity(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return static_cast<std::uint32_t>(entt::null);
+
+    const Scene::Entity child = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(child))
+        return static_cast<std::uint32_t>(entt::null);
+
+    const Scene::Entity parent = g_editorSceneContext->GetParent(child);
+    if (!g_editorSceneContext->IsValid(parent))
+        return static_cast<std::uint32_t>(entt::null);
+
+    return g_editorSceneContext->ToEntityId(parent);
+}
+
+static bool EditorBridge_SetParentEntity(std::uint32_t childEntityId, std::uint32_t parentEntityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const Scene::Entity child = g_editorSceneContext->FromEntityId(childEntityId);
+    if (!g_editorSceneContext->IsValid(child))
+        return false;
+
+    Scene::Entity parent = entt::null;
+    if (parentEntityId != static_cast<std::uint32_t>(entt::null) && parentEntityId != 0)
+    {
+        parent = g_editorSceneContext->FromEntityId(parentEntityId);
+        if (!g_editorSceneContext->IsValid(parent))
+            return false;
+    }
+
+    return g_editorSceneContext->SetParent(child, parent);
+}
+
+static int EditorBridge_GetRootEntityCount()
+{
+    if (!g_editorSceneContext)
+        return 0;
+
+    return static_cast<int>(g_editorSceneContext->GetRootEntityCount());
+}
+
+static std::uint32_t EditorBridge_GetRootEntityAt(int index)
+{
+    if (!g_editorSceneContext || index < 0)
+        return static_cast<std::uint32_t>(entt::null);
+
+    const Scene::Entity root = g_editorSceneContext->GetRootEntityAt(static_cast<std::size_t>(index));
+    if (!g_editorSceneContext->IsValid(root))
+        return static_cast<std::uint32_t>(entt::null);
+
+    return g_editorSceneContext->ToEntityId(root);
+}
+
+static int EditorBridge_GetChildEntityCount(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return 0;
+
+    const Scene::Entity entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity))
+        return 0;
+
+    return static_cast<int>(g_editorSceneContext->GetChildCount(entity));
+}
+
+static std::uint32_t EditorBridge_GetChildEntityAt(std::uint32_t entityId, int index)
+{
+    if (!g_editorSceneContext || index < 0)
+        return static_cast<std::uint32_t>(entt::null);
+
+    const Scene::Entity entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity))
+        return static_cast<std::uint32_t>(entt::null);
+
+    const Scene::Entity child = g_editorSceneContext->GetChildAt(entity, static_cast<std::size_t>(index));
+    if (!g_editorSceneContext->IsValid(child))
+        return static_cast<std::uint32_t>(entt::null);
+
+    return g_editorSceneContext->ToEntityId(child);
+}
+
 static void EditorBridge_NewScene()
 {
     if (!g_editorSceneContext)

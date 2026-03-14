@@ -37,6 +37,21 @@ namespace EngineEditor
             HierarchySystem.CreateEntityAndSelect();
         }
 
+        public static bool HasSelectedEntity()
+        {
+            return HierarchySystem.HasValidSelection();
+        }
+
+        public static void DuplicateSelectedEntity()
+        {
+            HierarchySystem.DuplicateSelectedEntity();
+        }
+
+        public static void DeleteSelectedEntity()
+        {
+            HierarchySystem.DeleteSelectedEntity();
+        }
+
         public static void NewScene()
         {
             SceneSystem.NewScene();
@@ -95,6 +110,16 @@ namespace EngineEditor
         public static void DrawRuntimeGamePanel()
         {
             SceneViewportSystem.DrawRuntimeGamePanel();
+        }
+
+        public static void FocusCamera()
+        {
+            SceneViewportSystem.FocusCamera();
+        }
+
+        public static bool FrameSelectedEntity()
+        {
+            return SceneViewportSystem.FrameSelectedEntity();
         }
 
         public static void DrawSceneTreePanel()

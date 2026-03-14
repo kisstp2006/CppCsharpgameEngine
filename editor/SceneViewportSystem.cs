@@ -29,6 +29,7 @@ namespace EngineEditor
         private static bool _defaultGizmoSnapEnabled;
         private static float _defaultGizmoSnapStep = 32.0f;
         private static string _loadedProjectSettingsPath = string.Empty;
+        private static bool _pixelSnapEnabled;
 
         private const string ProjectSettingDefaultSnapEnabled = "editor.scene.defaultSnapEnabled";
         private const string ProjectSettingDefaultSnapStep = "editor.scene.defaultSnapStep";
@@ -105,6 +106,7 @@ namespace EngineEditor
             _gameViewHeight = 1.0f;
             GizmoSnapEnabled = _defaultGizmoSnapEnabled;
             GizmoSnapStep = _defaultGizmoSnapStep;
+            _pixelSnapEnabled = false;
             SyncPreviewCameraState(false);
         }
 
@@ -151,6 +153,50 @@ namespace EngineEditor
                 return;
 
             _tickAccumulator = 0.0f;
+        }
+
+        public static void FocusCamera()
+        {
+            GameViewFocused = true;
+            SyncPreviewCameraState(true);
+        }
+
+        public static bool FrameSelectedEntity()
+        {
+            if (SelectedEntityId < 0)
+                return false;
+
+            uint entityId = (uint)SelectedEntityId;
+            if (!EntityManager.IsEntityValid(entityId))
+                return false;
+
+            float x;
+            float y;
+            float width;
+            float height;
+            if (!EntityManager.GetTransform(entityId, out x, out y, out width, out height))
+                return false;
+
+            float rectX;
+            float rectY;
+            float rectWidth;
+            float rectHeight;
+            ResolveEntityVisualRect(entityId, x, y, width, height, out rectX, out rectY, out rectWidth, out rectHeight);
+
+            _editorCamera.X = rectX + (rectWidth * 0.5f);
+            _editorCamera.Y = rectY + (rectHeight * 0.5f);
+
+            if (_gameViewWidth > 1.0f && _gameViewHeight > 1.0f)
+            {
+                float fitZoomX = (_gameViewWidth * 0.70f) / Math.Max(1.0f, Math.Abs(rectWidth));
+                float fitZoomY = (_gameViewHeight * 0.70f) / Math.Max(1.0f, Math.Abs(rectHeight));
+                float fitZoom = Math.Min(fitZoomX, fitZoomY);
+                if (!float.IsNaN(fitZoom) && !float.IsInfinity(fitZoom))
+                    _editorCamera.Zoom = Clamp(fitZoom, MinZoom, MaxZoom);
+            }
+
+            FocusCamera();
+            return true;
         }
 
         public static void DrawWorldViewportPanel(float deltaTime)
@@ -415,13 +461,26 @@ namespace EngineEditor
         {
             ImGui.Text("Tool:");
             ImGui.SameLine();
-            ImGui.Button("Move (W)");
-            EditorContext.ActiveTool = EditorTool.Move;
+            if (ImGui.Button((EditorContext.ActiveTool == EditorTool.Move ? "[Move]" : "Move") + " (W)"))
+                EditorContext.ActiveTool = EditorTool.Move;
+
+            ImGui.SameLine();
+            if (ImGui.Button((EditorContext.ActiveTool == EditorTool.Rotate ? "[Rotate]" : "Rotate") + " (E)"))
+                EditorContext.ActiveTool = EditorTool.Rotate;
+
+            ImGui.SameLine();
+            if (ImGui.Button((EditorContext.ActiveTool == EditorTool.Scale ? "[Scale]" : "Scale") + " (R)"))
+                EditorContext.ActiveTool = EditorTool.Scale;
 
             ImGui.SameLine();
             bool snap = GizmoSnapEnabled;
             if (ImGui.Checkbox("Snap", ref snap))
                 GizmoSnapEnabled = snap;
+
+            ImGui.SameLine();
+            bool pixelSnap = _pixelSnapEnabled;
+            if (ImGui.Checkbox("Pixel", ref pixelSnap))
+                _pixelSnapEnabled = pixelSnap;
 
             ImGui.SameLine();
             ImGui.SetNextItemWidth(90.0f);
@@ -431,7 +490,11 @@ namespace EngineEditor
 
             ImGui.SameLine();
             if (ImGui.Button("Focus"))
-                GameViewFocused = true;
+                FocusCamera();
+
+            ImGui.SameLine();
+            if (ImGui.Button("Frame Selected"))
+                FrameSelectedEntity();
         }
 
         private static bool IsPointInsideRect(float px, float py, float x, float y, float width, float height)
@@ -832,7 +895,24 @@ namespace EngineEditor
                     }
                     else
                     {
-                        gizmoChanged = ImGuizmo.Manipulate2DTranslate(_gameViewPosX,
+                        if (EditorContext.ActiveTool == EditorTool.Rotate)
+                        {
+                            gizmoChanged = ImGuizmo.Manipulate2DRotate(_gameViewPosX,
+                                                                       _gameViewPosY,
+                                                                       _gameViewWidth,
+                                                                       _gameViewHeight,
+                                                                       _editorCamera.X,
+                                                                       _editorCamera.Y,
+                                                                       _editorCamera.Zoom,
+                                                                       ref gizmoX,
+                                                                       ref gizmoY,
+                                                                       ref gizmoRotation,
+                                                                       width,
+                                                                       height);
+                        }
+                        else if (EditorContext.ActiveTool == EditorTool.Scale)
+                        {
+                            gizmoChanged = ImGuizmo.Manipulate2DScale(_gameViewPosX,
                                                                       _gameViewPosY,
                                                                       _gameViewWidth,
                                                                       _gameViewHeight,
@@ -841,16 +921,52 @@ namespace EngineEditor
                                                                       _editorCamera.Zoom,
                                                                       ref gizmoX,
                                                                       ref gizmoY,
-                                                                      width,
-                                                                      height);
+                                                                      ref gizmoWidth,
+                                                                      ref gizmoHeight,
+                                                                      gizmoRotation);
+                        }
+                        else
+                        {
+                            gizmoChanged = ImGuizmo.Manipulate2DTranslate(_gameViewPosX,
+                                                                          _gameViewPosY,
+                                                                          _gameViewWidth,
+                                                                          _gameViewHeight,
+                                                                          _editorCamera.X,
+                                                                          _editorCamera.Y,
+                                                                          _editorCamera.Zoom,
+                                                                          ref gizmoX,
+                                                                          ref gizmoY,
+                                                                          width,
+                                                                          height);
+                        }
                     }
 
                     if (gizmoChanged)
                     {
                         if (!timelineGizmoActive && GizmoSnapEnabled)
                         {
-                            gizmoX = SnapValue(gizmoX, GizmoSnapStep);
-                            gizmoY = SnapValue(gizmoY, GizmoSnapStep);
+                            if (EditorContext.ActiveTool == EditorTool.Scale)
+                            {
+                                gizmoWidth = SnapValue(gizmoWidth, GizmoSnapStep);
+                                gizmoHeight = SnapValue(gizmoHeight, GizmoSnapStep);
+                            }
+                            else if (EditorContext.ActiveTool == EditorTool.Rotate)
+                            {
+                                gizmoRotation = SnapValue(gizmoRotation, 15.0f);
+                            }
+                            else
+                            {
+                                gizmoX = SnapValue(gizmoX, GizmoSnapStep);
+                                gizmoY = SnapValue(gizmoY, GizmoSnapStep);
+                            }
+                        }
+
+                        if (!timelineGizmoActive && _pixelSnapEnabled)
+                        {
+                            gizmoX = SnapValue(gizmoX, 1.0f);
+                            gizmoY = SnapValue(gizmoY, 1.0f);
+                            gizmoWidth = SnapValue(gizmoWidth, 1.0f);
+                            gizmoHeight = SnapValue(gizmoHeight, 1.0f);
                         }
 
                         EntityManager.SetTransform(entityId, gizmoX, gizmoY, gizmoWidth, gizmoHeight);
