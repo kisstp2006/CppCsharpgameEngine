@@ -8,17 +8,37 @@ namespace EngineEditor
 {
     internal static class ProjectOperations
     {
-        private static string _activeProjectPath = string.Empty;
+        private static string _activeProjectPathBacking = string.Empty;
         private static string _editorConfigDir = string.Empty;
         private static string _lastProjectFile = string.Empty;
         private static string _recentProjectsFile = string.Empty;
-        private static string _statusMessage = "No project loaded.";
         private static readonly List<string> _recentProjectPaths = new List<string>();
+
+        private static string _activeProjectPath
+        {
+            get => _activeProjectPathBacking;
+            set
+            {
+                string next = value ?? string.Empty;
+                _activeProjectPathBacking = next;
+                EditorContext.ActiveProjectPath = next;
+            }
+        }
+
+        private static string _statusMessage
+        {
+            get => EditorContext.StatusMessage;
+            set
+            {
+                string next = value ?? string.Empty;
+                EditorContext.StatusMessage = next;
+            }
+        }
 
         private const int MaxRecentProjects = 10;
 
         public static string ActiveProjectPath => _activeProjectPath;
-        public static string StatusMessage => _statusMessage;
+        public static string StatusMessage => EditorContext.StatusMessage;
 
         public static string[] GetRecentProjects()
         {
@@ -31,6 +51,7 @@ namespace EngineEditor
             _lastProjectFile = Path.Combine(editorConfigDir, "last_project.txt");
             _recentProjectsFile = Path.Combine(editorConfigDir, "recent_projects.txt");
             Directory.CreateDirectory(editorConfigDir);
+            EditorContext.ActiveProjectPath = _activeProjectPath;
             LoadRecentProjects();
         }
 

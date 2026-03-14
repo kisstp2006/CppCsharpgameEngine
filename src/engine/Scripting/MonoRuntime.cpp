@@ -793,6 +793,8 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::AddTransform", (const void*)&EditorBridge_AddTransform);
         mono_add_internal_call("Engine.EditorBridge::GetTransform", (const void*)&EditorBridge_GetTransform);
         mono_add_internal_call("Engine.EditorBridge::SetTransform", (const void*)&EditorBridge_SetTransform);
+        mono_add_internal_call("Engine.EditorBridge::GetTransformRotation", (const void*)&EditorBridge_GetTransformRotation);
+        mono_add_internal_call("Engine.EditorBridge::SetTransformRotation", (const void*)&EditorBridge_SetTransformRotation);
         mono_add_internal_call("Engine.EditorBridge::HasCamera", (const void*)&EditorBridge_HasCamera);
         mono_add_internal_call("Engine.EditorBridge::AddCamera", (const void*)&EditorBridge_AddCamera);
         mono_add_internal_call("Engine.EditorBridge::GetCamera", (const void*)&EditorBridge_GetCamera);
@@ -820,6 +822,21 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.EditorBridge::SetScriptTypeName", (const void*)&EditorBridge_SetScriptTypeName);
         mono_add_internal_call("Engine.EditorBridge::GetScriptFieldValue", (const void*)&EditorBridge_GetScriptFieldValue);
         mono_add_internal_call("Engine.EditorBridge::SetScriptFieldValue", (const void*)&EditorBridge_SetScriptFieldValue);
+        mono_add_internal_call("Engine.EditorBridge::HasAnimator", (const void*)&EditorBridge_HasAnimator);
+        mono_add_internal_call("Engine.EditorBridge::AddAnimator", (const void*)&EditorBridge_AddAnimator);
+        mono_add_internal_call("Engine.EditorBridge::RemoveAnimator", (const void*)&EditorBridge_RemoveAnimator);
+        mono_add_internal_call("Engine.EditorBridge::GetAnimatorClipPath", (const void*)&EditorBridge_GetAnimatorClipPath);
+        mono_add_internal_call("Engine.EditorBridge::SetAnimatorClipPath", (const void*)&EditorBridge_SetAnimatorClipPath);
+        mono_add_internal_call("Engine.EditorBridge::GetAnimatorTime", (const void*)&EditorBridge_GetAnimatorTime);
+        mono_add_internal_call("Engine.EditorBridge::SetAnimatorTime", (const void*)&EditorBridge_SetAnimatorTime);
+        mono_add_internal_call("Engine.EditorBridge::GetAnimatorPlaying", (const void*)&EditorBridge_GetAnimatorPlaying);
+        mono_add_internal_call("Engine.EditorBridge::SetAnimatorPlaying", (const void*)&EditorBridge_SetAnimatorPlaying);
+        mono_add_internal_call("Engine.EditorBridge::GetAnimatorLoop", (const void*)&EditorBridge_GetAnimatorLoop);
+        mono_add_internal_call("Engine.EditorBridge::SetAnimatorLoop", (const void*)&EditorBridge_SetAnimatorLoop);
+        mono_add_internal_call("Engine.EditorBridge::GetAnimatorSpeed", (const void*)&EditorBridge_GetAnimatorSpeed);
+        mono_add_internal_call("Engine.EditorBridge::SetAnimatorSpeed", (const void*)&EditorBridge_SetAnimatorSpeed);
+        mono_add_internal_call("Engine.EditorBridge::GetAnimatorApplyPoseWhenStopped", (const void*)&EditorBridge_GetAnimatorApplyPoseWhenStopped);
+        mono_add_internal_call("Engine.EditorBridge::SetAnimatorApplyPoseWhenStopped", (const void*)&EditorBridge_SetAnimatorApplyPoseWhenStopped);
         mono_add_internal_call("Engine.EditorBridge::SetGameViewSize", (const void*)&EditorBridge_SetGameViewSize);
         mono_add_internal_call("Engine.EditorBridge::SetEditorPreviewCamera", (const void*)&EditorBridge_SetEditorPreviewCamera);
         mono_add_internal_call("Engine.EditorBridge::GetGameViewTextureHandle", (const void*)&EditorBridge_GetGameViewTextureHandle);
@@ -877,6 +894,8 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.EntityManager::AddTransformInternal", (const void*)&EntityManager_AddTransformInternal);
     mono_add_internal_call("Engine.EntityManager::GetTransformInternal", (const void*)&EntityManager_GetTransformInternal);
     mono_add_internal_call("Engine.EntityManager::SetTransformInternal", (const void*)&EntityManager_SetTransformInternal);
+    mono_add_internal_call("Engine.EntityManager::GetTransformRotationInternal", (const void*)&EntityManager_GetTransformRotationInternal);
+    mono_add_internal_call("Engine.EntityManager::SetTransformRotationInternal", (const void*)&EntityManager_SetTransformRotationInternal);
     mono_add_internal_call("Engine.EntityManager::HasCameraInternal", (const void*)&EntityManager_HasCameraInternal);
     mono_add_internal_call("Engine.EntityManager::AddCameraInternal", (const void*)&EntityManager_AddCameraInternal);
     mono_add_internal_call("Engine.EntityManager::GetCameraInternal", (const void*)&EntityManager_GetCameraInternal);
@@ -892,6 +911,21 @@ bool MonoRuntime::Initialize()
     mono_add_internal_call("Engine.EntityManager::HasScriptInternal", (const void*)&EntityManager_HasScriptInternal);
     mono_add_internal_call("Engine.EntityManager::AddScriptInternal", (const void*)&EntityManager_AddScriptInternal);
     mono_add_internal_call("Engine.EntityManager::RemoveScriptInternal", (const void*)&EntityManager_RemoveScriptInternal);
+    mono_add_internal_call("Engine.EntityManager::HasAnimatorInternal", (const void*)&EntityManager_HasAnimatorInternal);
+    mono_add_internal_call("Engine.EntityManager::AddAnimatorInternal", (const void*)&EntityManager_AddAnimatorInternal);
+    mono_add_internal_call("Engine.EntityManager::RemoveAnimatorInternal", (const void*)&EntityManager_RemoveAnimatorInternal);
+    mono_add_internal_call("Engine.EntityManager::GetAnimatorClipPathInternal", (const void*)&EntityManager_GetAnimatorClipPathInternal);
+    mono_add_internal_call("Engine.EntityManager::SetAnimatorClipPathInternal", (const void*)&EntityManager_SetAnimatorClipPathInternal);
+    mono_add_internal_call("Engine.EntityManager::GetAnimatorTimeInternal", (const void*)&EntityManager_GetAnimatorTimeInternal);
+    mono_add_internal_call("Engine.EntityManager::SetAnimatorTimeInternal", (const void*)&EntityManager_SetAnimatorTimeInternal);
+    mono_add_internal_call("Engine.EntityManager::GetAnimatorPlayingInternal", (const void*)&EntityManager_GetAnimatorPlayingInternal);
+    mono_add_internal_call("Engine.EntityManager::SetAnimatorPlayingInternal", (const void*)&EntityManager_SetAnimatorPlayingInternal);
+    mono_add_internal_call("Engine.EntityManager::GetAnimatorLoopInternal", (const void*)&EntityManager_GetAnimatorLoopInternal);
+    mono_add_internal_call("Engine.EntityManager::SetAnimatorLoopInternal", (const void*)&EntityManager_SetAnimatorLoopInternal);
+    mono_add_internal_call("Engine.EntityManager::GetAnimatorSpeedInternal", (const void*)&EntityManager_GetAnimatorSpeedInternal);
+    mono_add_internal_call("Engine.EntityManager::SetAnimatorSpeedInternal", (const void*)&EntityManager_SetAnimatorSpeedInternal);
+    mono_add_internal_call("Engine.EntityManager::GetAnimatorApplyPoseWhenStoppedInternal", (const void*)&EntityManager_GetAnimatorApplyPoseWhenStoppedInternal);
+    mono_add_internal_call("Engine.EntityManager::SetAnimatorApplyPoseWhenStoppedInternal", (const void*)&EntityManager_SetAnimatorApplyPoseWhenStoppedInternal);
     mono_add_internal_call("Engine.Glm::Vec2AddInternal", (const void*)&RuntimeGlm_Vec2Add);
     mono_add_internal_call("Engine.Glm::Vec2SubInternal", (const void*)&RuntimeGlm_Vec2Sub);
     mono_add_internal_call("Engine.Glm::Vec2ScaleInternal", (const void*)&RuntimeGlm_Vec2Scale);
@@ -932,6 +966,7 @@ bool MonoRuntime::Initialize()
         mono_add_internal_call("Engine.ImGui::EndPopup", (const void*)&EditorImGui_EndPopup);
         mono_add_internal_call("Engine.ImGui::CloseCurrentPopup", (const void*)&EditorImGui_CloseCurrentPopup);
         mono_add_internal_call("Engine.ImGui::SameLine", (const void*)&EditorImGui_SameLine);
+        mono_add_internal_call("Engine.ImGui::SetNextWindowFocus", (const void*)&EditorImGui_SetNextWindowFocus);
         mono_add_internal_call("Engine.ImGui::SetNextItemWidth", (const void*)&EditorImGui_SetNextItemWidth);
         mono_add_internal_call("Engine.ImGui::Selectable", (const void*)&EditorImGui_Selectable);
         mono_add_internal_call("Engine.ImGui::SelectableNoClose", (const void*)&EditorImGui_SelectableNoClose);
@@ -969,6 +1004,8 @@ bool MonoRuntime::Initialize()
 
         mono_add_internal_call("Engine.ImGuizmo::IsUsing", (const void*)&EditorImGuizmo_IsUsing);
         mono_add_internal_call("Engine.ImGuizmo::Manipulate2DTranslate", (const void*)&EditorImGuizmo_Manipulate2DTranslate);
+        mono_add_internal_call("Engine.ImGuizmo::Manipulate2DRotate", (const void*)&EditorImGuizmo_Manipulate2DRotate);
+        mono_add_internal_call("Engine.ImGuizmo::Manipulate2DScale", (const void*)&EditorImGuizmo_Manipulate2DScale);
     }
 
     mono_add_internal_call("Engine.Input::GetMouseButton", (const void*)&EngineInput_GetMouseButton);

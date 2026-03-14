@@ -201,6 +201,12 @@ namespace Engine
         public static extern void SetTransform(uint entityId, float x, float y, float width, float height);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern float GetTransformRotation(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetTransformRotation(uint entityId, float rotation);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool HasCamera(uint entityId);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
@@ -356,6 +362,51 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern bool SetScriptFieldValue(uint entityId, string fieldName, string fieldValue);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool HasAnimator(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void AddAnimator(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void RemoveAnimator(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern string GetAnimatorClipPath(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetAnimatorClipPath(uint entityId, string clipPath);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern float GetAnimatorTime(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetAnimatorTime(uint entityId, float time);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool GetAnimatorPlaying(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetAnimatorPlaying(uint entityId, bool playing);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool GetAnimatorLoop(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetAnimatorLoop(uint entityId, bool loop);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern float GetAnimatorSpeed(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetAnimatorSpeed(uint entityId, float speed);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern bool GetAnimatorApplyPoseWhenStopped(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetAnimatorApplyPoseWhenStopped(uint entityId, bool value);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void SetGameViewSize(float width, float height);

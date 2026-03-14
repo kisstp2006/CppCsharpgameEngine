@@ -80,7 +80,7 @@ namespace EngineEditor
             _assetContextMenuRegistered = true;
             AssetPanelContextMenuRegistry.Register("scriptinspector.createScript",
                                                    "Create/C# Script",
-                                                   _ => AssetPanel.RequestOpenCreateScriptPopup(),
+                                                   _ => AssetBrowserSystem.RequestOpenCreateScriptPopup(),
                                                    20);
         }
 

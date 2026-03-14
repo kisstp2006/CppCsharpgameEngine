@@ -3,6 +3,7 @@
 #include "Assets/AssetImportPipeline.h"
 #include "Assets/ProjectContext.h"
 #include "ECS/Components.h"
+#include "ECS/AnimatorSystem.h"
 #include "ECS/Scene.h"
 #include "Platform/SDLInputState.h"
 #include "Platform/SDLWindow.h"
@@ -756,17 +757,7 @@ void Engine::EndFrame()
         std::uint32_t cameraBackgroundColor = 0x14141AFFu;
         bool clearCameraViewport = false;
         bool hasActiveSceneCamera = false;
-        bool useEditorPreviewCamera = false;
-
-        if (m_editorMode && m_editorPreviewCameraEnabled)
-        {
-#ifndef ENGINE_MONO_DISABLED
-            useEditorPreviewCamera = (!m_mono) ||
-                (m_mono->GetSimulationState() == MonoRuntime::SimulationState::Edit);
-#else
-            useEditorPreviewCamera = true;
-#endif
-        }
+        const bool useEditorPreviewCamera = m_editorMode && m_editorPreviewCameraEnabled;
 
         if (useEditorPreviewCamera)
         {
@@ -997,6 +988,9 @@ void Engine::RunMainLoop()
         if (m_mono)
             m_mono->Update(deltaTime, m_scene.get(), m_renderer.get(), this);
 #endif
+
+        if (m_scene)
+            AnimatorSystem::Update(*m_scene, deltaTime, m_projectContext.get());
 
         EndFrame();
     }

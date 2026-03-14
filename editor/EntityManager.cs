@@ -87,6 +87,16 @@ namespace Engine
             EditorBridge.SetTransform(entityId, x, y, width, height);
         }
 
+        public static float GetTransformRotation(uint entityId)
+        {
+            return EditorBridge.GetTransformRotation(entityId);
+        }
+
+        public static void SetTransformRotation(uint entityId, float rotation)
+        {
+            EditorBridge.SetTransformRotation(entityId, rotation);
+        }
+
         public static bool HasCamera(uint entityId)
         {
             return EditorBridge.HasCamera(entityId);
@@ -260,6 +270,81 @@ namespace Engine
         public static void RemoveScript(uint entityId)
         {
             EditorBridge.RemoveScript(entityId);
+        }
+
+        public static bool HasAnimator(uint entityId)
+        {
+            return EditorBridge.HasAnimator(entityId);
+        }
+
+        public static void AddAnimator(uint entityId)
+        {
+            EditorBridge.AddAnimator(entityId);
+        }
+
+        public static void RemoveAnimator(uint entityId)
+        {
+            EditorBridge.RemoveAnimator(entityId);
+        }
+
+        public static string GetAnimatorClipPath(uint entityId)
+        {
+            return EditorBridge.GetAnimatorClipPath(entityId);
+        }
+
+        public static void SetAnimatorClipPath(uint entityId, string clipPath)
+        {
+            EditorBridge.SetAnimatorClipPath(entityId, clipPath);
+        }
+
+        public static float GetAnimatorTime(uint entityId)
+        {
+            return EditorBridge.GetAnimatorTime(entityId);
+        }
+
+        public static void SetAnimatorTime(uint entityId, float time)
+        {
+            EditorBridge.SetAnimatorTime(entityId, time);
+        }
+
+        public static bool GetAnimatorPlaying(uint entityId)
+        {
+            return EditorBridge.GetAnimatorPlaying(entityId);
+        }
+
+        public static void SetAnimatorPlaying(uint entityId, bool playing)
+        {
+            EditorBridge.SetAnimatorPlaying(entityId, playing);
+        }
+
+        public static bool GetAnimatorLoop(uint entityId)
+        {
+            return EditorBridge.GetAnimatorLoop(entityId);
+        }
+
+        public static void SetAnimatorLoop(uint entityId, bool loop)
+        {
+            EditorBridge.SetAnimatorLoop(entityId, loop);
+        }
+
+        public static float GetAnimatorSpeed(uint entityId)
+        {
+            return EditorBridge.GetAnimatorSpeed(entityId);
+        }
+
+        public static void SetAnimatorSpeed(uint entityId, float speed)
+        {
+            EditorBridge.SetAnimatorSpeed(entityId, speed);
+        }
+
+        public static bool GetAnimatorApplyPoseWhenStopped(uint entityId)
+        {
+            return EditorBridge.GetAnimatorApplyPoseWhenStopped(entityId);
+        }
+
+        public static void SetAnimatorApplyPoseWhenStopped(uint entityId, bool value)
+        {
+            EditorBridge.SetAnimatorApplyPoseWhenStopped(entityId, value);
         }
     }
 }

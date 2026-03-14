@@ -84,12 +84,14 @@ public:
     CameraComponent& AddCamera(Entity entity, const CameraComponent& camera = CameraComponent{});
     SpriteComponent& AddSprite(Entity entity, Texture* texture = nullptr);
     ScriptComponent& AddScript(Entity entity, const ScriptComponent& script = ScriptComponent{});
+    AnimatorComponent& AddAnimator(Entity entity, const AnimatorComponent& animator = AnimatorComponent{});
     EntityMetadataComponent& AddMetadata(Entity entity, const EntityMetadataComponent& metadata = EntityMetadataComponent{});
 
     bool HasTransform(Entity entity) const;
     bool HasCamera(Entity entity) const;
     bool HasSprite(Entity entity) const;
     bool HasScript(Entity entity) const;
+    bool HasAnimator(Entity entity) const;
     bool HasMetadata(Entity entity) const;
 
     TransformComponent* TryGetTransform(Entity entity);
@@ -100,6 +102,8 @@ public:
     const SpriteComponent* TryGetSprite(Entity entity) const;
     ScriptComponent* TryGetScript(Entity entity);
     const ScriptComponent* TryGetScript(Entity entity) const;
+    AnimatorComponent* TryGetAnimator(Entity entity);
+    const AnimatorComponent* TryGetAnimator(Entity entity) const;
     EntityMetadataComponent* TryGetMetadata(Entity entity);
     const EntityMetadataComponent* TryGetMetadata(Entity entity) const;
 
@@ -107,6 +111,7 @@ public:
     bool RemoveCamera(Entity entity);
     bool RemoveSprite(Entity entity);
     bool RemoveScript(Entity entity);
+    bool RemoveAnimator(Entity entity);
     bool RemoveMetadata(Entity entity);
 
     bool SaveToFile(const std::filesystem::path& path, SceneFileFormat format) const;

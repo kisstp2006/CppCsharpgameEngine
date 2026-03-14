@@ -187,9 +187,11 @@ endif()
 add_library(Engine STATIC
   src/engine/Engine.cpp
   src/engine/Core/Logger.cpp
+  src/engine/Animation/AnimationClip.cpp
   src/engine/Assets/AssetDatabase.cpp
   src/engine/Assets/AssetImportPipeline.cpp
   src/engine/Assets/ProjectContext.cpp
+  src/engine/ECS/AnimatorSystem.cpp
   src/engine/ECS/Scene.cpp
   src/engine/Platform/ExplorerDialog.cpp
   src/engine/Platform/AuxiliaryWindowManager.cpp

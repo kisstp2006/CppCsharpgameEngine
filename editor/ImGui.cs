@@ -65,6 +65,9 @@ namespace Engine
         public static extern void SameLine();
 
         [MethodImpl(MethodImplOptions.InternalCall)]
+        public static extern void SetNextWindowFocus();
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
         public static extern void SetNextItemWidth(float width);
 
         [MethodImpl(MethodImplOptions.InternalCall)]

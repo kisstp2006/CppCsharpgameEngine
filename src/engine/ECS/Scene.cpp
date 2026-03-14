@@ -14,7 +14,7 @@
 
 namespace
 {
-    constexpr std::uint32_t kSceneFileVersion = 6;
+    constexpr std::uint32_t kSceneFileVersion = 7;
 
     enum ComponentFlags : std::uint8_t
     {
@@ -22,6 +22,7 @@ namespace
         Component_Camera = 1 << 1,
         Component_Sprite = 1 << 2,
         Component_Script = 1 << 3,
+        Component_Animator = 1 << 4,
     };
 
     struct PersistedEntity
@@ -59,6 +60,9 @@ namespace
 
         bool hasScript = false;
         ScriptComponent script;
+
+        bool hasAnimator = false;
+        AnimatorComponent animator;
     };
 
     static bool ReadRequiredUInt64(const rapidjson::Value& object,
@@ -239,6 +243,20 @@ namespace
             entity.camera.viewportHeight = ClampRange(1.0f - entity.camera.viewportY, 0.01f, 1.0f);
     }
 
+    static void NormalizeAnimatorState(PersistedEntity& entity)
+    {
+        if (!std::isfinite(entity.animator.time))
+            entity.animator.time = 0.0f;
+
+        if (!std::isfinite(entity.animator.speed))
+            entity.animator.speed = 1.0f;
+
+        if (entity.animator.speed < -16.0f)
+            entity.animator.speed = -16.0f;
+        else if (entity.animator.speed > 16.0f)
+            entity.animator.speed = 16.0f;
+    }
+
     static void NormalizeSpriteComponent(SpriteComponent& sprite)
     {
         if (sprite.hframes < 1)
@@ -343,6 +361,8 @@ namespace
             {
                 persisted.hasTransform = true;
                 persisted.transform = *transform;
+                if (!std::isfinite(persisted.transform.rotation))
+                    persisted.transform.rotation = 0.0f;
             }
 
             if (const CameraComponent* camera = scene.TryGetCamera(entity))
@@ -378,6 +398,13 @@ namespace
             {
                 persisted.hasScript = true;
                 persisted.script = *script;
+            }
+
+            if (const AnimatorComponent* animator = scene.TryGetAnimator(entity))
+            {
+                persisted.hasAnimator = true;
+                persisted.animator = *animator;
+                NormalizeAnimatorState(persisted);
             }
 
             entities.push_back(std::move(persisted));
@@ -502,6 +529,19 @@ ScriptComponent& Scene::AddScript(Entity entity, const ScriptComponent& script)
     return value;
 }
 
+AnimatorComponent& Scene::AddAnimator(Entity entity, const AnimatorComponent& animator)
+{
+    auto& value = AddComponent<AnimatorComponent>(entity);
+    value = animator;
+
+    PersistedEntity normalized;
+    normalized.animator = value;
+    NormalizeAnimatorState(normalized);
+    value = normalized.animator;
+
+    return value;
+}
+
 EntityMetadataComponent& Scene::AddMetadata(Entity entity, const EntityMetadataComponent& metadata)
 {
     auto& value = AddComponent<EntityMetadataComponent>(entity);
@@ -551,6 +591,11 @@ bool Scene::HasScript(Entity entity) const
     return HasComponent<ScriptComponent>(entity);
 }
 
+bool Scene::HasAnimator(Entity entity) const
+{
+    return HasComponent<AnimatorComponent>(entity);
+}
+
 bool Scene::HasMetadata(Entity entity) const
 {
     return HasComponent<EntityMetadataComponent>(entity);
@@ -596,6 +641,16 @@ const ScriptComponent* Scene::TryGetScript(Entity entity) const
     return TryGetComponent<ScriptComponent>(entity);
 }
 
+AnimatorComponent* Scene::TryGetAnimator(Entity entity)
+{
+    return TryGetComponent<AnimatorComponent>(entity);
+}
+
+const AnimatorComponent* Scene::TryGetAnimator(Entity entity) const
+{
+    return TryGetComponent<AnimatorComponent>(entity);
+}
+
 EntityMetadataComponent* Scene::TryGetMetadata(Entity entity)
 {
     return TryGetComponent<EntityMetadataComponent>(entity);
@@ -624,6 +679,11 @@ bool Scene::RemoveSprite(Entity entity)
 bool Scene::RemoveScript(Entity entity)
 {
     return RemoveComponent<ScriptComponent>(entity);
+}
+
+bool Scene::RemoveAnimator(Entity entity)
+{
+    return RemoveComponent<AnimatorComponent>(entity);
 }
 
 bool Scene::RemoveMetadata(Entity entity)
@@ -679,6 +739,8 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
                 componentMask |= Component_Sprite;
             if (entity.hasScript)
                 componentMask |= Component_Script;
+            if (entity.hasAnimator)
+                componentMask |= Component_Animator;
 
             WriteBinary(output, entity.sceneEntityId);
             WriteStringBinary(output, entity.name);
@@ -695,6 +757,7 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             {
                 WriteBinary(output, entity.transform.x);
                 WriteBinary(output, entity.transform.y);
+                WriteBinary(output, entity.transform.rotation);
                 WriteBinary(output, entity.transform.width);
                 WriteBinary(output, entity.transform.height);
             }
@@ -751,6 +814,19 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
                 WriteBinary(output, enabled);
                 WriteStringBinary(output, entity.script.serializedFieldState);
             }
+
+            if (entity.hasAnimator)
+            {
+                WriteStringBinary(output, entity.animator.clipAssetPath);
+                WriteBinary(output, entity.animator.time);
+                const std::uint8_t playing = entity.animator.playing ? 1 : 0;
+                const std::uint8_t loop = entity.animator.loop ? 1 : 0;
+                const std::uint8_t applyPoseWhenStopped = entity.animator.applyPoseWhenStopped ? 1 : 0;
+                WriteBinary(output, playing);
+                WriteBinary(output, loop);
+                WriteBinary(output, entity.animator.speed);
+                WriteBinary(output, applyPoseWhenStopped);
+            }
         }
 
         if (!output.good())
@@ -793,6 +869,7 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             rapidjson::Value transformObject(rapidjson::kObjectType);
             transformObject.AddMember("x", entity.transform.x, allocator);
             transformObject.AddMember("y", entity.transform.y, allocator);
+            transformObject.AddMember("rotation", entity.transform.rotation, allocator);
             transformObject.AddMember("width", entity.transform.width, allocator);
             transformObject.AddMember("height", entity.transform.height, allocator);
             componentsObject.AddMember("transform", transformObject, allocator);
@@ -861,6 +938,24 @@ bool Scene::SaveToFile(const std::filesystem::path& path, SceneFileFormat format
             scriptObject.AddMember("serializedFieldState", serializedFieldValue, allocator);
 
             componentsObject.AddMember("script", scriptObject, allocator);
+        }
+
+        if (entity.hasAnimator)
+        {
+            rapidjson::Value animatorObject(rapidjson::kObjectType);
+
+            rapidjson::Value clipPathValue;
+            clipPathValue.SetString(entity.animator.clipAssetPath.c_str(),
+                                    static_cast<rapidjson::SizeType>(entity.animator.clipAssetPath.size()),
+                                    allocator);
+            animatorObject.AddMember("clipAssetPath", clipPathValue, allocator);
+            animatorObject.AddMember("time", entity.animator.time, allocator);
+            animatorObject.AddMember("playing", entity.animator.playing, allocator);
+            animatorObject.AddMember("loop", entity.animator.loop, allocator);
+            animatorObject.AddMember("speed", entity.animator.speed, allocator);
+            animatorObject.AddMember("applyPoseWhenStopped", entity.animator.applyPoseWhenStopped, allocator);
+
+            componentsObject.AddMember("animator", animatorObject, allocator);
         }
 
         entityObject.AddMember("components", componentsObject, allocator);
@@ -982,12 +1077,31 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             entity.hasCamera = (componentMask & Component_Camera) != 0;
             entity.hasSprite = (componentMask & Component_Sprite) != 0;
             entity.hasScript = (componentMask & Component_Script) != 0;
+            entity.hasAnimator = (componentMask & Component_Animator) != 0;
 
             if (entity.hasTransform)
             {
                 if (!ReadBinary(input, entity.transform.x) ||
-                    !ReadBinary(input, entity.transform.y) ||
-                    !ReadBinary(input, entity.transform.width) ||
+                    !ReadBinary(input, entity.transform.y))
+                {
+                    m_lastIoError = "Failed to read binary transform component.";
+                    return false;
+                }
+
+                if (fileVersion >= 7)
+                {
+                    if (!ReadBinary(input, entity.transform.rotation))
+                    {
+                        m_lastIoError = "Failed to read binary transform rotation.";
+                        return false;
+                    }
+                }
+                else
+                {
+                    entity.transform.rotation = 0.0f;
+                }
+
+                if (!ReadBinary(input, entity.transform.width) ||
                     !ReadBinary(input, entity.transform.height))
                 {
                     m_lastIoError = "Failed to read binary transform component.";
@@ -1107,6 +1221,28 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                 entity.script.enabled = enabled != 0;
             }
 
+            if (entity.hasAnimator)
+            {
+                std::uint8_t playing = 0;
+                std::uint8_t loop = 0;
+                std::uint8_t applyPoseWhenStopped = 0;
+                if (!ReadStringBinary(input, entity.animator.clipAssetPath) ||
+                    !ReadBinary(input, entity.animator.time) ||
+                    !ReadBinary(input, playing) ||
+                    !ReadBinary(input, loop) ||
+                    !ReadBinary(input, entity.animator.speed) ||
+                    !ReadBinary(input, applyPoseWhenStopped))
+                {
+                    m_lastIoError = "Failed to read binary animator component.";
+                    return false;
+                }
+
+                entity.animator.playing = playing != 0;
+                entity.animator.loop = loop != 0;
+                entity.animator.applyPoseWhenStopped = applyPoseWhenStopped != 0;
+                NormalizeAnimatorState(entity);
+            }
+
             loadedEntities.push_back(std::move(entity));
         }
     }
@@ -1217,6 +1353,7 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                     entity.hasTransform = true;
                     if (!ReadOptionalFloat(transform, "x", entity.transform.x, parseError) ||
                         !ReadOptionalFloat(transform, "y", entity.transform.y, parseError) ||
+                        !ReadOptionalFloat(transform, "rotation", entity.transform.rotation, parseError) ||
                         !ReadOptionalFloat(transform, "width", entity.transform.width, parseError) ||
                         !ReadOptionalFloat(transform, "height", entity.transform.height, parseError))
                     {
@@ -1309,6 +1446,30 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
                         return false;
                     }
                 }
+
+                if (components.HasMember("animator"))
+                {
+                    const rapidjson::Value& animator = components["animator"];
+                    if (!animator.IsObject())
+                    {
+                        m_lastIoError = "Invalid JSON animator component: expected object.";
+                        return false;
+                    }
+
+                    entity.hasAnimator = true;
+                    if (!ReadOptionalString(animator, "clipAssetPath", entity.animator.clipAssetPath, parseError) ||
+                        !ReadOptionalFloat(animator, "time", entity.animator.time, parseError) ||
+                        !ReadOptionalBool(animator, "playing", entity.animator.playing, parseError) ||
+                        !ReadOptionalBool(animator, "loop", entity.animator.loop, parseError) ||
+                        !ReadOptionalFloat(animator, "speed", entity.animator.speed, parseError) ||
+                        !ReadOptionalBool(animator, "applyPoseWhenStopped", entity.animator.applyPoseWhenStopped, parseError))
+                    {
+                        m_lastIoError = "Invalid JSON animator component: " + parseError;
+                        return false;
+                    }
+
+                    NormalizeAnimatorState(entity);
+                }
             }
 
             loadedEntities.push_back(std::move(entity));
@@ -1399,6 +1560,11 @@ bool Scene::LoadFromFile(const std::filesystem::path& path, SceneFileFormat form
             AddScript(entity, persisted.script);
         else
             RemoveScript(entity);
+
+        if (persisted.hasAnimator)
+            AddAnimator(entity, persisted.animator);
+        else
+            RemoveAnimator(entity);
     }
 
     return true;

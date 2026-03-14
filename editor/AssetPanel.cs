@@ -18,7 +18,11 @@ namespace EngineEditor
 
         private static string _cachedProjectPath = string.Empty;
         private static string _searchText = string.Empty;
-        private static string _selectedPath = string.Empty;
+        private static string _selectedPath
+        {
+            get => EditorContext.SelectedAssetPath;
+            set => EditorContext.SelectedAssetPath = value ?? string.Empty;
+        }
         private static string _contextTargetPath = string.Empty;
         private static string _currentFolderPath = string.Empty;
 
@@ -361,6 +365,9 @@ namespace EngineEditor
             if (lower.EndsWith(".scene.json") || lower.EndsWith(".scene.bin"))
                 return "[SCN]";
 
+            if (lower.EndsWith(".anim"))
+                return "[ANM]";
+
             string extension = Path.GetExtension(lower);
             switch (extension)
             {
@@ -404,6 +411,12 @@ namespace EngineEditor
             if (SceneEditor.IsSceneFilePath(item.Path))
             {
                 SceneEditor.LoadSceneFromPath(item.Path);
+                return;
+            }
+
+            if (item.Path.EndsWith(".anim", StringComparison.OrdinalIgnoreCase))
+            {
+                AnimationSystem.OpenClipFromPath(item.Path);
                 return;
             }
 

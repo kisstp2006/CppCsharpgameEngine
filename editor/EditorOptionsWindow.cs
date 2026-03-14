@@ -12,6 +12,11 @@ namespace EngineEditor
 
         public static bool IsOpen => _open;
 
+        public static void SetOpen(bool open)
+        {
+            _open = open;
+        }
+
         public static void Toggle()
         {
             _open = !_open;

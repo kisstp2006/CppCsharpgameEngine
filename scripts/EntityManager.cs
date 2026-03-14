@@ -8,6 +8,7 @@ namespace Engine
         public const int Camera = 1;
         public const int Sprite = 2;
         public const int Script = 3;
+        public const int Animator = 4;
     }
 
     public static class EntityManager
@@ -59,6 +60,12 @@ namespace Engine
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void SetTransformInternal(uint entityId, float x, float y, float width, float height);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetTransformRotationInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetTransformRotationInternal(uint entityId, float rotation);
 
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern bool HasCameraInternal(uint entityId);
@@ -155,6 +162,51 @@ namespace Engine
         [MethodImpl(MethodImplOptions.InternalCall)]
         private static extern void RemoveScriptInternal(uint entityId);
 
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool HasAnimatorInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void AddAnimatorInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void RemoveAnimatorInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern string GetAnimatorClipPathInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetAnimatorClipPathInternal(uint entityId, string clipPath);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetAnimatorTimeInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetAnimatorTimeInternal(uint entityId, float time);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool GetAnimatorPlayingInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetAnimatorPlayingInternal(uint entityId, bool playing);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool GetAnimatorLoopInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetAnimatorLoopInternal(uint entityId, bool loop);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern float GetAnimatorSpeedInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetAnimatorSpeedInternal(uint entityId, float speed);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern bool GetAnimatorApplyPoseWhenStoppedInternal(uint entityId);
+
+        [MethodImpl(MethodImplOptions.InternalCall)]
+        private static extern void SetAnimatorApplyPoseWhenStoppedInternal(uint entityId, bool value);
+
         public static uint CreateEntity()
         {
             return CreateEntityInternal();
@@ -238,6 +290,16 @@ namespace Engine
         public static void SetTransform(uint entityId, float x, float y, float width, float height)
         {
             SetTransformInternal(entityId, x, y, width, height);
+        }
+
+        public static float GetTransformRotation(uint entityId)
+        {
+            return GetTransformRotationInternal(entityId);
+        }
+
+        public static void SetTransformRotation(uint entityId, float rotation)
+        {
+            SetTransformRotationInternal(entityId, rotation);
         }
 
         public static bool HasCamera(uint entityId)
@@ -413,6 +475,81 @@ namespace Engine
         public static void RemoveScript(uint entityId)
         {
             RemoveScriptInternal(entityId);
+        }
+
+        public static bool HasAnimator(uint entityId)
+        {
+            return HasAnimatorInternal(entityId);
+        }
+
+        public static void AddAnimator(uint entityId)
+        {
+            AddAnimatorInternal(entityId);
+        }
+
+        public static void RemoveAnimator(uint entityId)
+        {
+            RemoveAnimatorInternal(entityId);
+        }
+
+        public static string GetAnimatorClipPath(uint entityId)
+        {
+            return GetAnimatorClipPathInternal(entityId);
+        }
+
+        public static void SetAnimatorClipPath(uint entityId, string clipPath)
+        {
+            SetAnimatorClipPathInternal(entityId, clipPath);
+        }
+
+        public static float GetAnimatorTime(uint entityId)
+        {
+            return GetAnimatorTimeInternal(entityId);
+        }
+
+        public static void SetAnimatorTime(uint entityId, float time)
+        {
+            SetAnimatorTimeInternal(entityId, time);
+        }
+
+        public static bool GetAnimatorPlaying(uint entityId)
+        {
+            return GetAnimatorPlayingInternal(entityId);
+        }
+
+        public static void SetAnimatorPlaying(uint entityId, bool playing)
+        {
+            SetAnimatorPlayingInternal(entityId, playing);
+        }
+
+        public static bool GetAnimatorLoop(uint entityId)
+        {
+            return GetAnimatorLoopInternal(entityId);
+        }
+
+        public static void SetAnimatorLoop(uint entityId, bool loop)
+        {
+            SetAnimatorLoopInternal(entityId, loop);
+        }
+
+        public static float GetAnimatorSpeed(uint entityId)
+        {
+            return GetAnimatorSpeedInternal(entityId);
+        }
+
+        public static void SetAnimatorSpeed(uint entityId, float speed)
+        {
+            SetAnimatorSpeedInternal(entityId, speed);
+        }
+
+        public static bool GetAnimatorApplyPoseWhenStopped(uint entityId)
+        {
+            return GetAnimatorApplyPoseWhenStoppedInternal(entityId);
+        }
+
+        public static void SetAnimatorApplyPoseWhenStopped(uint entityId, bool value)
+        {
+            SetAnimatorApplyPoseWhenStoppedInternal(entityId, value);
         }
     }
 }

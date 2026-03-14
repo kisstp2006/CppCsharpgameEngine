@@ -9,6 +9,7 @@ struct TransformComponent
 {
     float x = 0.0f;
     float y = 0.0f;
+    float rotation = 0.0f;
     float width = 1.0f;
     float height = 1.0f;
 };
@@ -67,4 +68,14 @@ struct ScriptComponent
     std::string className = "SpinnerScript";
     std::string serializedFieldState;
     bool enabled = true;
+};
+
+struct AnimatorComponent
+{
+    std::string clipAssetPath;
+    float time = 0.0f;
+    bool playing = false;
+    bool loop = true;
+    float speed = 1.0f;
+    bool applyPoseWhenStopped = true;
 };

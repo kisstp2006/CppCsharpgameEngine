@@ -28,7 +28,8 @@ enum class EditorComponentType : std::uint32_t
     Transform = 0,
     Camera = 1,
     Sprite = 2,
-    Script = 3
+    Script = 3,
+    Animator = 4
 };
 
 static std::string MonoStringToUtf8(MonoString* monoString)
@@ -44,6 +45,8 @@ static std::string MonoStringToUtf8(MonoString* monoString)
     mono_free(utf8);
     return result;
 }
+
+static std::string TrimWhitespace(const std::string& value);
 
 static std::string BuildEngineLogPrefix(const char* level)
 {
@@ -213,6 +216,7 @@ static TransformComponent* EnsureTransformComponent(Scene* scene, entt::entity e
     auto& created = scene->AddTransform(entity);
     created.x = 0.0f;
     created.y = 0.0f;
+    created.rotation = 0.0f;
     created.width = 100.0f;
     created.height = 100.0f;
     return &created;
@@ -390,6 +394,8 @@ static bool EntityManager_HasComponentInternal(std::uint32_t entityId, int compo
         return scene->HasSprite(entity);
     case EditorComponentType::Script:
         return scene->HasScript(entity);
+    case EditorComponentType::Animator:
+        return scene->HasAnimator(entity);
     default:
         return false;
     }
@@ -414,6 +420,7 @@ static void EntityManager_AddComponentInternal(std::uint32_t entityId, int compo
             auto& transform = scene->AddTransform(entity);
             transform.x = 0.0f;
             transform.y = 0.0f;
+            transform.rotation = 0.0f;
             transform.width = 100.0f;
             transform.height = 100.0f;
         }
@@ -450,6 +457,11 @@ static void EntityManager_AddComponentInternal(std::uint32_t entityId, int compo
             return;
         scene->AddScript(entity);
         return;
+    case EditorComponentType::Animator:
+        if (scene->HasAnimator(entity))
+            return;
+        scene->AddAnimator(entity);
+        return;
     default:
         return;
     }
@@ -478,6 +490,9 @@ static void EntityManager_RemoveComponentInternal(std::uint32_t entityId, int co
         return;
     case EditorComponentType::Script:
         scene->RemoveScript(entity);
+        return;
+    case EditorComponentType::Animator:
+        scene->RemoveAnimator(entity);
         return;
     default:
         return;
@@ -536,6 +551,34 @@ static void EntityManager_SetTransformInternal(std::uint32_t entityId, float x, 
     transform->y = y;
     transform->width = width;
     transform->height = height;
+}
+
+static float EntityManager_GetTransformRotationInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return 0.0f;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const TransformComponent* transform = scene->TryGetTransform(entity);
+    if (!transform)
+        return 0.0f;
+
+    return transform->rotation;
+}
+
+static void EntityManager_SetTransformRotationInternal(std::uint32_t entityId, float rotation)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    TransformComponent* transform = scene->TryGetTransform(entity);
+    if (!transform)
+        return;
+
+    transform->rotation = std::isfinite(rotation) ? rotation : 0.0f;
 }
 
 static bool EntityManager_HasCameraInternal(std::uint32_t entityId)
@@ -813,6 +856,182 @@ static void EntityManager_AddScriptInternal(std::uint32_t entityId)
 static void EntityManager_RemoveScriptInternal(std::uint32_t entityId)
 {
     EntityManager_RemoveComponentInternal(entityId, static_cast<int>(EditorComponentType::Script));
+}
+
+static bool EntityManager_HasAnimatorInternal(std::uint32_t entityId)
+{
+    return EntityManager_HasComponentInternal(entityId, static_cast<int>(EditorComponentType::Animator));
+}
+
+static void EntityManager_AddAnimatorInternal(std::uint32_t entityId)
+{
+    EntityManager_AddComponentInternal(entityId, static_cast<int>(EditorComponentType::Animator));
+}
+
+static void EntityManager_RemoveAnimatorInternal(std::uint32_t entityId)
+{
+    EntityManager_RemoveComponentInternal(entityId, static_cast<int>(EditorComponentType::Animator));
+}
+
+static MonoString* EntityManager_GetAnimatorClipPathInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return nullptr;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    if (!animator)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, animator->clipAssetPath.c_str()) : nullptr;
+}
+
+static void EntityManager_SetAnimatorClipPathInternal(std::uint32_t entityId, MonoString* clipPath)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    animator->clipAssetPath = TrimWhitespace(MonoStringToUtf8(clipPath));
+}
+
+static float EntityManager_GetAnimatorTimeInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return 0.0f;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    return animator ? animator->time : 0.0f;
+}
+
+static void EntityManager_SetAnimatorTimeInternal(std::uint32_t entityId, float time)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    animator->time = std::isfinite(time) ? time : 0.0f;
+}
+
+static bool EntityManager_GetAnimatorPlayingInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    return animator ? animator->playing : false;
+}
+
+static void EntityManager_SetAnimatorPlayingInternal(std::uint32_t entityId, bool playing)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    animator->playing = playing;
+}
+
+static bool EntityManager_GetAnimatorLoopInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return false;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    return animator ? animator->loop : false;
+}
+
+static void EntityManager_SetAnimatorLoopInternal(std::uint32_t entityId, bool loop)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    animator->loop = loop;
+}
+
+static float EntityManager_GetAnimatorSpeedInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return 1.0f;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    return animator ? animator->speed : 1.0f;
+}
+
+static void EntityManager_SetAnimatorSpeedInternal(std::uint32_t entityId, float speed)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    if (!std::isfinite(speed))
+        speed = 1.0f;
+    if (speed < -16.0f)
+        speed = -16.0f;
+    if (speed > 16.0f)
+        speed = 16.0f;
+
+    animator->speed = speed;
+}
+
+static bool EntityManager_GetAnimatorApplyPoseWhenStoppedInternal(std::uint32_t entityId)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return true;
+
+    const auto entity = scene->FromEntityId(entityId);
+    const AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    return animator ? animator->applyPoseWhenStopped : true;
+}
+
+static void EntityManager_SetAnimatorApplyPoseWhenStoppedInternal(std::uint32_t entityId, bool value)
+{
+    Scene* scene = GetSceneContextForEntityApi();
+    if (!scene)
+        return;
+
+    const auto entity = scene->FromEntityId(entityId);
+    AnimatorComponent* animator = scene->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    animator->applyPoseWhenStopped = value;
 }
 
 static bool RuntimeSprite_Has(std::uint32_t entityId)
@@ -1755,6 +1974,8 @@ static bool EditorBridge_HasComponent(std::uint32_t entityId, int componentType)
         return g_editorSceneContext->HasSprite(entity);
     case EditorComponentType::Script:
         return g_editorSceneContext->HasScript(entity);
+    case EditorComponentType::Animator:
+        return g_editorSceneContext->HasAnimator(entity);
     default:
         return false;
     }
@@ -1778,6 +1999,7 @@ static void EditorBridge_AddComponent(std::uint32_t entityId, int componentType)
             auto& transform = g_editorSceneContext->AddTransform(entity);
             transform.x = 0.0f;
             transform.y = 0.0f;
+            transform.rotation = 0.0f;
             transform.width = 100.0f;
             transform.height = 100.0f;
         }
@@ -1814,6 +2036,11 @@ static void EditorBridge_AddComponent(std::uint32_t entityId, int componentType)
             return;
         g_editorSceneContext->AddScript(entity);
         return;
+    case EditorComponentType::Animator:
+        if (g_editorSceneContext->HasAnimator(entity))
+            return;
+        g_editorSceneContext->AddAnimator(entity);
+        return;
     default:
         return;
     }
@@ -1841,6 +2068,9 @@ static void EditorBridge_RemoveComponent(std::uint32_t entityId, int componentTy
         return;
     case EditorComponentType::Script:
         g_editorSceneContext->RemoveScript(entity);
+        return;
+    case EditorComponentType::Animator:
+        g_editorSceneContext->RemoveAnimator(entity);
         return;
     default:
         return;
@@ -2955,6 +3185,199 @@ static bool EditorBridge_SetScriptFieldValue(std::uint32_t entityId, MonoString*
     return true;
 }
 
+static bool EditorBridge_HasAnimator(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    return g_editorSceneContext->HasAnimator(entity);
+}
+
+static void EditorBridge_AddAnimator(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    if (!g_editorSceneContext->IsValid(entity) || g_editorSceneContext->HasAnimator(entity))
+        return;
+
+    g_editorSceneContext->AddAnimator(entity);
+}
+
+static void EditorBridge_RemoveAnimator(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    g_editorSceneContext->RemoveAnimator(entity);
+}
+
+static MonoString* EditorBridge_GetAnimatorClipPath(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return nullptr;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return nullptr;
+
+    MonoDomain* domain = mono_domain_get();
+    return domain ? mono_string_new(domain, animator->clipAssetPath.c_str()) : nullptr;
+}
+
+static void EditorBridge_SetAnimatorClipPath(std::uint32_t entityId, MonoString* clipPath)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    animator->clipAssetPath = TrimWhitespace(MonoStringToUtf8(clipPath));
+}
+
+static float EditorBridge_GetAnimatorTime(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return 0.0f;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return 0.0f;
+
+    return animator->time;
+}
+
+static void EditorBridge_SetAnimatorTime(std::uint32_t entityId, float time)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    animator->time = std::isfinite(time) ? time : 0.0f;
+}
+
+static bool EditorBridge_GetAnimatorPlaying(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return false;
+
+    return animator->playing;
+}
+
+static void EditorBridge_SetAnimatorPlaying(std::uint32_t entityId, bool playing)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    animator->playing = playing;
+}
+
+static bool EditorBridge_GetAnimatorLoop(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return false;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return false;
+
+    return animator->loop;
+}
+
+static void EditorBridge_SetAnimatorLoop(std::uint32_t entityId, bool loop)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    animator->loop = loop;
+}
+
+static float EditorBridge_GetAnimatorSpeed(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return 1.0f;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return 1.0f;
+
+    return animator->speed;
+}
+
+static void EditorBridge_SetAnimatorSpeed(std::uint32_t entityId, float speed)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    if (!std::isfinite(speed))
+        speed = 1.0f;
+    if (speed < -16.0f)
+        speed = -16.0f;
+    if (speed > 16.0f)
+        speed = 16.0f;
+    animator->speed = speed;
+}
+
+static bool EditorBridge_GetAnimatorApplyPoseWhenStopped(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return true;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return true;
+
+    return animator->applyPoseWhenStopped;
+}
+
+static void EditorBridge_SetAnimatorApplyPoseWhenStopped(std::uint32_t entityId, bool applyPoseWhenStopped)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    AnimatorComponent* animator = g_editorSceneContext->TryGetAnimator(entity);
+    if (!animator)
+        return;
+
+    animator->applyPoseWhenStopped = applyPoseWhenStopped;
+}
+
 static void EditorBridge_SetGameViewSize(float width, float height)
 {
     if (!g_editorRendererContext)
@@ -3190,6 +3613,7 @@ static void EditorBridge_AddTransform(std::uint32_t entityId)
     auto& transform = g_editorSceneContext->AddTransform(entity);
     transform.x = 0.0f;
     transform.y = 0.0f;
+    transform.rotation = 0.0f;
     transform.width = 100.0f;
     transform.height = 100.0f;
 }
@@ -3229,6 +3653,35 @@ static void EditorBridge_SetTransform(std::uint32_t entityId, float x, float y, 
     transform->y = y;
     transform->width = width;
     transform->height = height;
+}
+
+static float EditorBridge_GetTransformRotation(std::uint32_t entityId)
+{
+    if (!g_editorSceneContext)
+        return 0.0f;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    const TransformComponent* transform = g_editorSceneContext->TryGetTransform(entity);
+    if (!transform)
+        return 0.0f;
+
+    return transform->rotation;
+}
+
+static void EditorBridge_SetTransformRotation(std::uint32_t entityId, float rotation)
+{
+    if (!g_editorSceneContext)
+        return;
+
+    const auto entity = g_editorSceneContext->FromEntityId(entityId);
+    TransformComponent* transform = g_editorSceneContext->TryGetTransform(entity);
+    if (!transform)
+        return;
+
+    if (!std::isfinite(rotation))
+        rotation = 0.0f;
+
+    transform->rotation = rotation;
 }
 
 static bool EditorBridge_HasCamera(std::uint32_t entityId)
@@ -3971,6 +4424,12 @@ static void EditorImGui_SameLine()
         ImGui::SameLine();
 }
 
+static void EditorImGui_SetNextWindowFocus()
+{
+    if (ImGui::GetCurrentContext())
+        ImGui::SetNextWindowFocus();
+}
+
 static void EditorImGui_SetNextItemWidth(float width)
 {
     if (ImGui::GetCurrentContext())
@@ -4406,6 +4865,173 @@ static bool EditorImGuizmo_Manipulate2DTranslate(float viewportX,
     {
         *x = matrix[12];
         *y = matrix[13];
+    }
+
+    return changed;
+}
+
+static bool EditorImGuizmo_Manipulate2DRotate(float viewportX,
+                                              float viewportY,
+                                              float viewportWidth,
+                                              float viewportHeight,
+                                              float cameraX,
+                                              float cameraY,
+                                              float cameraZoom,
+                                              float* x,
+                                              float* y,
+                                              float* rotationDegrees,
+                                              float objectWidth,
+                                              float objectHeight)
+{
+    if (!ImGui::GetCurrentContext() || !x || !y || !rotationDegrees)
+        return false;
+
+    if (viewportWidth < 1.0f || viewportHeight < 1.0f)
+        return false;
+
+    float zoom = cameraZoom;
+    if (!std::isfinite(zoom) || zoom < 0.01f)
+        zoom = 0.01f;
+    else if (zoom > 100.0f)
+        zoom = 100.0f;
+
+    const float halfWorldWidth = (viewportWidth * 0.5f) / zoom;
+    const float halfWorldHeight = (viewportHeight * 0.5f) / zoom;
+    const float left = cameraX - halfWorldWidth;
+    const float right = cameraX + halfWorldWidth;
+    const float bottom = cameraY - halfWorldHeight;
+    const float top = cameraY + halfWorldHeight;
+
+    const float view[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+
+    const float rl = 1.0f / (right - left);
+    const float tb = 1.0f / (top - bottom);
+    const float projection[16] = {
+        2.0f * rl, 0.0f, 0.0f, 0.0f,
+        0.0f, 2.0f * tb, 0.0f, 0.0f,
+        0.0f, 0.0f, -1.0f, 0.0f,
+        -(right + left) * rl, -(top + bottom) * tb, 0.0f, 1.0f,
+    };
+
+    float translation[3] = { *x, *y, 0.0f };
+    float rotation[3] = { 0.0f, 0.0f, *rotationDegrees };
+    float scale[3] = {
+        std::max(0.0001f, std::fabs(objectWidth)),
+        std::max(0.0001f, std::fabs(objectHeight)),
+        1.0f,
+    };
+    float matrix[16] = {};
+    ImGuizmo::RecomposeMatrixFromComponents(translation, rotation, scale, matrix);
+
+    ImGuizmo::SetOrthographic(true);
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+    ImGuizmo::SetRect(viewportX, viewportY, viewportWidth, viewportHeight);
+
+    const bool changed = ImGuizmo::Manipulate(view,
+                                              projection,
+                                              ImGuizmo::ROTATE,
+                                              ImGuizmo::WORLD,
+                                              matrix,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr);
+
+    if (changed)
+    {
+        ImGuizmo::DecomposeMatrixToComponents(matrix, translation, rotation, scale);
+        *x = translation[0];
+        *y = translation[1];
+        *rotationDegrees = rotation[2];
+    }
+
+    return changed;
+}
+
+static bool EditorImGuizmo_Manipulate2DScale(float viewportX,
+                                             float viewportY,
+                                             float viewportWidth,
+                                             float viewportHeight,
+                                             float cameraX,
+                                             float cameraY,
+                                             float cameraZoom,
+                                             float* x,
+                                             float* y,
+                                             float* width,
+                                             float* height,
+                                             float rotationDegrees)
+{
+    if (!ImGui::GetCurrentContext() || !x || !y || !width || !height)
+        return false;
+
+    if (viewportWidth < 1.0f || viewportHeight < 1.0f)
+        return false;
+
+    float zoom = cameraZoom;
+    if (!std::isfinite(zoom) || zoom < 0.01f)
+        zoom = 0.01f;
+    else if (zoom > 100.0f)
+        zoom = 100.0f;
+
+    const float halfWorldWidth = (viewportWidth * 0.5f) / zoom;
+    const float halfWorldHeight = (viewportHeight * 0.5f) / zoom;
+    const float left = cameraX - halfWorldWidth;
+    const float right = cameraX + halfWorldWidth;
+    const float bottom = cameraY - halfWorldHeight;
+    const float top = cameraY + halfWorldHeight;
+
+    const float view[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f,
+    };
+
+    const float rl = 1.0f / (right - left);
+    const float tb = 1.0f / (top - bottom);
+    const float projection[16] = {
+        2.0f * rl, 0.0f, 0.0f, 0.0f,
+        0.0f, 2.0f * tb, 0.0f, 0.0f,
+        0.0f, 0.0f, -1.0f, 0.0f,
+        -(right + left) * rl, -(top + bottom) * tb, 0.0f, 1.0f,
+    };
+
+    float translation[3] = { *x, *y, 0.0f };
+    float rotation[3] = { 0.0f, 0.0f, rotationDegrees };
+    float scale[3] = {
+        std::max(0.0001f, std::fabs(*width)),
+        std::max(0.0001f, std::fabs(*height)),
+        1.0f,
+    };
+    float matrix[16] = {};
+    ImGuizmo::RecomposeMatrixFromComponents(translation, rotation, scale, matrix);
+
+    ImGuizmo::SetOrthographic(true);
+    ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
+    ImGuizmo::SetRect(viewportX, viewportY, viewportWidth, viewportHeight);
+
+    const bool changed = ImGuizmo::Manipulate(view,
+                                              projection,
+                                              ImGuizmo::SCALE,
+                                              ImGuizmo::WORLD,
+                                              matrix,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr,
+                                              nullptr);
+
+    if (changed)
+    {
+        ImGuizmo::DecomposeMatrixToComponents(matrix, translation, rotation, scale);
+        *x = translation[0];
+        *y = translation[1];
+        *width = std::max(0.0001f, std::fabs(scale[0]));
+        *height = std::max(0.0001f, std::fabs(scale[1]));
     }
 
     return changed;

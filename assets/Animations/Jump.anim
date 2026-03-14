@@ -1,0 +1,23 @@
+anim_version 1
+duration 0.8
+loop false
+
+track Transform.Position Linear
+key 0.0 0.0 0.0 Linear
+key 0.2 0.0 2.8 Linear
+key 0.5 0.0 4.2 Linear
+key 0.8 0.0 0.0 Linear
+endtrack
+
+track Transform.Rotation Step
+key 0.0 0.0 Step
+key 0.3 -6.0 Step
+key 0.8 0.0 Step
+endtrack
+
+track Transform.Scale Linear
+key 0.0 1.0 1.0 Linear
+key 0.2 0.9 1.1 Linear
+key 0.5 1.1 0.9 Linear
+key 0.8 1.0 1.0 Linear
+endtrack
